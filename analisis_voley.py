@@ -214,7 +214,9 @@ Ejemplos:
     f                               -> error en juego (en cualquier prompt): punto directo para el rival
 """
 
+import getpass
 import re
+import secrets
 from datetime import datetime
 from pathlib import Path
 
@@ -223,6 +225,13 @@ from pathlib import Path
 CARPETA_PROYECTO = Path(__file__).resolve().parent
 CARPETA_DATOS = CARPETA_PROYECTO / "Datos"        # volcados .txt de cada partido
 CARPETA_INFORMES = CARPETA_PROYECTO / "Informes"  # informes .xlsx
+
+# Clave para cargar un partido, por consola o por la web. No es un secreto
+# criptografico: el programa corre en la maquina de casa y en la WiFi del club,
+# y lo unico que evita es que alguien que entre desde el celular arruine una
+# carga en curso.
+CONTRASENA_CARGA = "Pau2250224"
+INTENTOS_CONTRASENA = 3
 
 
 def carpeta_lista(carpeta: Path) -> Path:
@@ -1960,14 +1969,25 @@ def preguntar_si_no(mensaje: str) -> bool:
             return False
         print("  Respuesta invalida, ingresa s o n.")
 
+def contraseña_valida(texto) -> bool:
+    """Dice si el texto es la clave de carga.
+
+    La comparacion va con compare_digest y no con ==, que corta en la primera
+    letra distinta: es la misma funcion que usa la web, donde los intentos
+    llegan de afuera."""
+    return secrets.compare_digest(str(texto or ""), CONTRASENA_CARGA)
+
+
 def pedir_contraseña(mensaje: str) -> bool:
-    """Pide la contraseña para el informe Excel, sin mostrarla en pantalla."""
-    import getpass
-    for tries in range(3):
+    """Pide la clave de carga por consola, sin mostrarla en pantalla.
 
-        if(getpass.getpass(mensaje) == "Pau2250224"):
+    Devuelve True al primer acierto y False si se agotan los INTENTOS."""
+    for intento in range(INTENTOS_CONTRASENA):
+        if contraseña_valida(getpass.getpass(mensaje)):
             return True
-
+        restantes = INTENTOS_CONTRASENA - intento - 1
+        if restantes:
+            print(f"  Contraseña incorrecta, quedan {restantes} intento(s).")
     return False
 
 def generar_informe_excel(nombre_archivo_txt: str, nombres: dict) -> str | None:
@@ -2181,10 +2201,10 @@ def ejecutar_partido() -> dict:
 
 
 def cargar_jugadas() -> list[dict]:
-    if(pedir_contraseña("Contraseña para cargar jugadas: ") == False):
-        print("  Contraseña incorrecta.")
-        return []
     """Carga un partido por consola y al terminar guarda el reporte."""
+    if not pedir_contraseña("Contraseña para cargar jugadas: "):
+        print("  Sin la contraseña no se carga nada.")
+        return []
     estado = ejecutar_partido()
     nombres = estado["nombres"]
     puntos = estado["puntos"]

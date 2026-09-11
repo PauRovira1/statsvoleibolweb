@@ -14,7 +14,15 @@ desde la pestana Partidos.
 La pagina (interfaz.html + .css + .js) sale de una lista blanca; nunca se
 sirve la carpeta del proyecto.
 
-Endpoints del partido en curso, que si toman el candado de la sesion:
+Cargar pide la contraseña de analisis_voley (la misma de la consola). Se
+escribe una vez por pestana: el servidor devuelve un token que el navegador
+manda despues en la cabecera X-Clave. Mirar partidos, informes y jugadores no
+pide nada; lo unico que se protege es escribir sobre el partido en curso.
+    POST /api/clave                 valida la contraseña y da el token
+    GET  /api/sesion                dice si el token que mando sigue valiendo
+
+Endpoints del partido en curso, que si toman el candado de la sesion. Los
+POST piden el token de /api/clave:
     GET  /api/estado /api/estadisticas
     POST /api/enviar /api/deshacer /api/reiniciar /api/cargar
          /api/guardar /api/excel
@@ -30,8 +38,10 @@ sesion, para que mirar un informe no interrumpa la carga en la cancha:
 import argparse
 import json
 import os
+import secrets
 import socket
 import threading
+import time
 import webbrowser
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
@@ -59,6 +69,37 @@ ESTATICOS = {
 # El lock alcanza porque cada pedido rehace el partido entero y es cortito.
 sesion = SesionPartido()
 candado = threading.Lock()
+
+# Pantallas que ya escribieron la contraseña. Los tokens viven en memoria: si
+# se reinicia el servidor hay que volver a escribirla, que es lo que se quiere.
+tokens_validos: set[str] = set()
+candado_tokens = threading.Lock()
+
+# Escribir sobre el partido en curso pide el token; leer no. Asi se puede
+# seguir el marcador o mirar un informe desde cualquier celular de la tribuna,
+# pero cargar la jugada solo desde el que sabe la clave.
+RUTAS_CON_CLAVE = {
+    "/api/enviar", "/api/deshacer", "/api/reiniciar",
+    "/api/cargar", "/api/guardar", "/api/excel",
+}
+
+
+def abrir_sesion(clave) -> dict:
+    """Valida la contraseña y entrega el token de la pantalla que acerto."""
+    if not av.contraseña_valida(clave):
+        time.sleep(1)      # un intento por segundo: no se prueban claves a mano
+        return {"ok": False, "mensaje": "Contraseña incorrecta."}
+    token = secrets.token_urlsafe(24)
+    with candado_tokens:
+        tokens_validos.add(token)
+    return {"ok": True, "token": token, "mensaje": "Listo, ya podes cargar."}
+
+
+def token_valido(token) -> bool:
+    if not token:
+        return False
+    with candado_tokens:
+        return token in tokens_validos
 
 
 def ip_en_la_red() -> str:
@@ -185,6 +226,10 @@ class Manejador(BaseHTTPRequestHandler):
                 return self._responder(f"Falta {archivo.name}", 500, "text/plain")
             return self._responder(archivo.read_text(encoding="utf-8"), tipo=tipo)
 
+        if ruta == "/api/sesion":
+            return self._responder({"ok": True,
+                                    "autorizado": token_valido(self.headers.get("X-Clave"))})
+
         if ruta == "/api/estado":
             with candado:
                 return self._responder({"ok": True, "estado": sesion.instantanea()})
@@ -247,6 +292,16 @@ class Manejador(BaseHTTPRequestHandler):
             return self._responder({"ok": False, "mensaje": "JSON invalido"}, 400)
 
         ruta = urlsplit(self.path).path
+        if ruta == "/api/clave":
+            # fuera del candado de la sesion: el segundo de castigo por clave
+            # errada no puede frenar al que esta cargando el partido
+            return self._responder(abrir_sesion(datos.get("clave", "")))
+
+        if ruta in RUTAS_CON_CLAVE and not token_valido(self.headers.get("X-Clave")):
+            # "clave": True es la senal para que la pantalla vuelva a pedirla
+            return self._responder({"ok": False, "clave": True,
+                                    "mensaje": "Hace falta la contraseña para cargar."}, 401)
+
         if ruta == "/api/abrir":
             # no toca la sesion, asi que tampoco toma el candado: si alguien
             # esta cargando un punto no tiene por que esperar a que abra Excel

@@ -21,7 +21,23 @@
   <!-- 1) CARGAR: la pantalla de la cancha. No se le agrega nada que -->
   <!--    se meta en el camino de tipear una jugada.                 -->
   <!-- ============================================================ -->
-  <section class="vista activa" id="vista-cargar">
+  <section class="vista activa bloqueada" id="vista-cargar">
+
+    <!-- Candado. Cargar es lo unico que escribe sobre el partido, asi que es
+         lo unico que pide la contraseña; mientras esta puesto tapa la
+         pantalla de la cancha, pero las otras dos pestanas siguen abiertas. -->
+    <form class="candado" id="candado" autocomplete="off">
+      <h2>Cargar un partido</h2>
+      <p class="nota">Escribi la contraseña para habilitar la carga. Mirar los
+      partidos guardados y los jugadores no la necesita.</p>
+      <div class="fila">
+        <input type="password" id="clave" placeholder="Contraseña"
+               autocomplete="current-password" autocapitalize="off"
+               autocorrect="off" spellcheck="false">
+        <button class="primario" type="submit">Entrar</button>
+      </div>
+      <div class="mensaje" id="mensajeClave" hidden></div>
+    </form>
 
     <div class="marcador">
       <div class="equipo" id="eqA">
@@ -60,6 +76,7 @@
       <button id="btnBorrar">Borrar ultima linea</button>
       <button id="btnGuardar">Guardar .txt</button>
       <button id="btnExcel">Excel</button>
+      <button id="btnBloquear" class="tenue">Bloquear</button>
       <button id="btnReiniciar" class="peligro">Reiniciar</button>
     </div>
 

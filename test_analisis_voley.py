@@ -14,6 +14,7 @@ import unittest
 from unittest.mock import patch
 
 from analisis_voley import (
+    CONTRASENA_CARGA,
     parsear_bloque_saque,
     parsear_bloque_defensa,
     calcular_estadisticas_armado,
@@ -1766,6 +1767,7 @@ class TestArmadoPorSetYPorArmador(unittest.TestCase):
             "salir", "n",
         ]
         with patch("builtins.input", side_effect=entradas), \
+                patch("getpass.getpass", return_value=CONTRASENA_CARGA), \
                 patch("sys.stdout", new_callable=io.StringIO) as salida:
             cargar_jugadas()
         texto = salida.getvalue()
@@ -2168,6 +2170,7 @@ class TestSesionWeb(unittest.TestCase):
         sesion = self._sesion(lineas)
 
         with patch("builtins.input", side_effect=lineas + ["salir", "n"]), \
+                patch("getpass.getpass", return_value=CONTRASENA_CARGA), \
                 patch("sys.stdout", new_callable=io.StringIO) as salida:
             cargar_jugadas()
         archivo = re.search(r"Archivo generado: (.+)", salida.getvalue()).group(1)

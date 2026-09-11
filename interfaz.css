@@ -30,6 +30,23 @@ body{margin:0;background:var(--fondo);color:var(--texto);
       font-variant-numeric:tabular-nums}
 .vista[hidden]{display:none}
 
+/* ---------- candado de la pantalla de carga ----------
+   Con el candado puesto la pantalla de la cancha no se dibuja: se esconde
+   todo lo que cuelga de la vista menos el formulario de la contraseña. Las
+   pestanas quedan afuera de la vista, asi que se sigue pudiendo navegar. */
+#candado{display:none}
+#vista-cargar.bloqueada > *:not(#candado){display:none}
+#vista-cargar.bloqueada > #candado{display:block}
+.candado{background:var(--panel);border:1px solid var(--borde);border-radius:14px;
+         padding:22px 20px;max-width:440px;margin:10vh auto 0}
+.candado h2{margin:0;font-size:19px}
+.candado .nota{margin-bottom:12px}
+.candado .fila{margin-top:0}
+#clave{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--borde);
+       border-radius:10px;color:var(--texto);padding:13px 15px;font:16px/1.2 var(--mono)}
+#clave:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+.candado .mensaje{margin-top:12px;min-height:0}
+
 /* ---------- marcador ---------- */
 .marcador{background:var(--panel);border:1px solid var(--borde);border-radius:14px;
           padding:14px 18px;display:grid;grid-template-columns:1fr auto 1fr;

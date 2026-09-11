@@ -15,12 +15,22 @@
 const $ = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
+// Token de la pantalla de carga (ver 2b). Se declara aca porque todos los
+// pedidos lo mandan: el servidor rechaza con 401 los que escriben sobre el
+// partido si no lo reconoce.
+let token = "";
+
 async function api(ruta, datos){
+  const cabeceras = token ? {"X-Clave": token} : {};
+  if(datos) cabeceras["Content-Type"] = "application/json";
   const opciones = datos
-    ? {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(datos)}
-    : {};
+    ? {method:"POST", headers:cabeceras, body:JSON.stringify(datos)}
+    : {headers:cabeceras};
   const r = await fetch(ruta, opciones);
-  return r.json();
+  const respuesta = await r.json();
+  // el servidor se reinicio, o paso el token de otra sesion: vuelve el candado
+  if(r.status === 401 || respuesta.clave) olvidarToken();
+  return respuesta;
 }
 
 // Casi todo el HTML de esta pagina se arma con plantillas, y los nombres
@@ -100,8 +110,92 @@ const campo = $("#linea"), mensaje = $("#mensaje");
 // robara mientras se esta leyendo un informe, el teclado del celular taparia
 // media pantalla en la pestana equivocada.
 function foco(){
-  if(vistaActual === "cargar") campo.focus();
+  if(vistaActual !== "cargar") return;
+  (token ? campo : campoClave).focus();
 }
+
+// ======================================================================
+// 2b) El candado de la carga
+// ======================================================================
+// Cargar es lo unico que escribe sobre el partido, asi que es lo unico que
+// pide la contraseña. Aca nunca se guarda la contraseña ni se la compara: se
+// la manda al servidor, que responde con un token. El token va en
+// sessionStorage para que recargar la pagina en medio de un partido no
+// obligue a escribirla de nuevo, y se pierda al cerrar la pestana.
+const GUARDADO = "voley.token";
+const formCandado = $("#candado"), campoClave = $("#clave"), avisoClave = $("#mensajeClave");
+
+// El almacenamiento puede estar bloqueado (navegador en modo privado): si
+// falla se sigue trabajando igual, solo que la clave se vuelve a pedir en
+// cada recarga. Lo que no puede pasar es que se caiga la pagina entera.
+function recordar(valor){
+  try{
+    if(valor) sessionStorage.setItem(GUARDADO, valor);
+    else sessionStorage.removeItem(GUARDADO);
+  }catch(_){ /* sin almacenamiento el token vive solo en memoria */ }
+}
+function recordado(){
+  try{ return sessionStorage.getItem(GUARDADO) || ""; }catch(_){ return ""; }
+}
+
+token = recordado();
+// la vista arranca bloqueada en el HTML: si ya hay token se abre ahora mismo,
+// sin esperar a revisarCandado(), para no parpadear entre las dos pantallas
+pintarCandado();
+
+function pintarCandado(){
+  $("#vista-cargar").classList.toggle("bloqueada", !token);
+}
+
+function guardarToken(nuevo){
+  token = nuevo;
+  recordar(nuevo);
+  pintarCandado();
+}
+
+function olvidarToken(){
+  token = "";
+  recordar("");
+  pintarCandado();
+}
+
+function avisoDeClave(texto, ok){
+  avisoClave.textContent = texto || "";
+  avisoClave.hidden = !texto;
+  avisoClave.className = "mensaje" + (texto ? (ok ? " ok" : " error") : "");
+}
+
+// La funcion que pide la contraseña: la valida contra el servidor y, si
+// acierta, levanta el candado y deja el foco en el campo de la jugada.
+async function pedirContraseña(clave){
+  if(!clave) return avisoDeClave("Escribi la contraseña.", false);
+  avisoDeClave("Comprobando…", true);
+  const r = await api("/api/clave", {clave});
+  campoClave.value = "";
+  if(!r.ok || !r.token) return avisoDeClave(r.mensaje || "Contraseña incorrecta.", false);
+  guardarToken(r.token);
+  avisoDeClave("", true);
+  // el partido pudo avanzar desde otra pantalla mientras este estaba bloqueado
+  const estado = await api("/api/estado");
+  if(estado.estado) pintar(estado.estado);
+  mostrarMensaje(r.mensaje, true);
+  foco();
+}
+
+// Al arrancar, el token guardado se revalida: si el servidor se reinicio ya
+// no vale y hay que volver a escribir la contraseña.
+async function revisarCandado(){
+  if(token){
+    const r = await api("/api/sesion");
+    if(!r.autorizado) olvidarToken();
+  }
+  pintarCandado();
+}
+
+formCandado.addEventListener("submit", ev => {
+  ev.preventDefault();
+  pedirContraseña(campoClave.value.trim());
+});
 
 function mostrarMensaje(texto, ok){
   mensaje.textContent = texto || "";
@@ -248,6 +342,15 @@ $("#btnExcelCancelar").addEventListener("click", () => {
   mostrarMensaje("Generando el informe…", true);
   await accion("/api/excel", {equipo: ev.currentTarget.textContent});
 }));
+
+// Bloquear a mano: para dejar la tablet al costado de la cancha sin que
+// cualquiera meta una jugada.
+$("#btnBloquear").addEventListener("click", () => {
+  olvidarToken();
+  avisoDeClave("", true);
+  mostrarMensaje("", true);
+  foco();
+});
 
 $("#btnReiniciar").addEventListener("click", () => {
   if(confirm("Se pierde todo lo cargado. Seguro?")) accion("/api/reiniciar");
@@ -962,7 +1065,7 @@ function notaAlPie(j){
 // ======================================================================
 // La pestana por defecto es Cargar; el hash solo se respeta si esta puesto,
 // que es el caso de recargar la pagina sin querer perder donde se estaba.
-api("/api/estado").then(r => {
+revisarCandado().then(() => api("/api/estado")).then(r => {
   pintar(r.estado);
   irA(location.hash.replace("#", "") || "cargar", false);
 });
