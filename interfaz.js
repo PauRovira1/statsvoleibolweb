@@ -1066,6 +1066,19 @@ function notaAlPie(j){
 // La pestana por defecto es Cargar; el hash solo se respeta si esta puesto,
 // que es el caso de recargar la pagina sin querer perder donde se estaba.
 revisarCandado().then(() => api("/api/estado")).then(r => {
+  avisarDelServidor(r.almacenamiento);
   pintar(r.estado);
   irA(location.hash.replace("#", "") || "cargar", false);
 });
+
+// Alojado, la carpeta del proyecto es de solo lectura y lo unico escribible es
+// un /tmp que se borra solo: si no hay un almacenamiento de verdad detras, lo
+// que se guarde se va a perder. El servidor lo dice en /api/estado y aca se
+// muestra arriba de todo, que es donde se mira antes de empezar a cargar.
+function avisarDelServidor(info){
+  const caja = $("#avisoServidor");
+  if(!caja) return;
+  const avisos = (info && info.avisos) || [];
+  caja.textContent = avisos.join(" ");
+  caja.hidden = avisos.length === 0;
+}

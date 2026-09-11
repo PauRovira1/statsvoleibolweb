@@ -13,6 +13,7 @@ devuelve lo que descarto, para poder mostrarlo en pantalla.
 import re
 from pathlib import Path
 
+import almacenamiento as alm
 import analisis_voley as av
 import archivo_partidos
 
@@ -109,11 +110,17 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
     Dos volcados son el mismo partido si enfrentan a los mismos equipos y los
     parciales de uno son el principio de los del otro; se queda el mas largo.
     Devuelve (elegidos, descartados)."""
-    carpeta = Path(carpeta or CARPETA_DATOS)
+    if carpeta is None:
+        # los volcados pueden estar repartidos entre la carpeta de escritura
+        # (lo guardado, mas lo que se bajo del blob) y la del deploy
+        alm.sincronizar(alm.DATOS)
+        carpetas = archivo_partidos.carpetas_de_tipo("txt")
+    else:
+        carpetas = [Path(carpeta)]
     gi = _parser()
 
     leidos = []
-    for ruta in sorted(carpeta.glob("*.txt")) if carpeta.is_dir() else []:
+    for ruta in archivo_partidos.archivos_de(carpetas, "*.txt"):
         if ruta.name.startswith("~$"):
             continue
         try:

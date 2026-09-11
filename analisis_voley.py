@@ -215,29 +215,37 @@ Ejemplos:
 """
 
 import getpass
+import os
 import re
 import secrets
 from datetime import datetime
 from pathlib import Path
 
-# Los archivos van siempre al lado del .py, no al directorio desde el que se
-# lo llamo, para que no se desparramen segun desde donde se ejecute.
-CARPETA_PROYECTO = Path(__file__).resolve().parent
-CARPETA_DATOS = CARPETA_PROYECTO / "Datos"        # volcados .txt de cada partido
-CARPETA_INFORMES = CARPETA_PROYECTO / "Informes"  # informes .xlsx
+import almacenamiento as alm
 
-# Clave para cargar un partido, por consola o por la web. No es un secreto
-# criptografico: el programa corre en la maquina de casa y en la WiFi del club,
-# y lo unico que evita es que alguien que entre desde el celular arruine una
-# carga en curso.
-CONTRASENA_CARGA = "Pau2250224"
+# Donde se guardan los archivos lo decide almacenamiento.py, no este modulo.
+# En la notebook es al lado del .py, como siempre; alojado en Vercel la carpeta
+# del proyecto es de solo lectura y hay que escribir en otro lado. Aca solo se
+# pregunta cual es la que toca.
+CARPETA_PROYECTO = Path(__file__).resolve().parent
+CARPETA_DATOS = alm.carpeta_de_escritura(alm.DATOS)        # volcados .txt
+CARPETA_INFORMES = alm.carpeta_de_escritura(alm.INFORMES)  # informes .xlsx
+
+# Clave para cargar un partido, por consola o por la web. En la maquina de
+# casa y en la WiFi del club lo unico que evita es que alguien que entre desde
+# el celular arruine una carga en curso, y con una clave escrita aca alcanzaba.
+#
+# Publicada en internet ya no: el sitio lo puede abrir cualquiera, y la clave
+# esta a la vista de cualquiera que mire el repositorio. Por eso ahora manda
+# VOLEY_CLAVE, que en Vercel se carga como variable de entorno y no viaja en el
+# codigo. La de aca abajo queda como la de siempre para correr en casa.
+CONTRASENA_CARGA = os.environ.get("VOLEY_CLAVE") or "Pau2250224"
 INTENTOS_CONTRASENA = 3
 
 
 def carpeta_lista(carpeta: Path) -> Path:
     """Devuelve la carpeta, creandola la primera vez que hace falta."""
-    carpeta.mkdir(parents=True, exist_ok=True)
-    return carpeta
+    return alm.carpeta_lista(carpeta)
 
 # Prefijo comun de todos los saques. El numero del sacador es opcional: si hay
 # rotacion cargada se completa solo con el jugador al que le toca sacar. No hay
@@ -1956,6 +1964,11 @@ def guardar_reporte_txt(
 
     with open(nombre_archivo, "w", encoding="utf-8") as archivo:
         archivo.write("\n".join(lineas) + "\n")
+
+    # Escribirlo en disco no alcanza cuando el disco es el /tmp de un
+    # serverless: publicar() lo sube al blob, que es lo unico que sigue estando
+    # manana. En la notebook no hace nada.
+    alm.publicar(nombre_archivo)
 
     return str(nombre_archivo)
 

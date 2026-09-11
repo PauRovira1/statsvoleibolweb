@@ -7,12 +7,23 @@ Levanta un servidor local y abre el navegador. Como escucha en toda la red,
 desde el celular o la tablet se entra con la IP que imprime al arrancar,
 siempre que esten en la misma WiFi.
 
+El mismo manejador atiende el sitio alojado en Vercel: ahi no corre este main()
+sino api/index.py, que importa la clase Manejador y deja que Vercel la
+instancie por cada pedido (ver DESPLIEGUE.md). Lo que cambia alojado no es la
+API sino donde estan los archivos y donde vive el estado:
+
+  - la carpeta del proyecto es de solo lectura, asi que Datos/ e Informes/ se
+    escriben en otro lado y se publican en Vercel Blob (ver almacenamiento.py);
+  - dos pedidos seguidos pueden caer en dos procesos distintos, asi que ni el
+    partido en curso ni los tokens pueden vivir en una variable de modulo.
+
 Usa solo la biblioteca estandar; el motor es el mismo analisis_voley.py que la
 consola. openpyxl hace falta unicamente para el Excel: generarlo o mirarlo
 desde la pestana Partidos.
 
-La pagina (interfaz.html + .css + .js) sale de una lista blanca; nunca se
-sirve la carpeta del proyecto.
+La pagina (index.html + .css + .js) sale de una lista blanca; nunca se sirve
+la carpeta del proyecto. Alojado eso ademas es lo que evita que los .py (con
+la clave adentro) se puedan bajar como si fueran archivos estaticos.
 
 Cargar pide la contraseña de analisis_voley (la misma de la consola). Se
 escribe una vez por pestana: el servidor devuelve un token que el navegador
@@ -33,12 +44,14 @@ sesion, para que mirar un informe no interrumpa la carga en la cancha:
     GET  /api/partido?archivo=      un volcado entero, ya parseado
     GET  /api/informe?archivo=      un .xlsx como hojas y filas de texto
     GET  /api/descargar?archivo=&tipo=txt|xlsx
-    POST /api/abrir                 lo abre con Excel en esta maquina
+    POST /api/abrir                 lo abre con Excel en esta maquina (solo
+                                    tiene sentido corriendo en una PC propia)
 """
 import argparse
+import hashlib
+import hmac
 import json
 import os
-import secrets
 import socket
 import threading
 import time
@@ -48,12 +61,13 @@ from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 from urllib.parse import quote, parse_qs, urlsplit
 
+import almacenamiento as alm
 import analisis_voley as av
 import archivo_partidos as arch
 from sesion_web import SesionPartido
 
 CARPETA = Path(__file__).resolve().parent
-PAGINA = CARPETA / "interfaz.html"
+PAGINA = CARPETA / "index.html"
 
 # Lista blanca de lo que se sirve de la carpeta del proyecto. La pagina se
 # partio en tres archivos para poder mantenerla, pero eso no significa
@@ -70,10 +84,12 @@ ESTATICOS = {
 sesion = SesionPartido()
 candado = threading.Lock()
 
-# Pantallas que ya escribieron la contraseña. Los tokens viven en memoria: si
-# se reinicia el servidor hay que volver a escribirla, que es lo que se quiere.
-tokens_validos: set[str] = set()
-candado_tokens = threading.Lock()
+# Alojado, "el servidor" no es un proceso sino muchos que van y vienen, y dos
+# pedidos seguidos pueden caer en dos instancias distintas. La sesion se
+# guarda entonces afuera (ver almacenamiento) y cada instancia se pone al dia
+# antes de contestar. En una maquina propia esto sobra y queda apagado.
+PERSISTIR_SESION = alm.EN_SERVERLESS or alm.hay_blob()
+version_de_la_sesion = ""
 
 # Escribir sobre el partido en curso pide el token; leer no. Asi se puede
 # seguir el marcador o mirar un informe desde cualquier celular de la tribuna,
@@ -84,22 +100,71 @@ RUTAS_CON_CLAVE = {
 }
 
 
+# El token no se guarda en ningun lado: se firma con una clave que sale del
+# entorno y se verifica con la misma cuenta. Antes era un secreto random en un
+# set en memoria, que alojado no sirve (la instancia que lo emitio no es la que
+# recibe el pedido siguiente) y ademas obligaria a compartir ese set.
+HORAS_DE_TOKEN = 12
+
+
+def _secreto() -> bytes:
+    """Con que se firman los tokens.
+
+    VOLEY_SECRETO si esta; si no, la contraseña de carga, que ya es un secreto
+    del servidor. Poner VOLEY_SECRETO en Vercel hace que cambiar la clave no
+    invalide los tokens, y al reves."""
+    return (os.environ.get("VOLEY_SECRETO") or av.CONTRASENA_CARGA).encode("utf-8")
+
+
+def _firma(vence: str) -> str:
+    return hmac.new(_secreto(), vence.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
 def abrir_sesion(clave) -> dict:
     """Valida la contraseña y entrega el token de la pantalla que acerto."""
     if not av.contraseña_valida(clave):
         time.sleep(1)      # un intento por segundo: no se prueban claves a mano
         return {"ok": False, "mensaje": "Contraseña incorrecta."}
-    token = secrets.token_urlsafe(24)
-    with candado_tokens:
-        tokens_validos.add(token)
-    return {"ok": True, "token": token, "mensaje": "Listo, ya podes cargar."}
+    vence = str(int(time.time()) + HORAS_DE_TOKEN * 3600)
+    return {"ok": True, "token": f"{vence}.{_firma(vence)}",
+            "mensaje": "Listo, ya podes cargar."}
 
 
 def token_valido(token) -> bool:
-    if not token:
+    vence, _, firma = str(token or "").partition(".")
+    if not firma or not vence.isdigit():
         return False
-    with candado_tokens:
-        return token in tokens_validos
+    # compare_digest y no ==: la firma la manda el cliente
+    if not hmac.compare_digest(firma, _firma(vence)):
+        return False
+    return time.time() < int(vence)
+
+
+def sesion_al_dia() -> SesionPartido:
+    """La sesion con las ultimas lineas, vengan de donde vengan.
+
+    Sin persistencia devuelve la de siempre. Con persistencia se compara la
+    version guardada contra la que tiene esta instancia y solo se rehace el
+    partido si cambio, que es lo caro."""
+    global version_de_la_sesion
+    if not PERSISTIR_SESION:
+        return sesion
+    version = alm.version_de_sesion()
+    if version and version != version_de_la_sesion:
+        guardada = alm.leer_sesion()
+        if guardada is not None:
+            lineas, version_de_la_sesion = guardada
+            sesion.reemplazar(lineas)
+    return sesion
+
+
+def anotar_sesion() -> None:
+    """Guarda las lineas despues de un cambio, para la proxima instancia."""
+    global version_de_la_sesion
+    if not PERSISTIR_SESION:
+        return
+    alm.guardar_sesion(sesion.lineas)
+    version_de_la_sesion = alm.version_de_sesion()
 
 
 def ip_en_la_red() -> str:
@@ -169,6 +234,11 @@ def abrir_en_el_escritorio(nombre: str, tipo: str | None = None) -> dict:
     """Abre el archivo con la aplicacion del sistema, en la maquina donde
     corre el servidor. Sirve para pasar del informe en la web al Excel de
     verdad sin buscarlo en la carpeta."""
+    if alm.EN_SERVERLESS:
+        # Aca "esta PC" es un contenedor en un datacenter: no hay Excel ni
+        # pantalla. Descargar el archivo es lo que corresponde.
+        return {"ok": False, "descargar": True,
+                "mensaje": "El sitio no corre en una PC: descarga el archivo."}
     ruta, _ = arch.ruta_de_tipo(nombre, tipo)
     if not ruta.exists():
         return {"ok": False, "mensaje": f"No existe {ruta.name}."}
@@ -232,11 +302,13 @@ class Manejador(BaseHTTPRequestHandler):
 
         if ruta == "/api/estado":
             with candado:
-                return self._responder({"ok": True, "estado": sesion.instantanea()})
+                return self._responder({"ok": True,
+                                        "estado": sesion_al_dia().instantanea(),
+                                        "almacenamiento": alm.estado()})
 
         if ruta == "/api/estadisticas":
             with candado:
-                return self._responder({"ok": True, "texto": sesion.estadisticas()})
+                return self._responder({"ok": True, "texto": sesion_al_dia().estadisticas()})
 
         if ruta == "/api/descargar":
             return self._descargar(consulta)
@@ -311,7 +383,14 @@ class Manejador(BaseHTTPRequestHandler):
 
         with candado:
             try:
-                respuesta = self._despachar(self.path, datos)
+                antes = list(sesion_al_dia().lineas)
+                respuesta = self._despachar(ruta, datos)
+                # se compara contra las lineas de antes y no contra el "ok" de
+                # la respuesta: una carga que se corta a la mitad deja la
+                # sesion cambiada aunque conteste que no, y una linea que el
+                # motor rechaza no la cambia aunque la ruta sea de escritura
+                if sesion.lineas != antes:
+                    anotar_sesion()
             except Exception as error:      # que un error no tumbe el servidor
                 respuesta = {"ok": False, "mensaje": f"{type(error).__name__}: {error}",
                              "estado": sesion.instantanea()}

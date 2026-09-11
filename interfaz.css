@@ -90,6 +90,13 @@ button[disabled]:hover{border-color:var(--borde);color:var(--suave)}
 .mensaje.ok{border-color:#2f6b52;background:#14251e;color:#bff0da}
 .mensaje.error{border-color:#7a3030;background:#2a1618;color:#ffc9c9}
 
+/* El aviso de que el servidor no esta guardando en ningun lado. Usa el
+   amarillo de aviso y no el rojo de error: la aplicacion funciona, lo que no
+   hay es garantia de que el partido siga estando manana. */
+.avisoServidor{margin:0 0 10px;padding:10px 13px;border-radius:10px;
+               font-size:13px;border:1px solid var(--aviso);
+               background:#2a2415;color:var(--aviso)}
+
 .atajos{margin-top:10px;display:flex;flex-wrap:wrap;gap:7px}
 .atajos button{padding:8px 12px;font-size:13px}
 .atajos .etiqueta,.eleccion .etiqueta{color:var(--suave);font-size:12px;

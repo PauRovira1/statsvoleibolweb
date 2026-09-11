@@ -28,6 +28,8 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter, column_index_from_string
 
+import almacenamiento as alm
+
 # ======================================================================
 # 1) PARSER DEL VOLCADO
 # ======================================================================
@@ -1617,7 +1619,11 @@ def guardar_informe(libro, ruta) -> tuple[str, list[str]]:
     if fallidas:
         avisos.append(f"{len(fallidas)} formula(s) no se pudieron calcular y quedaron sin "
                       f"resolver en el archivo: {fallidas[0]}")
+    alm.carpeta_lista(ruta.parent)
     libro.save(ruta)
+    # Si esto corre en un serverless, `ruta` esta en /tmp y dura lo que dure la
+    # instancia: el informe se sube al blob para que siga apareciendo despues.
+    alm.publicar(ruta)
     return str(ruta), avisos
 
 
@@ -1665,9 +1671,9 @@ def main():
     if args.output:
         out_path = args.output
     else:
-        # sin -o el informe va a la carpeta Informes/ del proyecto
-        carpeta = pathlib.Path(__file__).resolve().parent / "Informes"
-        carpeta.mkdir(parents=True, exist_ok=True)
+        # sin -o el informe va a la carpeta de informes que corresponda: la
+        # del proyecto en una maquina propia, /tmp si corre alojado
+        carpeta = alm.carpeta_lista(alm.carpeta_de_escritura(alm.INFORMES))
         out_path = str(carpeta / f"Informe_{equipo_name}_vs_{rival_name}_{fecha}.xlsx")
     salida, avisos_guardado = guardar_informe(wb, out_path)
 

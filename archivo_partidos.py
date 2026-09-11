@@ -30,8 +30,12 @@ import sys
 import types
 from pathlib import Path
 
+import almacenamiento as alm
 import analisis_voley as av
 
+# La carpeta donde se escribe. Alojado en Vercel no es la del proyecto (que es
+# de solo lectura) sino /tmp, que ademas hace de cache del blob; en casa las
+# dos son la misma y esto no cambia nada.
 CARPETA_DATOS = av.CARPETA_DATOS
 CARPETA_INFORMES = av.CARPETA_INFORMES
 
@@ -76,13 +80,42 @@ def ruta_segura(nombre: str, carpetas) -> Path:
     raise RutaInvalida(f"El archivo {nombre!r} no esta en Datos/ ni en Informes/.")
 
 
-# Cada tipo de archivo vive en una sola carpeta, asi que el tipo alcanza para
-# saber donde buscarlo y con que Content-Type contestar.
-CARPETA_POR_TIPO = {"txt": lambda: CARPETA_DATOS, "xlsx": lambda: CARPETA_INFORMES}
+# Cada tipo de archivo vive en una sola carpeta logica, asi que el tipo alcanza
+# para saber donde buscarlo y con que Content-Type contestar. "Una carpeta"
+# son en realidad dos cuando esto corre alojado: la de escritura (/tmp, con lo
+# que se guardo y lo que se bajo del blob) y la del deploy, que es de solo
+# lectura pero trae los partidos que ya estaban en el repositorio.
+CARPETA_LOGICA_POR_TIPO = {"txt": alm.DATOS, "xlsx": alm.INFORMES}
 MIME_POR_TIPO = {
     "txt": "text/plain; charset=utf-8",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
+
+
+def carpetas_de_tipo(tipo: str) -> list[Path]:
+    """Todas las carpetas donde puede estar un archivo de ese tipo, la de
+    escritura primero."""
+    return alm.carpetas_de_lectura(CARPETA_LOGICA_POR_TIPO[tipo])
+
+
+def _primera_que_existe(nombre: str, carpetas) -> Path:
+    """La ruta del archivo en la primera carpeta donde este.
+
+    Si no esta en ninguna se devuelve la de la primera carpeta que lo acepte,
+    para que el que llama se encuentre con un FileNotFoundError normal y no
+    con un RutaInvalida, que significa otra cosa (nombre que se escapa)."""
+    reserva = None
+    for carpeta in carpetas:
+        try:
+            ruta = ruta_segura(nombre, [carpeta])
+        except RutaInvalida:
+            continue
+        if ruta.exists():
+            return ruta
+        reserva = reserva or ruta
+    if reserva is None:
+        raise RutaInvalida(f"El archivo {nombre!r} no esta en Datos/ ni en Informes/.")
+    return reserva
 
 
 def ruta_de_tipo(nombre: str, tipo: str | None = None) -> tuple[Path, str]:
@@ -92,10 +125,13 @@ def ruta_de_tipo(nombre: str, tipo: str | None = None) -> tuple[Path, str]:
     el disco: un tipo que no conocemos o una ruta que se sale de las carpetas
     del proyecto no llegan a abrir nada."""
     tipo = (tipo or Path(str(nombre)).suffix.lstrip(".")).lower()
-    if tipo not in CARPETA_POR_TIPO:
+    if tipo not in CARPETA_LOGICA_POR_TIPO:
         raise RutaInvalida(f"Tipo de archivo no valido: {tipo!r} (txt o xlsx).")
 
-    ruta = ruta_segura(nombre, [CARPETA_POR_TIPO[tipo]()])
+    # Traer del blob lo que falte antes de decidir si el archivo existe: esta
+    # instancia puede no haber visto nunca un partido que guardo otra.
+    alm.sincronizar(CARPETA_LOGICA_POR_TIPO[tipo])
+    ruta = _primera_que_existe(nombre, carpetas_de_tipo(tipo))
     if ruta.suffix.lower() != f".{tipo}":
         raise RutaInvalida(f"El archivo {ruta.name!r} no es un .{tipo}.")
     if es_temporal(ruta.name):
@@ -331,18 +367,42 @@ def _clave_partido(equipo, rival, fecha) -> tuple:
     return (nombres[0], nombres[1], fecha or "")
 
 
+def archivos_de(carpetas, patron: str) -> list[Path]:
+    """Los archivos que coinciden, sin repetir nombre y en orden.
+
+    Un mismo partido puede estar en la carpeta de escritura y en la del
+    deploy (porque se bajo del blob una copia de algo que ademas viajaba en el
+    repositorio); se queda el de la primera carpeta, que es la mas fresca."""
+    vistos: dict[str, Path] = {}
+    for carpeta in carpetas:
+        carpeta = Path(carpeta)
+        if not carpeta.is_dir():
+            continue
+        for ruta in sorted(carpeta.glob(patron)):
+            vistos.setdefault(ruta.name, ruta)
+    return [vistos[nombre] for nombre in sorted(vistos)]
+
+
 def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
     """Una fila por partido, la mas nueva arriba.
 
     Un partido puede tener volcado, informe o los dos. Los informes que no
     corresponden a ningun volcado (porque el .txt se borro) igual aparecen:
     el archivo existe y se puede abrir."""
-    carpeta_datos = Path(carpeta_datos or CARPETA_DATOS)
-    carpeta_informes = Path(carpeta_informes or CARPETA_INFORMES)
+    if carpeta_datos is None:
+        alm.sincronizar(alm.DATOS)
+        carpetas_datos = carpetas_de_tipo("txt")
+    else:
+        carpetas_datos = [Path(carpeta_datos)]
+    if carpeta_informes is None:
+        alm.sincronizar(alm.INFORMES)
+        carpetas_informes = carpetas_de_tipo("xlsx")
+    else:
+        carpetas_informes = [Path(carpeta_informes)]
 
     filas, por_clave = [], {}
 
-    for ruta in sorted(carpeta_datos.glob("*.txt")) if carpeta_datos.is_dir() else []:
+    for ruta in archivos_de(carpetas_datos, "*.txt"):
         if es_temporal(ruta.name):
             continue
         try:
@@ -366,7 +426,7 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
         por_clave.setdefault(_clave_partido(fila["equipo"], fila["rival"], fila["fecha"]),
                              []).append(fila)
 
-    for ruta in sorted(carpeta_informes.glob("*.xlsx")) if carpeta_informes.is_dir() else []:
+    for ruta in archivos_de(carpetas_informes, "*.xlsx"):
         if es_temporal(ruta.name):
             continue
         m = RE_NOMBRE_INFORME.match(ruta.name)

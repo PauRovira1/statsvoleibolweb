@@ -92,6 +92,17 @@ class SesionPartido:
         self.estado, self.log = _reproducir([])
         return {"ok": True, "mensaje": "Partido nuevo.", "estado": self.instantanea()}
 
+    def reemplazar(self, lineas: list[str]) -> None:
+        """Deja la sesion como si se hubieran cargado esas lineas.
+
+        Es como cargar_lineas() pero sin validar de a una: las lineas vienen
+        de una sesion que ya se guardo (ver almacenamiento.leer_sesion), asi
+        que ya pasaron por el motor. Se usa cuando el que atiende el pedido no
+        es el mismo proceso que atendio el anterior, que es lo normal cuando
+        esto corre alojado."""
+        self.lineas = list(lineas)
+        self.estado, self.log = _reproducir(self.lineas)
+
     def cargar_lineas(self, texto: str) -> dict:
         """Carga de una un partido entero (pegando el .txt). Se corta en la
         primera linea que el motor rechace, para no arrastrar el desfase."""
