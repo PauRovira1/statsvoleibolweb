@@ -131,8 +131,21 @@ VERSION_API_BLOB = "7"          # va en x-api-version; la fija el servicio
 SEGUNDOS_DE_CACHE = float(os.environ.get("VOLEY_CACHE_BLOB", "5"))
 
 
+COMILLAS = "\"' "      # lo que puede venir pegado al copiar de un .env
+
+
+def _limpio(valor) -> str:
+    return str(valor or "").strip().strip(COMILLAS)
+
+
 def token_blob() -> str:
-    return os.environ.get("BLOB_READ_WRITE_TOKEN", "").strip()
+    """El token del Blob, sin lo que suele venir pegado al copiarlo.
+
+    El panel de Vercel lo muestra dentro de un snippet de .env.local, o sea
+    entre comillas, y es facil que terminen formando parte del valor. Un token
+    con comillas no da un error de formato: da un 403 "Token mismatch", que
+    parece un problema de permisos y no lo es."""
+    return _limpio(os.environ.get("BLOB_READ_WRITE_TOKEN"))
 
 
 def hay_blob() -> bool:
@@ -404,7 +417,10 @@ def guardar_sesion(lineas: list[str]) -> bool:
         return False
     try:
         subir_blob(RUTA_SESION, datos, TIPO_POR_EXTENSION[".json"])
-    except (urllib.error.URLError, OSError, ValueError):
+    except FALLAS_DE_RED as error:
+        # que no se pueda guardar la sesion afuera no puede voltear la jugada
+        # que se acaba de cargar: ya esta en memoria y contestada
+        _anotar_error(f"no se pudo guardar la sesion: {error}")
         return False
     with _candado_blob:
         _ultimo_listado.pop("sesion/", None)
@@ -433,7 +449,8 @@ def leer_sesion() -> tuple[list[str], str] | None:
     try:
         with urllib.request.urlopen(_url_sin_cache(blob), timeout=10) as respuesta:
             datos = json.loads(respuesta.read().decode("utf-8"))
-    except (urllib.error.URLError, OSError, ValueError):
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo leer la sesion guardada: {error}")
         return None
     return list(datos.get("lineas") or []), str(blob.get("uploadedAt") or "")
 
@@ -466,6 +483,30 @@ def version_de_sesion() -> str:
 VARIABLES = ("BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "VOLEY_CLAVE", "VOLEY_SECRETO")
 
 
+def forma_del_token() -> dict:
+    """Como viene el token, sin mostrarlo.
+
+    Un token bueno es `vercel_blob_rw_<store>_<secreto>`. Se informa si tiene
+    esa forma, cuanto mide y si el pedazo del store coincide con el
+    BLOB_STORE_ID que puso Vercel. El secreto no sale nunca de aca: con esto
+    alcanza para distinguir "esta mal copiado" de "es de otro store" de "esta
+    bien y el problema es otro"."""
+    token = token_blob()
+    if not token:
+        return {"presente": False}
+    partes = token.split("_")
+    bien_formado = token.startswith("vercel_blob_rw_") and len(partes) >= 5
+    store = f"store_{partes[3]}" if bien_formado else ""
+    declarado = _limpio(os.environ.get("BLOB_STORE_ID"))
+    return {
+        "presente": True,
+        "bien_formado": bien_formado,
+        "largo": len(token),
+        "store": store,
+        "coincide_con_BLOB_STORE_ID": bool(store and declarado and store == declarado),
+    }
+
+
 def variables_presentes() -> dict:
     return {nombre: bool(os.environ.get(nombre, "").strip()) for nombre in VARIABLES}
 
@@ -485,6 +526,7 @@ def estado() -> dict:
         # para Production y el deploy que contesta es un preview, no las ve
         "entorno": os.environ.get("VERCEL_ENV", ""),
         "variables": variables_presentes(),
+        "token": forma_del_token(),
         # solo lo sabe la instancia que fallo, asi que puede venir vacio
         # aunque algo haya fallado recien; el mensaje del guardado es el que
         # siempre lo trae, porque lo contesta esa misma instancia
