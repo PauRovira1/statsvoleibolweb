@@ -84,7 +84,11 @@ const urlDescarga = (archivo, tipo) =>
 // ======================================================================
 // 1) Pestanas
 // ======================================================================
-const VISTAS = ["cargar", "partidos", "jugadores"];
+// El orden es el de las pestanas en pantalla. Cargar va ultima porque es la
+// que menos se toca: pide la contraseña y se usa una vez por partido, mientras
+// que mirar un informe o la ficha de un jugador se hace todo el tiempo. Igual
+// sigue siendo la que se abre al entrar, que es lo que hace falta en la cancha.
+const VISTAS = ["partidos", "jugadores", "cargar"];
 let vistaActual = "cargar";
 
 function irA(vista, tocarHash = true){
