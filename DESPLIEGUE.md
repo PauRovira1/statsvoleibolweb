@@ -88,6 +88,20 @@ Si hace falta ver que le llega al servidor, `/api/estado` lo dice: en que
 entorno corre (`production` / `preview`) y cuales de las variables que el
 proyecto mira estan puestas, con un si/no y sin mostrar nunca el valor.
 
+## Store privado o publico
+
+Un Blob store se crea de una de las dos formas y no da lo mismo: el servicio
+rechaza con 400 la subida que no coincide con como esta configurado. El
+proyecto asume **privado**, que es lo que corresponde -- los partidos y los
+informes salen siempre por `/api/descargar`, que es del servidor, y no hay
+ninguna razon para que ademas se puedan bajar de una URL suelta.
+
+Si tu store es publico, agregar la variable `VOLEY_BLOB_ACCESO=public`.
+
+En un store privado la URL del archivo tampoco sirve sola: pedirla sin el
+token devuelve 403. Por eso las bajadas van con la cabecera de autorizacion,
+igual que las subidas.
+
 ## Probar el blob desde casa
 
 El token sirve tambien en la notebook, y es la unica forma de probar todo el
@@ -100,6 +114,17 @@ camino sin desplegar. En PowerShell:
 El proyecto lee la variable del entorno y no del archivo `.env.local`, asi que
 hay que ponerla en la sesion como esta arriba. Con ella puesta, lo que se
 guarde en casa va al mismo store que el del sitio.
+
+Para probar solo el Blob, sin levantar el servidor ni ensuciar `Datos/`:
+
+    python probar_blob.py
+
+Hace las tres llamadas (listar, subir, bajar) con las mismas funciones que usa
+el servidor y dice cual falla y con que error. El token lo saca del archivo
+`.env` de la carpeta. **Copialo con el boton Copy Snippet del panel, nunca a
+mano:** `1` y `l`, `0` y `O` son indistinguibles en esa fuente, y un solo
+caracter cambiado da un 403 `Token mismatch` que parece un problema de
+permisos y no lo es.
 
 ## Que hay en cada archivo
 

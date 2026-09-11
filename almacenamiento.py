@@ -125,6 +125,14 @@ def carpeta_lista(carpeta: Path) -> Path:
 API_BLOB = "https://blob.vercel-storage.com"
 VERSION_API_BLOB = "7"          # va en x-api-version; la fija el servicio
 
+# Un store de Blob se crea publico o privado, y hay que decirle a cada subida
+# cual es: el servicio rechaza con 400 la subida que no coincide con como esta
+# configurado el store. Privado es lo que corresponde aca -- los partidos y los
+# informes salen siempre por /api/descargar, que es del servidor, y no hay
+# ninguna razon para que ademas se puedan bajar de una URL suelta -- pero si el
+# store es publico se cambia con VOLEY_BLOB_ACCESO=public.
+ACCESO_BLOB = os.environ.get("VOLEY_BLOB_ACCESO", "private").strip() or "private"
+
 # Lo que devuelve el listado se guarda un ratito: un pedido de la pantalla
 # dispara varias lecturas seguidas (listado, partido, jugadores) y no tiene
 # sentido preguntarle al blob tres veces por lo mismo.
@@ -272,10 +280,14 @@ def _url_sin_cache(blob: dict) -> str:
 
 
 def bajar_blob(blob: dict, destino: Path) -> bool:
+    """Trae un archivo del blob a la carpeta de escritura.
+
+    Va con el token igual que el resto: en un store privado la URL sola
+    devuelve 403, y en uno publico la cabecera de mas no molesta."""
     try:
-        with urllib.request.urlopen(_url_sin_cache(blob), timeout=20) as respuesta:
-            contenido = respuesta.read()
-    except (urllib.error.URLError, OSError):
+        contenido = _pedir(_url_sin_cache(blob), timeout=20)
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo bajar {blob.get('pathname')}: {error}")
         return False
     carpeta_lista(destino.parent)
     temporal = destino.with_name(destino.name + ".bajando")
@@ -292,6 +304,7 @@ def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
         cuerpo=contenido,
         cabeceras={
             "x-content-type": tipo,
+            "x-vercel-blob-access": ACCESO_BLOB,
             # el nombre del archivo ya es unico (lleva fecha y hora) y ademas
             # tiene que poder pisarse: regenerar un informe es reemplazarlo
             "x-add-random-suffix": "0",
@@ -447,8 +460,7 @@ def leer_sesion() -> tuple[list[str], str] | None:
         return None
     blob = blobs[0]
     try:
-        with urllib.request.urlopen(_url_sin_cache(blob), timeout=10) as respuesta:
-            datos = json.loads(respuesta.read().decode("utf-8"))
+        datos = json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer la sesion guardada: {error}")
         return None

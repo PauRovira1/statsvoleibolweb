@@ -1,8 +1,14 @@
 """
 Probar el Vercel Blob sin desplegar nada.
 
-    set BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...     (o pasarlo como argumento)
     python probar_blob.py
+
+El token sale del archivo .env de la carpeta, que es donde lo deja el boton
+"Copy Snippet" del panel. Tambien se acepta en el entorno o como argumento,
+pero conviene el .env: un token pegado a mano es un token que paso por los
+ojos de alguien, y `1` y `l`, `0` y `O` son indistinguibles en casi cualquier
+fuente. Un solo caracter cambiado da 403 "Token mismatch", que parece un
+problema de permisos y no lo es.
 
 Hace, una por una, las tres cosas que el proyecto le pide al Blob: listar,
 subir y volver a bajar. Cada paso dice si salio bien y, si no, el codigo HTTP
@@ -16,6 +22,8 @@ Lo que sube es un archivo de prueba en prueba/, no toca Datos/ ni Informes/,
 y lo borra al terminar.
 """
 import json
+import os
+import pathlib
 import sys
 import urllib.error
 import urllib.parse
@@ -25,6 +33,25 @@ import almacenamiento as alm
 
 PRUEBA = "prueba/hola.txt"
 CONTENIDO = b"probando el blob\n"
+
+
+ARCHIVO_ENV = ".env"
+
+
+def leer_del_env(clave: str, ruta=ARCHIVO_ENV) -> str:
+    """Busca una variable en el .env de la carpeta.
+
+    No es un parser de .env completo: alcanza con `CLAVE=valor`, con o sin
+    comillas, que es lo que copia el panel de Vercel."""
+    try:
+        lineas = pathlib.Path(ruta).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return ""
+    for linea in lineas:
+        nombre, sep, valor = linea.partition("=")
+        if sep and nombre.strip() == clave:
+            return valor.strip().strip(alm.COMILLAS)
+    return ""
 
 
 def titulo(texto: str) -> None:
@@ -43,17 +70,25 @@ def borrar(url: str) -> None:
 
 
 def main() -> int:
+    # argumento > entorno > .env
     if len(sys.argv) > 1:
-        import os
         os.environ["BLOB_READ_WRITE_TOKEN"] = sys.argv[1]
+        origen = "el argumento"
+    elif alm.token_blob():
+        origen = "el entorno"
+    else:
+        os.environ["BLOB_READ_WRITE_TOKEN"] = leer_del_env("BLOB_READ_WRITE_TOKEN")
+        origen = f"el archivo {ARCHIVO_ENV}"
 
     titulo("1) El token")
     forma = alm.forma_del_token()
     if not forma["presente"]:
-        print("  No hay BLOB_READ_WRITE_TOKEN.")
-        print("  Ponelo en el entorno o pasalo como argumento:")
-        print("      python probar_blob.py vercel_blob_rw_...")
+        print(f"  No hay BLOB_READ_WRITE_TOKEN (lo busque en {origen}).")
+        print(f"  Ponelo en un archivo {ARCHIVO_ENV} al lado de este .py:")
+        print("      BLOB_READ_WRITE_TOKEN=vercel_blob_rw_...")
+        print("  Copialo con el boton Copy Snippet del panel, no lo escribas a mano.")
         return 1
+    print(f"  sale de      : {origen}")
     print(f"  bien formado : {forma['bien_formado']}   (vercel_blob_rw_<store>_<secreto>)")
     print(f"  largo        : {forma['largo']}")
     print(f"  store        : {forma['store'] or '(no se pudo leer)'}")
@@ -93,10 +128,13 @@ def main() -> int:
 
     titulo("5) Bajarlo y comparar")
     try:
-        with urllib.request.urlopen(url, timeout=20) as respuesta:
-            bajado = respuesta.read()
-    except (urllib.error.URLError, OSError) as error:
+        # con el token, igual que bajar_blob: en un store privado la URL sola
+        # devuelve 403 aunque el archivo exista
+        bajado = alm._pedir(url, timeout=20)
+    except alm.FALLAS_DE_RED as error:
         print(f"  FALLO: {error}")
+        print("\n  Si dice 403 y el store es privado, la descarga esta yendo")
+        print("  sin autorizacion. Es un bug, no un problema de configuracion.")
         return 1
     print("  OK: el contenido coincide" if bajado == CONTENIDO
           else f"  FALLO: bajo otra cosa ({bajado!r})")
