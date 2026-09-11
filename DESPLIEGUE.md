@@ -120,7 +120,9 @@ Para probar solo el Blob, sin levantar el servidor ni ensuciar `Datos/`:
     python probar_blob.py
 
 Hace las tres llamadas (listar, subir, bajar) con las mismas funciones que usa
-el servidor y dice cual falla y con que error. El token lo saca del archivo
+el servidor y dice cual falla y con que error. Con `--listar` no prueba nada:
+muestra que hay guardado, por carpeta y con los tamaños, igual que el Browse
+del panel. El token lo saca del archivo
 `.env` de la carpeta. **Copialo con el boton Copy Snippet del panel, nunca a
 mano:** `1` y `l`, `0` y `O` son indistinguibles en esa fuente, y un solo
 caracter cambiado da un 403 `Token mismatch` que parece un problema de

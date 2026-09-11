@@ -1,7 +1,8 @@
 """
 Probar el Vercel Blob sin desplegar nada.
 
-    python probar_blob.py
+    python probar_blob.py              prueba que el Blob funcione
+    python probar_blob.py --listar     muestra que hay guardado
 
 El token sale del archivo .env de la carpeta, que es donde lo deja el boton
 "Copy Snippet" del panel. Tambien se acepta en el entorno o como argumento,
@@ -69,7 +70,60 @@ def borrar(url: str) -> None:
         print(f"  no se pudo borrar (borralo a mano si molesta): {error}")
 
 
+def tamaño(bytes_: int) -> str:
+    if bytes_ < 1024:
+        return f"{bytes_} B"
+    if bytes_ < 1024 * 1024:
+        return f"{bytes_ / 1024:.0f} KB"
+    return f"{bytes_ / 1024 / 1024:.1f} MB"
+
+
+def listar() -> int:
+    """Que hay guardado, por carpeta. Lo mismo que el Browse del panel."""
+    try:
+        blobs = alm._listar_blobs_crudo("")
+    except alm.FALLAS_DE_RED as error:
+        print(f"No se pudo leer el Blob: {error}")
+        return 1
+
+    if not blobs:
+        print("\nEl store esta vacio.")
+        return 0
+
+    por_carpeta: dict[str, list[dict]] = {}
+    for blob in blobs:
+        por_carpeta.setdefault(blob["pathname"].split("/")[0], []).append(blob)
+
+    # Datos e Informes primero, que son los partidos; lo demas (la sesion en
+    # curso, la lista de borrados) es maquinaria y va al final
+    orden = [c for c in (alm.DATOS, alm.INFORMES) if c in por_carpeta]
+    orden += sorted(c for c in por_carpeta if c not in orden)
+
+    total = 0
+    for carpeta in orden:
+        archivos = sorted(por_carpeta[carpeta], key=lambda b: b["pathname"])
+        print(f"\n{carpeta}/  ({len(archivos)})")
+        for blob in archivos:
+            nombre = blob["pathname"].split("/", 1)[1]
+            subido = str(blob.get("uploadedAt", ""))[:16].replace("T", " ")
+            print(f"  {nombre:<50} {tamaño(blob['size']):>8}   {subido}")
+            total += blob["size"]
+    print(f"\n{len(blobs)} archivo(s), {tamaño(total)} en total.")
+
+    ocultos = alm._cargar_borrados(refrescar=True)
+    if ocultos:
+        print(f"\nOcultos ({len(ocultos)}): partidos borrados que igual siguen en el")
+        print("repositorio, asi que no se pueden borrar, solo dejar de mostrar.")
+        for nombre in sorted(ocultos):
+            print(f"  {nombre}")
+    return 0
+
+
 def main() -> int:
+    solo_listar = len(sys.argv) > 1 and sys.argv[1] in ("--listar", "-l")
+    if solo_listar:
+        sys.argv.pop(1)
+
     # argumento > entorno > .env
     if len(sys.argv) > 1:
         os.environ["BLOB_READ_WRITE_TOKEN"] = sys.argv[1]
@@ -96,6 +150,9 @@ def main() -> int:
         print("\n  El token no tiene la forma esperada: quedo cortado, o se copio")
         print("  la linea entera del .env en vez del valor. No sigo probando.")
         return 1
+
+    if solo_listar:
+        return listar()
 
     titulo("2) Listar lo que hay (GET /)")
     try:
