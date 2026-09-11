@@ -1,3 +1,7 @@
 __pycache__/
 *.pyc
 .vercel
+
+# Variables de entorno locales
+.env
+.env.*

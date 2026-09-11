@@ -175,6 +175,23 @@ def anotar_sesion() -> None:
     version_de_la_sesion = alm.version_de_sesion()
 
 
+def aviso_de_blob(logica: str, nombre: str) -> str:
+    """Lo que hay que agregarle al mensaje si el archivo no llego al Blob.
+
+    Guardar contesta "Guardado: ..." apenas se escribe el archivo, pero
+    alojado eso todavia no quiere decir nada: lo escrito esta en /tmp y se
+    borra solo. Recien cuando esta en el Blob esta guardado de verdad, asi que
+    se verifica y, si no llego, se dice en el mismo mensaje.
+
+    Sin Blob configurado no se agrega nada: de eso ya avisa la franja de
+    arriba, y repetirlo en cada guardado seria ruido."""
+    if not alm.hay_blob() or alm.publicado(logica, nombre):
+        return ""
+    return (f"  [OJO: {nombre} no se pudo subir al Blob y por ahora solo esta "
+            f"en {alm.CARPETA_ESCRITURA}, que se borra solo. Descargalo ahora "
+            f"o volve a guardar.]")
+
+
 def ip_en_la_red() -> str:
     """IP de esta maquina en la LAN, para entrar desde el celular."""
     try:
@@ -417,7 +434,8 @@ class Manejador(BaseHTTPRequestHandler):
             return sesion.cargar_lineas(datos.get("texto", ""))
         if ruta == "/api/guardar":
             nombre = sesion.guardar()
-            return {"ok": True, "mensaje": f"Guardado: {nombre}",
+            return {"ok": True,
+                    "mensaje": f"Guardado: {nombre}" + aviso_de_blob(alm.DATOS, Path(nombre).name),
                     "archivo": Path(nombre).name, "tipo": "txt",
                     "estado": sesion.instantanea()}
         if ruta == "/api/excel":
@@ -433,7 +451,10 @@ class Manejador(BaseHTTPRequestHandler):
                         "estado": sesion.instantanea()}
             # el nombre suelto ademas del mensaje: con eso la pantalla arma el
             # enlace para abrir o descargar el informe sin copiar la ruta
-            return {"ok": True, "mensaje": f"Generado: {excel} (volcado: {nombre_txt})",
+            aviso = (aviso_de_blob(alm.INFORMES, Path(excel).name)
+                     or aviso_de_blob(alm.DATOS, Path(nombre_txt).name))
+            return {"ok": True,
+                    "mensaje": f"Generado: {excel} (volcado: {nombre_txt}){aviso}",
                     "archivo": Path(excel).name, "tipo": "xlsx",
                     "volcado": Path(nombre_txt).name, "estado": sesion.instantanea()}
         return None

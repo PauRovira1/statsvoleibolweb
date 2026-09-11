@@ -78,6 +78,16 @@ Para confirmarlo del todo: cargar cualquier cosa, darle a Guardar, y mirar el
 store en el panel (Storage → el store → **Browse**). Tiene que aparecer el
 `.txt` dentro de `Datos/`.
 
+Guardar y generar el informe ademas verifican: escriben el archivo, lo suben al
+Blob y despues le preguntan al Blob si quedo. Si no quedo, el mensaje lo dice
+(`[OJO: ... no se pudo subir al Blob ...]`) en vez de contestar "Guardado" a
+secas, y el motivo del error queda en los Logs del proyecto. Un "Guardado" o un
+"Generado" sin esa coletilla significa que el archivo esta en el Blob.
+
+Si hace falta ver que le llega al servidor, `/api/estado` lo dice: en que
+entorno corre (`production` / `preview`) y cuales de las variables que el
+proyecto mira estan puestas, con un si/no y sin mostrar nunca el valor.
+
 ## Probar el blob desde casa
 
 El token sirve tambien en la notebook, y es la unica forma de probar todo el

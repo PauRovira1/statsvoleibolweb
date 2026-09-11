@@ -153,11 +153,36 @@ def _pedir(url: str, *, metodo="GET", cuerpo=None, cabeceras=None, timeout=10):
         return respuesta.read()
 
 
+FALLAS_DE_RED = (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError)
+
+
+def _listar_blobs_crudo(prefijo: str) -> list[dict]:
+    """Le pregunta al blob que hay bajo ese prefijo. Levanta si no se puede."""
+    blobs, cursor = [], None
+    while True:
+        consulta = {"prefix": prefijo, "limit": "1000"}
+        if cursor:
+            consulta["cursor"] = cursor
+        crudo = _pedir(f"{API_BLOB}?{urllib.parse.urlencode(consulta)}")
+        pagina = json.loads(crudo.decode("utf-8"))
+        blobs.extend(pagina.get("blobs") or [])
+        cursor = pagina.get("cursor") if pagina.get("hasMore") else None
+        if not cursor:
+            return blobs
+
+
+def _guardar_listado(prefijo: str, blobs: list[dict]) -> None:
+    with _candado_blob:
+        _ultimo_listado[prefijo] = (time.monotonic(), blobs)
+
+
 def listar_blobs(prefijo: str, *, refrescar=False) -> list[dict]:
     """Los archivos que hay en el blob bajo ese prefijo.
 
-    Devuelve [] si no hay blob o si la llamada falla: que se caiga el listado
-    remoto no puede dejar la pantalla sin los partidos que ya estan bajados."""
+    Si la llamada falla se devuelve lo ultimo que se supo, o [] si nunca se
+    supo nada: que se caiga el listado remoto no puede dejar la pantalla sin
+    los partidos que ya estan bajados. Para preguntas donde una respuesta
+    vieja seria peor que ninguna esta publicado(), que no usa el cache."""
     if not hay_blob():
         return []
 
@@ -167,25 +192,14 @@ def listar_blobs(prefijo: str, *, refrescar=False) -> list[dict]:
         if not refrescar and guardado and ahora - guardado[0] < SEGUNDOS_DE_CACHE:
             return guardado[1]
 
-    blobs, cursor = [], None
     try:
-        while True:
-            consulta = {"prefix": prefijo, "limit": "1000"}
-            if cursor:
-                consulta["cursor"] = cursor
-            crudo = _pedir(f"{API_BLOB}?{urllib.parse.urlencode(consulta)}")
-            pagina = json.loads(crudo.decode("utf-8"))
-            blobs.extend(pagina.get("blobs") or [])
-            cursor = pagina.get("cursor") if pagina.get("hasMore") else None
-            if not cursor:
-                break
-    except (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError):
+        blobs = _listar_blobs_crudo(prefijo)
+    except FALLAS_DE_RED:
         with _candado_blob:
             guardado = _ultimo_listado.get(prefijo)
         return guardado[1] if guardado else []
 
-    with _candado_blob:
-        _ultimo_listado[prefijo] = (ahora, blobs)
+    _guardar_listado(prefijo, blobs)
     return blobs
 
 
@@ -281,8 +295,9 @@ def publicar(ruta) -> str:
 
     Devuelve la URL publica, o "" si no se subio. No levanta: el archivo ya
     esta guardado en disco y la pantalla tiene que poder descargarlo igual
-    aunque el blob este caido; lo que se pierde es la persistencia, y de eso
-    avisa estado()."""
+    aunque el blob este caido. Lo que se pierde cuando falla es la
+    persistencia, y de eso no alcanza con no enterarse: el que llama pregunta
+    despues con publicado() y lo dice en pantalla."""
     ruta = Path(ruta)
     if not hay_blob() or not ruta.exists():
         return ""
@@ -292,11 +307,37 @@ def publicar(ruta) -> str:
     tipo = TIPO_POR_EXTENSION.get(ruta.suffix.lower(), "application/octet-stream")
     try:
         url = subir_blob(f"{logica}/{ruta.name}", ruta.read_bytes(), tipo)
-    except (urllib.error.URLError, OSError, ValueError):
+    except (urllib.error.URLError, OSError, ValueError) as error:
+        # queda en los logs de Vercel: desde la pantalla se ve que fallo, pero
+        # no por que, y esto es lo unico que lo dice
+        print(f"[almacenamiento] no se pudo subir {logica}/{ruta.name}: "
+              f"{type(error).__name__}: {error}")
         return ""
     with _candado_blob:
         _ultimo_listado.pop(f"{logica}/", None)   # que el proximo listado lo vea
     return url
+
+
+def publicado(logica: str, nombre: str) -> bool:
+    """Si ese archivo esta hoy en el blob.
+
+    Se le pregunta al blob en vez de confiar en lo que contesto la subida: lo
+    que importa no es que el PUT haya salido bien sino que el archivo este, que
+    es lo que va a hacer que siga estando la semana que viene.
+
+    Sin cache a proposito, ni siquiera como respaldo: esto se usa para decidir
+    si avisarle al usuario que su partido puede perderse, y un listado viejo
+    (donde figura un informe del mismo nombre que se regenero) contestaria que
+    si cuando la subida acaba de fallar. Si no se puede confirmar, se avisa."""
+    if not hay_blob():
+        return False
+    prefijo = f"{logica}/"
+    try:
+        blobs = _listar_blobs_crudo(prefijo)
+    except FALLAS_DE_RED:
+        return False
+    _guardar_listado(prefijo, blobs)
+    return any(b.get("pathname") == f"{prefijo}{nombre}" for b in blobs)
 
 
 # ----------------------------------------------------------------------
@@ -379,7 +420,12 @@ def version_de_sesion() -> str:
 # cuales llegaron y cuales no (solo eso: el nombre y un si/no, nunca el valor).
 # Es para poder distinguir "falta configurarla" de "esta configurada pero el
 # deploy es anterior y todavia no la ve", que desde afuera se ven igual.
-VARIABLES = ("BLOB_READ_WRITE_TOKEN", "VOLEY_CLAVE", "VOLEY_SECRETO")
+#
+# BLOB_STORE_ID no se usa para nada, pero se informa igual porque la pone
+# Vercel sola al conectar el Blob store: si esa llega y el token no, el
+# problema es esa variable; si no llega ninguna, no esta llegando NINGUNA
+# variable del proyecto y hay que mirar en que entorno corre el deploy.
+VARIABLES = ("BLOB_READ_WRITE_TOKEN", "BLOB_STORE_ID", "VOLEY_CLAVE", "VOLEY_SECRETO")
 
 
 def variables_presentes() -> dict:
@@ -397,6 +443,9 @@ def estado() -> dict:
         "persistente": hay_blob() or not EN_SERVERLESS,
         "blob": hay_blob(),
         "escritura": str(CARPETA_ESCRITURA),
+        # production / preview / development: si las variables se cargaron solo
+        # para Production y el deploy que contesta es un preview, no las ve
+        "entorno": os.environ.get("VERCEL_ENV", ""),
         "variables": variables_presentes(),
         "avisos": avisos,
     }
