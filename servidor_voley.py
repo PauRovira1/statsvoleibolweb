@@ -21,9 +21,10 @@ Usa solo la biblioteca estandar; el motor es el mismo analisis_voley.py que la
 consola. openpyxl hace falta unicamente para el Excel: generarlo o mirarlo
 desde la pestana Partidos.
 
-La pagina (index.html + .css + .js) sale de una lista blanca; nunca se sirve
-la carpeta del proyecto. Alojado eso ademas es lo que evita que los .py (con
-la clave adentro) se puedan bajar como si fueran archivos estaticos.
+La pagina (public/index.html + .css + .js) sale de una lista blanca; nunca se
+sirve la carpeta del proyecto. Alojado la sirve Vercel directamente desde
+public/, que es la unica carpeta que publica: por eso los .py del proyecto,
+que estan afuera, no se pueden bajar.
 
 Cargar pide la contraseña de analisis_voley (la misma de la consola). Se
 escribe una vez por pestana: el servidor devuelve un token que el navegador
@@ -67,16 +68,23 @@ import archivo_partidos as arch
 from sesion_web import SesionPartido
 
 CARPETA = Path(__file__).resolve().parent
-PAGINA = CARPETA / "index.html"
 
-# Lista blanca de lo que se sirve de la carpeta del proyecto. La pagina se
-# partio en tres archivos para poder mantenerla, pero eso no significa
-# publicar el directorio: cualquier otra ruta es un 404.
+# La pagina vive en public/ y no en la raiz. Es la carpeta que Vercel publica
+# como sitio estatico, y que ahi sea la unica publicada es lo que evita que los
+# .py del proyecto (con la clave adentro) se puedan bajar como si fueran
+# archivos mas. Corriendo en casa las sirve este servidor y las URL son las
+# mismas, asi que la pagina no se entera de en cual de los dos esta.
+PUBLICO = CARPETA / "public"
+PAGINA = PUBLICO / "index.html"
+
+# Lista blanca de lo que se sirve. La pagina se partio en tres archivos para
+# poder mantenerla, pero eso no significa publicar un directorio: cualquier
+# otra ruta es un 404.
 ESTATICOS = {
     "/": (PAGINA, "text/html"),
     "/index.html": (PAGINA, "text/html"),
-    "/interfaz.css": (CARPETA / "interfaz.css", "text/css"),
-    "/interfaz.js": (CARPETA / "interfaz.js", "application/javascript"),
+    "/interfaz.css": (PUBLICO / "interfaz.css", "text/css"),
+    "/interfaz.js": (PUBLICO / "interfaz.js", "application/javascript"),
 }
 
 # Una sola partida a la vez: es una herramienta de escritorio, no un servicio.

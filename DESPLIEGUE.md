@@ -52,21 +52,29 @@ franja, esta guardando de verdad.
 
 ## Que hay en cada archivo
 
-    vercel.json      declara la funcion y manda todos los pedidos a api/index
-    api/index.py     define `handler`, que es el Manejador de siempre
+    vercel.json        publica public/ y manda el resto a la funcion
+    public/            la pagina: index.html, interfaz.css, interfaz.js
+    api/index.py       define `handler`, que es el Manejador de siempre
     almacenamiento.py  donde van los archivos y como se hablan con el blob
     requirements.txt   openpyxl, que es lo unico que hace falta instalar
 
-En `api/index.py`, `handler` tiene que estar **definido** ahi: Vercel le lee el
-codigo al archivo buscando una definicion de nivel superior con ese nombre, no
-importa el modulo para preguntarle que exporta. Un `handler = Manejador` no le
-alcanza y el deploy falla con *Could not find a top-level "app", "application",
-or "handler"*; por eso es una subclase.
+Tres cosas de `vercel.json` que no son decorativas:
 
-`vercel.json` usa `builds` y `routes` a proposito: asi Vercel no sirve la
-carpeta del proyecto como archivos estaticos y los `.py` no se pueden bajar.
-Todo lo que se ve (`index.html`, `interfaz.css`, `interfaz.js`) lo entrega la
-funcion desde su lista blanca, igual que en casa.
+**`outputDirectory: "public"`** es lo que hace que Vercel publique *solo* esa
+carpeta. Sin eso publica la raiz entera, y los `.py` del proyecto se pueden
+bajar como si fueran archivos estaticos. Por eso la pagina se mudo a `public/`
+y los modulos se quedaron afuera. Corriendo en casa las URL son las mismas:
+el servidor las sirve desde su lista blanca (ver `ESTATICOS`).
+
+**El `rewrite`** manda a la funcion todo lo que no sea un archivo de `public/`.
+Los estaticos los entrega el CDN y `/api/...` entra a Python. El destino es
+`/api/index`, sin el `.py`.
+
+**`handler` tiene que estar definido en `api/index.py`**, no importado. Vercel
+le lee el codigo al archivo buscando una definicion de nivel superior con ese
+nombre; no importa el modulo para preguntarle que exporta. Un
+`handler = Manejador` no le alcanza y el deploy falla con *Could not find a
+top-level "app", "application", or "handler"*. Por eso es una subclase vacia.
 
 ## Lo que no funciona alojado
 
