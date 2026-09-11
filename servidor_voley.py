@@ -29,7 +29,8 @@ que estan afuera, no se pueden bajar.
 Cargar pide la contraseña de analisis_voley (la misma de la consola). Se
 escribe una vez por pestana: el servidor devuelve un token que el navegador
 manda despues en la cabecera X-Clave. Mirar partidos, informes y jugadores no
-pide nada; lo unico que se protege es escribir sobre el partido en curso.
+pide nada; lo que se protege es escribir: el partido en curso y borrar uno
+guardado.
     POST /api/clave                 valida la contraseña y da el token
     GET  /api/sesion                dice si el token que mando sigue valiendo
 
@@ -39,12 +40,13 @@ POST piden el token de /api/clave:
     POST /api/enviar /api/deshacer /api/reiniciar /api/cargar
          /api/guardar /api/excel
 
-Endpoints de los partidos archivados. Son de solo lectura y no tocan la
-sesion, para que mirar un informe no interrumpa la carga en la cancha:
+Endpoints de los partidos archivados. No tocan la sesion, para que mirar un
+informe (o borrar un partido viejo) no interrumpa la carga en la cancha:
     GET  /api/partidos              listado de Datos/*.txt e Informes/*.xlsx
     GET  /api/partido?archivo=      un volcado entero, ya parseado
     GET  /api/informe?archivo=      un .xlsx como hojas y filas de texto
     GET  /api/descargar?archivo=&tipo=txt|xlsx
+    POST /api/borrar                borra el volcado y/o el informe (pide clave)
     POST /api/abrir                 lo abre con Excel en esta maquina (solo
                                     tiene sentido corriendo en una PC propia)
 """
@@ -104,7 +106,7 @@ version_de_la_sesion = ""
 # pero cargar la jugada solo desde el que sabe la clave.
 RUTAS_CON_CLAVE = {
     "/api/enviar", "/api/deshacer", "/api/reiniciar",
-    "/api/cargar", "/api/guardar", "/api/excel",
+    "/api/cargar", "/api/guardar", "/api/excel", "/api/borrar",
 }
 
 
@@ -278,6 +280,39 @@ def abrir_en_el_escritorio(nombre: str, tipo: str | None = None) -> dict:
     return {"ok": True, "mensaje": f"Se abrio {ruta.name} en esta PC."}
 
 
+def borrar_partido(volcado, informe) -> dict:
+    """Borra el volcado y/o el informe de un partido.
+
+    Los dos son opcionales porque una fila del listado puede tener uno solo.
+    Se borra lo que se pueda y se informa de cada uno: que el .xlsx este
+    abierto en Excel no tiene por que impedir que se borre el .txt."""
+    pedidos = [(alm.DATOS, "txt", volcado), (alm.INFORMES, "xlsx", informe)]
+    pedidos = [(logica, tipo, str(n).strip()) for logica, tipo, n in pedidos
+               if n and str(n).strip()]
+    if not pedidos:
+        return {"ok": False, "mensaje": "No se dijo que borrar."}
+
+    mensajes, fallo = [], False
+    for logica, tipo, nombre in pedidos:
+        try:
+            # por ruta_de_tipo aunque solo haga falta el nombre: es donde se
+            # valida que lo pedido caiga en Datos/ o Informes/ y no en
+            # cualquier otro lado del disco
+            ruta, _ = arch.ruta_de_tipo(nombre, tipo)
+        except arch.RutaInvalida as error:
+            mensajes.append(str(error))
+            fallo = True
+            continue
+        except FileNotFoundError:
+            mensajes.append(f"{nombre} ya no estaba.")
+            continue
+        pudo, mensaje = alm.borrar(logica, ruta.name)
+        mensajes.append(mensaje)
+        fallo = fallo or not pudo
+
+    return {"ok": not fallo, "mensaje": " ".join(mensajes)}
+
+
 class Manejador(BaseHTTPRequestHandler):
 
     def log_message(self, formato, *args):
@@ -401,7 +436,14 @@ class Manejador(BaseHTTPRequestHandler):
         if ruta in RUTAS_CON_CLAVE and not token_valido(self.headers.get("X-Clave")):
             # "clave": True es la senal para que la pantalla vuelva a pedirla
             return self._responder({"ok": False, "clave": True,
-                                    "mensaje": "Hace falta la contraseña para cargar."}, 401)
+                                    "mensaje": "Hace falta la contraseña."}, 401)
+
+        if ruta == "/api/borrar":
+            # como /api/abrir: toca el disco pero no la sesion, asi que no
+            # toma el candado y no frena al que esta cargando un punto
+            respuesta, codigo = self._leer_de_disco(
+                lambda: borrar_partido(datos.get("volcado"), datos.get("informe")))
+            return self._responder(respuesta, codigo)
 
         if ruta == "/api/abrir":
             # no toca la sesion, asi que tampoco toma el candado: si alguien

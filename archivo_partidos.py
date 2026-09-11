@@ -132,6 +132,10 @@ def ruta_de_tipo(nombre: str, tipo: str | None = None) -> tuple[Path, str]:
     # instancia puede no haber visto nunca un partido que guardo otra.
     alm.sincronizar(CARPETA_LOGICA_POR_TIPO[tipo])
     ruta = _primera_que_existe(nombre, carpetas_de_tipo(tipo))
+    if alm.esta_borrado(CARPETA_LOGICA_POR_TIPO[tipo], ruta.name):
+        # el archivo puede seguir en el disco (viene en el deploy) pero para
+        # el proyecto esta borrado: no se sirve ni se descarga
+        raise FileNotFoundError(2, "borrado", str(ruta))
     if ruta.suffix.lower() != f".{tipo}":
         raise RutaInvalida(f"El archivo {ruta.name!r} no es un .{tipo}.")
     if es_temporal(ruta.name):
@@ -367,18 +371,25 @@ def _clave_partido(equipo, rival, fecha) -> tuple:
     return (nombres[0], nombres[1], fecha or "")
 
 
-def archivos_de(carpetas, patron: str) -> list[Path]:
+def archivos_de(carpetas, patron: str, logica: str | None = None) -> list[Path]:
     """Los archivos que coinciden, sin repetir nombre y en orden.
 
     Un mismo partido puede estar en la carpeta de escritura y en la del
     deploy (porque se bajo del blob una copia de algo que ademas viajaba en el
-    repositorio); se queda el de la primera carpeta, que es la mas fresca."""
+    repositorio); se queda el de la primera carpeta, que es la mas fresca.
+
+    Con `logica` se saltean ademas los que se borraron y no se pudieron sacar
+    del disco porque vienen en el deploy. Sin `logica` no se filtra nada: es
+    para cuando el que llama paso una carpeta suya y los borrados del proyecto
+    no tienen nada que ver."""
     vistos: dict[str, Path] = {}
     for carpeta in carpetas:
         carpeta = Path(carpeta)
         if not carpeta.is_dir():
             continue
         for ruta in sorted(carpeta.glob(patron)):
+            if logica and alm.esta_borrado(logica, ruta.name):
+                continue
             vistos.setdefault(ruta.name, ruta)
     return [vistos[nombre] for nombre in sorted(vistos)]
 
@@ -402,7 +413,8 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
 
     filas, por_clave = [], {}
 
-    for ruta in archivos_de(carpetas_datos, "*.txt"):
+    for ruta in archivos_de(carpetas_datos, "*.txt",
+                            alm.DATOS if carpeta_datos is None else None):
         if es_temporal(ruta.name):
             continue
         try:
@@ -426,7 +438,8 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
         por_clave.setdefault(_clave_partido(fila["equipo"], fila["rival"], fila["fecha"]),
                              []).append(fila)
 
-    for ruta in archivos_de(carpetas_informes, "*.xlsx"):
+    for ruta in archivos_de(carpetas_informes, "*.xlsx",
+                            alm.INFORMES if carpeta_informes is None else None):
         if es_temporal(ruta.name):
             continue
         m = RE_NOMBRE_INFORME.match(ruta.name)

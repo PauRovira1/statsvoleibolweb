@@ -17,7 +17,25 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 from pathlib import Path
 
+import almacenamiento as alm
 import archivo_partidos as ap
+
+
+_token_de_verdad = alm.token_blob
+
+
+def setUpModule():
+    """Ningun test de este archivo habla con el Blob.
+
+    Sin esto, el que corre las pruebas con BLOB_READ_WRITE_TOKEN en el entorno
+    (que es lo normal si ademas despliega esto) los hace salir a la red: el
+    listado sincroniza antes de listar, y los tests pasarian de dos segundos a
+    veinte, o borrarian del store de verdad."""
+    alm.token_blob = lambda: ""
+
+
+def tearDownModule():
+    alm.token_blob = _token_de_verdad
 
 
 # El volcado mas corto que igual tiene todo lo que mira el listado: nombres,
@@ -389,6 +407,87 @@ class TestLeerInforme(unittest.TestCase):
             ap.leer_informe(Path(self.tmp.name) / "Informe_no_esta.xlsx")
 
 
+class TestBorrar(unittest.TestCase):
+    """Borrar un partido. Lo que hay que asegurar es que borrar de verdad
+    borre, y que lo borrado deje de verse aunque el archivo siga en el disco
+    (los que vienen en el deploy no se pueden borrar, solo ocultar)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.carpeta = Path(self.tmp.name)
+
+    def _fingir_borrados(self, *nombres):
+        """Hace como si esos "<carpeta>/<nombre>" estuvieran en la lista de
+        borrados, sin necesitar un Blob de verdad."""
+        borrados = set(nombres)
+        original = alm.esta_borrado
+        alm.esta_borrado = lambda logica, nombre: f"{logica}/{nombre}" in borrados
+        self.addCleanup(setattr, alm, "esta_borrado", original)
+
+    def test_un_borrado_no_aparece_en_el_listado(self):
+        escribir(self.carpeta, "partido_20260908_141643.txt")
+        escribir(self.carpeta, "partido_20260903_180710.txt")
+        self._fingir_borrados("Datos/partido_20260908_141643.txt")
+
+        nombres = [r.name for r in ap.archivos_de([self.carpeta], "*.txt", alm.DATOS)]
+        self.assertEqual(nombres, ["partido_20260903_180710.txt"])
+
+    def test_sin_carpeta_logica_no_se_filtra_nada(self):
+        # es el caso de los tests y de quien pasa una carpeta suya: los
+        # borrados del proyecto no tienen nada que ver con esos archivos
+        escribir(self.carpeta, "partido_20260908_141643.txt")
+        self._fingir_borrados("Datos/partido_20260908_141643.txt")
+        self.assertEqual(len(ap.archivos_de([self.carpeta], "*.txt")), 1)
+
+    def test_un_borrado_no_se_puede_leer_ni_descargar(self):
+        # aunque el archivo siga estando, que es lo que pasa con los que
+        # vienen en el deploy
+        nombre = "partido_20260908_141643.txt"
+        self._fingir_borrados(f"Datos/{nombre}")
+        with self.assertRaises(FileNotFoundError):
+            ap.ruta_de_tipo(nombre, "txt")
+
+    def _carpeta_de_escritura_temporal(self) -> Path:
+        carpeta_datos = self.carpeta / "Datos"
+        carpeta_datos.mkdir(exist_ok=True)
+        original = alm.CARPETA_ESCRITURA
+        alm.CARPETA_ESCRITURA = self.carpeta
+        self.addCleanup(setattr, alm, "CARPETA_ESCRITURA", original)
+        return carpeta_datos
+
+    def test_borrar_saca_el_archivo_del_disco(self):
+        # un nombre que no exista ademas en la carpeta del proyecto, que es la
+        # semilla: si estuviera en las dos, esto probaria el otro caso
+        nombre = "partido_20261115_200000.txt"
+        carpeta_datos = self._carpeta_de_escritura_temporal()
+        escribir(carpeta_datos, nombre)
+
+        pudo, mensaje = alm.borrar(alm.DATOS, nombre)
+        self.assertTrue(pudo, mensaje)
+        self.assertFalse((carpeta_datos / nombre).exists())
+
+    def test_uno_que_viene_en_el_deploy_no_se_puede_borrar_sin_blob(self):
+        """El archivo esta en la carpeta del proyecto, que alojado es de solo
+        lectura. Se puede ocultar, pero eso necesita el Blob; sin el, lo
+        honesto es decir que no se pudo y no que si."""
+        nombre = "partido_20260908_141643.txt"      # este si esta en Datos/
+        self.assertTrue((alm.carpeta_semilla(alm.DATOS) / nombre).exists())
+        self._carpeta_de_escritura_temporal()
+
+        pudo, mensaje = alm.borrar(alm.DATOS, nombre)
+        self.assertFalse(pudo)
+        self.assertIn("Blob", mensaje)
+
+    def test_borrar_lo_que_no_esta_avisa_y_no_rompe(self):
+        original = alm.CARPETA_ESCRITURA
+        alm.CARPETA_ESCRITURA = self.carpeta
+        self.addCleanup(setattr, alm, "CARPETA_ESCRITURA", original)
+        pudo, mensaje = alm.borrar(alm.DATOS, "partido_20990101_000000.txt")
+        self.assertFalse(pudo)
+        self.assertIn("No existe", mensaje)
+
+
 class TestEndpointsDeLectura(unittest.TestCase):
     """El servidor de verdad, contestando en un puerto suelto. Son endpoints
     de solo lectura: no tocan la sesion en curso."""
@@ -432,6 +531,18 @@ class TestEndpointsDeLectura(unittest.TestCase):
                 with self.assertRaises(urllib.error.HTTPError) as caso:
                     self.pedir(ruta)
                 self.assertEqual(caso.exception.code, 404)
+
+    def test_borrar_sin_la_clave_da_401(self):
+        """Borrar es lo unico destructivo que se puede pedir de afuera: sin el
+        token no se llega ni a mirar el disco."""
+        pedido = urllib.request.Request(
+            self.base + "/api/borrar", method="POST",
+            data=json.dumps({"volcado": "partido_20260908_141643.txt"}).encode(),
+            headers={"Content-Type": "application/json"})
+        with self.assertRaises(urllib.error.HTTPError) as caso:
+            urllib.request.urlopen(pedido, timeout=10)
+        self.assertEqual(caso.exception.code, 401)
+        self.assertTrue(json.loads(caso.exception.read())["clave"])
 
     def test_listado_de_partidos(self):
         codigo, datos = self.pedir_json("/api/partidos")

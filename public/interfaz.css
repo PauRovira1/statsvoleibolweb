@@ -79,6 +79,10 @@ button{background:var(--panel2);border:1px solid var(--borde);color:var(--texto)
 button:hover{border-color:var(--acento);color:#fff}
 button.primario{background:var(--acento);border-color:var(--acento);color:#08121f;
                 font-weight:700;padding-left:22px;padding-right:22px}
+/* Reiniciar y Borrar: lo unico que no se puede deshacer. Se distinguen en
+   reposo, no solo al pasar por encima, porque en el celular no hay hover y
+   ademas quedan al lado de los botones de descargar. */
+button.peligro{border-color:#7a3030;color:#ff9d9d}
 button.peligro:hover{border-color:var(--error);color:var(--error)}
 button.tenue{color:var(--suave)}
 button[disabled]{opacity:.4;cursor:default}

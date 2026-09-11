@@ -474,6 +474,15 @@ $("#btnLimpiar").addEventListener("click", () => {
   filtrar();
 });
 
+function avisoPartidos(texto, ok = true){
+  const caja = $("#avisoPartidos");
+  if(!caja) return;
+  caja.textContent = texto || "";
+  caja.className = "mensaje" + (texto ? (ok ? " ok" : " error") : "");
+  caja.hidden = !texto;
+}
+
+
 function avisoDetalle(texto, ok){
   const caja = $("#avisoDetalle");
   if(!caja) return;
@@ -485,6 +494,7 @@ function avisoDetalle(texto, ok){
 async function abrirPartido(id){
   const fila = PARTIDOS.find(p => p.id === id);
   if(!fila) return;
+  avisoPartidos("");      // el aviso del borrado anterior ya no viene al caso
   elegido = id;
   filtrar();
 
@@ -545,6 +555,12 @@ function cabezaPartido(fila){
                      target="_blank" rel="noopener">Descargar el .txt</a>`);
     botones.push(`<button id="btnACargar">Cargar en la pestana Cargar</button>`);
   }
+  // Borrar pide la contraseña, asi que el boton solo esta cuando ya se
+  // escribio: sin sesion el servidor contestaria 401 y el boton no seria mas
+  // que una forma de que te pidan la clave a destiempo.
+  if(token){
+    botones.push(`<button class="peligro" id="btnBorrarPartido">Borrar este partido</button>`);
+  }
   return `<div class="cabeza">
     <h2>${esc(fila.equipo)} vs ${esc(fila.rival)}</h2>
     <div class="sub">${esc(fila.fecha || "sin fecha")}${fila.hora ? " · " + esc(fila.hora) : ""}
@@ -557,6 +573,7 @@ function cabezaPartido(fila){
 }
 
 function cablearBotonesPartido(fila){
+  cablearBorrado(fila);
   const boton = $("#btnACargar");
   if(!boton) return;
   boton.addEventListener("click", async () => {
@@ -570,6 +587,37 @@ function cablearBotonesPartido(fila){
     boton.disabled = false;
     avisoDetalle(r.mensaje, r.ok);
     if(r.ok) irA("cargar");
+  });
+}
+
+// Borrar es lo unico de esta pantalla que no se puede deshacer: se borra el
+// archivo, no se manda a ningun lado. Por eso el confirm dice exactamente que
+// archivos se van, y el boton queda deshabilitado mientras tanto para que un
+// doble toque nervioso no dispare dos veces.
+function cablearBorrado(fila){
+  const boton = $("#btnBorrarPartido");
+  if(!boton) return;
+  boton.addEventListener("click", async () => {
+    const quees = [fila.volcado && "el volcado .txt", fila.informe && "el informe .xlsx"]
+      .filter(Boolean).join(" y ");
+    if(!confirm(`Se borra ${quees} de ${fila.equipo} vs ${fila.rival}` +
+                `${fila.fecha ? " del " + fila.fecha : ""}.
+
+No se puede deshacer. Seguro?`)) return;
+
+    boton.disabled = true;
+    avisoDetalle("Borrando…", true);
+    const r = await api("/api/borrar", {volcado: fila.volcado, informe: fila.informe});
+    boton.disabled = false;
+    if(!r.ok) return avisoDetalle(r.mensaje, false);
+
+    // el partido ya no existe: se cierra el detalle y se vuelve a pedir la
+    // lista, que es la unica forma de que el listado no quede mintiendo
+    $("#detalle").hidden = true;
+    elegido = null;
+    listaPartidosVencida = true;
+    await entrarAPartidos();
+    avisoPartidos(r.mensaje);
   });
 }
 

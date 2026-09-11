@@ -316,11 +316,133 @@ def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
     return (json.loads(crudo.decode("utf-8")) or {}).get("url", "")
 
 
+def borrar_blob(url: str) -> None:
+    """Saca un archivo del blob. Levanta si no se pudo."""
+    _pedir(f"{API_BLOB}/delete", metodo="POST",
+           cuerpo=json.dumps({"urls": [url]}).encode("utf-8"),
+           cabeceras={"content-type": "application/json"}, timeout=20)
+
+
 TIPO_POR_EXTENSION = {
     ".txt": "text/plain; charset=utf-8",
     ".json": "application/json; charset=utf-8",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
+
+
+# ----------------------------------------------------------------------
+# Los borrados.
+#
+# Borrar un partido es borrar su archivo, salvo cuando el archivo viene en el
+# deploy: esos estan en la carpeta del proyecto, que alojado es de solo
+# lectura, y ahi no hay nada que borrar porque volverian en el deploy
+# siguiente igual. Para esos se anota el nombre en una lista, y el que lista
+# los saltea. Es la unica forma de que "borrar" quiera decir lo mismo para
+# todos los partidos y no la mitad de las veces.
+#
+# La lista vive en el blob junto con lo demas, asi que la ve cualquier
+# instancia. Sin blob no hace falta: ahi la carpeta del proyecto es la de
+# escritura y el archivo se borra de verdad.
+# ----------------------------------------------------------------------
+
+RUTA_BORRADOS = "borrados/lista.json"
+
+_borrados: set[str] | None = None      # cache por instancia
+_momento_borrados = 0.0
+
+
+def _cargar_borrados(*, refrescar=False) -> set[str]:
+    """Los "<carpeta>/<nombre>" que se borraron y hay que seguir ocultando."""
+    global _borrados, _momento_borrados
+    if not hay_blob():
+        return set()
+
+    ahora = time.monotonic()
+    if not refrescar and _borrados is not None and ahora - _momento_borrados < SEGUNDOS_DE_CACHE:
+        return _borrados
+
+    lista: set[str] = set()
+    try:
+        blobs = [b for b in _listar_blobs_crudo("borrados/")
+                 if b.get("pathname") == RUTA_BORRADOS]
+        if blobs:
+            datos = json.loads(_pedir(_url_sin_cache(blobs[0])).decode("utf-8"))
+            lista = {str(x) for x in (datos.get("borrados") or [])}
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo leer la lista de borrados: {error}")
+        # lo ultimo que se supo es mejor que nada: si la lista no se puede
+        # leer, un partido borrado reapareceria en pantalla
+        return _borrados if _borrados is not None else set()
+
+    _borrados, _momento_borrados = lista, ahora
+    return lista
+
+
+def esta_borrado(logica: str, nombre: str) -> bool:
+    return f"{logica}/{nombre}" in _cargar_borrados()
+
+
+def _anotar_borrado(logica: str, nombre: str) -> bool:
+    """Agrega el archivo a la lista de los que hay que ocultar."""
+    global _borrados
+    if not hay_blob():
+        return False
+    lista = set(_cargar_borrados(refrescar=True)) | {f"{logica}/{nombre}"}
+    try:
+        subir_blob(RUTA_BORRADOS,
+                   json.dumps({"borrados": sorted(lista)}, ensure_ascii=False).encode("utf-8"),
+                   TIPO_POR_EXTENSION[".json"])
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo anotar el borrado de {logica}/{nombre}: {error}")
+        return False
+    _borrados = lista
+    with _candado_blob:
+        _ultimo_listado.pop("borrados/", None)
+    return True
+
+
+def borrar(logica: str, nombre: str) -> tuple[bool, str]:
+    """Borra un archivo de donde este. Devuelve (se pudo, que paso).
+
+    Son hasta tres lugares y hay que pasar por los tres: la carpeta de
+    escritura, el blob, y la del deploy, que no se puede tocar y se resuelve
+    anotando el nombre para que deje de aparecer."""
+    hechos = []
+
+    local = carpeta_de_escritura(logica) / nombre
+    if local.exists():
+        try:
+            local.unlink()
+            hechos.append("del disco")
+        except OSError as error:
+            return False, f"No se pudo borrar {nombre}: {error}"
+
+    if hay_blob():
+        objetivo = f"{logica}/{nombre}"
+        for blob in listar_blobs(f"{logica}/", refrescar=True):
+            if blob.get("pathname") != objetivo:
+                continue
+            try:
+                borrar_blob(blob.get("url", ""))
+                hechos.append("del Blob")
+            except FALLAS_DE_RED as error:
+                _anotar_error(f"no se pudo borrar {objetivo} del Blob: {error}")
+                return False, f"No se pudo borrar {nombre} del Blob: {error}"
+            with _candado_blob:
+                _ultimo_listado.pop(f"{logica}/", None)
+            break
+
+    # si despues de todo eso sigue existiendo, es de los que vienen en el
+    # deploy: no se puede borrar, pero si dejar de mostrar
+    if (carpeta_semilla(logica) / nombre).exists():
+        if not _anotar_borrado(logica, nombre):
+            return False, (f"{nombre} viene en el repositorio y no se puede borrar "
+                           f"desde aca. Hace falta el Blob para poder ocultarlo.")
+        hechos.append("oculto (viene en el repositorio)")
+
+    if not hechos:
+        return False, f"No existe {nombre}."
+    return True, f"Se borro {nombre} ({', '.join(hechos)})."
 
 
 # ======================================================================
@@ -339,7 +461,7 @@ def sincronizar(logica: str, *, refrescar=False) -> Path:
 
     for blob in listar_blobs(f"{logica}/", refrescar=refrescar):
         nombre = Path(blob.get("pathname", "")).name
-        if not nombre:
+        if not nombre or esta_borrado(logica, nombre):
             continue
         destino = destino_base / nombre
         try:

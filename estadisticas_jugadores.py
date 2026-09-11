@@ -120,7 +120,8 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
     gi = _parser()
 
     leidos = []
-    for ruta in archivo_partidos.archivos_de(carpetas, "*.txt"):
+    for ruta in archivo_partidos.archivos_de(carpetas, "*.txt",
+                                             alm.DATOS if carpeta is None else None):
         if ruta.name.startswith("~$"):
             continue
         try:

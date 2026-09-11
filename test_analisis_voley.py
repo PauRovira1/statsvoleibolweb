@@ -54,6 +54,24 @@ from analisis_voley import (
     generar_informe_excel,
 )
 
+import almacenamiento as alm
+
+_token_de_verdad = alm.token_blob
+
+
+def setUpModule():
+    """Ningun test de este archivo habla con el Blob.
+
+    Varios guardan un reporte de verdad (guardar_reporte_txt), y guardar
+    ahora publica el archivo. Con BLOB_READ_WRITE_TOKEN en el entorno -- que
+    es lo normal en la maquina del que ademas despliega esto -- correr las
+    pruebas subiria partidos de prueba al store de produccion."""
+    alm.token_blob = lambda: ""
+
+
+def tearDownModule():
+    alm.token_blob = _token_de_verdad
+
 
 class TestParsearBloqueSaque(unittest.TestCase):
 

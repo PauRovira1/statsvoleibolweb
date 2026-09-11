@@ -152,6 +152,22 @@ nombre; no importa el modulo para preguntarle que exporta. Un
 `handler = Manejador` no le alcanza y el deploy falla con *Could not find a
 top-level "app", "application", or "handler"*. Por eso es una subclase vacia.
 
+## Borrar un partido
+
+Pide la contraseña, como cargar: el boton esta en el detalle del partido, en la
+pestaña Partidos, y solo aparece cuando la sesion ya esta abierta.
+
+Se borra el `.txt` y el `.xlsx` del disco y del Blob. Los partidos que vienen
+en el repositorio (los que estan en `Datos/` e `Informes/` del proyecto) son la
+excepcion: alojado esa carpeta es de solo lectura y volverian en el deploy
+siguiente, asi que en vez de borrarlos se anota el nombre en una lista y el
+listado los saltea. Para el que usa la aplicacion es lo mismo; la diferencia es
+que sacarlos de verdad es borrarlos del repositorio y volver a desplegar.
+
+Esa lista vive en el Blob (`borrados/lista.json`), asi que sin Blob configurado
+esos partidos no se pueden ni ocultar. El mensaje lo dice en vez de contestar
+que se borro.
+
 ## Lo que no funciona alojado
 
 **"Abrir en esta PC"**. Abria el `.xlsx` con Excel en la maquina donde corria
