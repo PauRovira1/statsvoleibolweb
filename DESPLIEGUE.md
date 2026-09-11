@@ -37,7 +37,12 @@ leen de ahi, aunque no se puedan modificar.
    `analisis_voley.py`, que esta a la vista de cualquiera que mire el
    repositorio. Alojado el sitio lo abre cualquiera.
 
-3. **Deploy.** `vercel --prod`, o conectando el repositorio de GitHub.
+3. **Revisar la version de Python.** Settings → General → Python Version:
+   tiene que ser **3.12** (o al menos 3.10). El proyecto usa anotaciones del
+   estilo `str | None`, que en 3.9 no son sintaxis valida y hacen fallar el
+   import de entrada.
+
+4. **Deploy.** `vercel --prod`, o conectando el repositorio de GitHub.
 
 ## Como saber si quedo bien
 
@@ -48,9 +53,15 @@ franja, esta guardando de verdad.
 ## Que hay en cada archivo
 
     vercel.json      declara la funcion y manda todos los pedidos a api/index
-    api/index.py     lo que Vercel importa; expone el Manejador de siempre
+    api/index.py     define `handler`, que es el Manejador de siempre
     almacenamiento.py  donde van los archivos y como se hablan con el blob
     requirements.txt   openpyxl, que es lo unico que hace falta instalar
+
+En `api/index.py`, `handler` tiene que estar **definido** ahi: Vercel le lee el
+codigo al archivo buscando una definicion de nivel superior con ese nombre, no
+importa el modulo para preguntarle que exporta. Un `handler = Manejador` no le
+alcanza y el deploy falla con *Could not find a top-level "app", "application",
+or "handler"*; por eso es una subclase.
 
 `vercel.json` usa `builds` y `routes` a proposito: asi Vercel no sirve la
 carpeta del proyecto como archivos estaticos y los `.py` no se pueden bajar.
