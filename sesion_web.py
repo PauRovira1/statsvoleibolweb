@@ -1,0 +1,228 @@
+"""
+Sesion de carga de un partido para la interfaz web.
+
+No reimplementa nada: guarda las lineas tal como se irian tipeando en la
+consola y, cada vez que llega una nueva, vuelve a correr el motor entero
+(analisis_voley.ejecutar_partido) alimentandolo con esa lista. Es la misma
+idea con la que se recarga un partido pegando el .txt, asi que la web y la
+consola no pueden divergir.
+
+Reproducir todo de nuevo en cada jugada suena caro pero no lo es: un partido
+completo de 95 puntos se rehace en centesimas de segundo, y a cambio deshacer
+sale gratis (se saca la ultima linea) y no hay un segundo estado que mantener
+sincronizado.
+"""
+import io
+import contextlib
+from unittest import mock
+
+import analisis_voley as av
+
+
+# Marcas con las que el motor avisa que rechazo lo que se escribio. Se buscan
+# en lo que imprimio para saber si la linea entra o no.
+MARCAS_DE_RECHAZO = (
+    "Formato invalido",
+    "Saca el jugador",
+    "Falta el numero del sacador",
+    "Respuesta invalida",
+    "no esta en cancha",
+    "ya esta en cancha",
+    "no puede entrar y salir",
+    "No hay rotacion cargada",
+    "Los cambios se hacen entre puntos",
+    "No hay ningun punto para deshacer",
+    "Tienen que ser",
+    "esta repetido",
+    "no es un numero de jugador valido",
+    "Marca exactamente un armador",
+)
+
+
+def _reproducir(lineas: list[str]) -> tuple[dict, str]:
+    """Corre el motor con estas lineas. Devuelve (estado, lo que imprimio)."""
+    cola = iter(lineas)
+
+    def leer(prompt: str = "") -> str:
+        try:
+            return next(cola)
+        except StopIteration:
+            raise av.SinMasEntradas from None
+
+    salida = io.StringIO()
+    with mock.patch("builtins.input", leer), contextlib.redirect_stdout(salida):
+        estado = av.ejecutar_partido()
+    return estado, salida.getvalue()
+
+
+class SesionPartido:
+    """Un partido en curso. Se le mandan lineas y responde con el estado."""
+
+    def __init__(self):
+        self.lineas: list[str] = []
+        self.estado, self.log = _reproducir([])
+
+    # ------------------------------------------------------------------
+    def enviar(self, linea: str) -> dict:
+        """Agrega una linea. Si el motor la rechaza no se guarda, y se
+        devuelve el mismo mensaje que veria en la consola."""
+        candidatas = self.lineas + [linea]
+        estado, log = _reproducir(candidatas)
+        nuevo = log[len(self.log):]
+
+        rechazo = next((m for m in MARCAS_DE_RECHAZO if m in nuevo), None)
+        if rechazo is not None:
+            return {"ok": False, "mensaje": _ultimo_mensaje(nuevo), "estado": self.instantanea()}
+
+        self.lineas = candidatas
+        self.estado, self.log = estado, log
+        return {"ok": True, "mensaje": _ultimo_mensaje(nuevo), "estado": self.instantanea()}
+
+    def deshacer_linea(self) -> dict:
+        """Borra la ultima linea cargada, sea del tipo que sea. Es distinto de
+        la "x" del motor, que deshace un punto entero."""
+        if not self.lineas:
+            return {"ok": False, "mensaje": "No hay nada cargado.", "estado": self.instantanea()}
+        self.lineas.pop()
+        self.estado, self.log = _reproducir(self.lineas)
+        return {"ok": True, "mensaje": "Se borro la ultima linea.", "estado": self.instantanea()}
+
+    def reiniciar(self) -> dict:
+        self.lineas = []
+        self.estado, self.log = _reproducir([])
+        return {"ok": True, "mensaje": "Partido nuevo.", "estado": self.instantanea()}
+
+    def cargar_lineas(self, texto: str) -> dict:
+        """Carga de una un partido entero (pegando el .txt). Se corta en la
+        primera linea que el motor rechace, para no arrastrar el desfase."""
+        self.reiniciar()
+        rechazadas = []
+        for numero, linea in enumerate(texto.splitlines(), start=1):
+            if linea.strip().lower() in av.COMANDOS_SALIDA:
+                break
+            resultado = self.enviar(linea)
+            if not resultado["ok"]:
+                rechazadas.append(f"linea {numero}: {linea!r} -> {resultado['mensaje']}")
+                break
+        mensaje = f"Se cargaron {len(self.lineas)} lineas."
+        if rechazadas:
+            mensaje += " Se corto en " + rechazadas[0]
+        return {"ok": not rechazadas, "mensaje": mensaje, "estado": self.instantanea()}
+
+    # ------------------------------------------------------------------
+    def instantanea(self) -> dict:
+        """Todo lo que la pantalla necesita saber del partido."""
+        estado = self.estado
+        nombres = estado["nombres"]
+        puntos = estado["puntos"]
+        numero_set = len(estado["historial_sets"]) + 1
+        equipo_saca = estado["equipo_saca"]
+
+        return {
+            "etapa": self._etapa(),
+            "nombres": nombres,
+            "marcador": estado["marcador"],
+            "set": numero_set,
+            "sets_ganados": estado["sets_ganados"],
+            "historial_sets": estado["historial_sets"],
+            "equipo_saca": equipo_saca,
+            "jugador_saca": av.jugador_que_saca(
+                estado["rotaciones"], puntos, numero_set, equipo_saca
+            ),
+            # "jugadores" es como esta parado el equipo AHORA (zonas 1 a 6);
+            # "inicial" es la formacion con la que arranco el set.
+            "rotaciones": {
+                letra: {
+                    "jugadores": av.rotacion_en_cancha(
+                        estado["rotaciones"], puntos, numero_set, letra
+                    ),
+                    "inicial": r["jugadores"],
+                    "armador": r["armador"],
+                    "giros": av.veces_que_roto(puntos, numero_set, letra),
+                }
+                for letra, r in estado["rotaciones"].items()
+            },
+            "cambios": estado["cambios"],
+            "puntos_cargados": len(puntos),
+            "lineas": self.lineas,
+            "ultimos_puntos": self._ultimos_puntos(),
+            "prompt": self._prompt(),
+        }
+
+    def _etapa(self) -> str:
+        """En que paso de la carga esta: sirve para que la pantalla sepa que
+        pedir (nombres, rotacion, quien saca, o ya las jugadas)."""
+        faltan = len(self.lineas)
+        if faltan < 2:
+            return "nombres"
+        if faltan < 4:
+            return "rotacion"
+        if faltan < 5:
+            return "saque_inicial"
+        return "jugadas"
+
+    def _prompt(self) -> str:
+        etapa = self._etapa()
+        nombres = self.estado["nombres"]
+        if etapa == "nombres":
+            return f"Nombre del equipo {'A' if not self.lineas else 'B'} (vacio = usar la letra)"
+        if etapa == "rotacion":
+            letra = "A" if len(self.lineas) == 2 else "B"
+            return (f"Rotacion de {nombres[letra]}: 6 jugadores en zonas 1 a 6, "
+                    f"armador con _S (vacio = sin rotacion)")
+        if etapa == "saque_inicial":
+            return f"Que equipo saca primero? A) {nombres['A']}  B) {nombres['B']}"
+        jugador = self.instantanea_jugador_saca()
+        equipo = nombres[self.estado["equipo_saca"]]
+        return f"Saca {equipo}" + (f", jugador {jugador}" if jugador is not None else "")
+
+    def instantanea_jugador_saca(self):
+        estado = self.estado
+        return av.jugador_que_saca(
+            estado["rotaciones"], estado["puntos"],
+            len(estado["historial_sets"]) + 1, estado["equipo_saca"],
+        )
+
+    def _ultimos_puntos(self, cuantos: int = 12) -> list[dict]:
+        nombres = self.estado["nombres"]
+        salida = []
+        for punto in self.estado["puntos"][-cuantos:]:
+            salida.append({
+                "set": punto.get("set", 1),
+                "gana": nombres[punto["equipo_gana"]],
+                "saca": nombres[punto["equipo_saca"]],
+                "detalle": " | ".join(_describir(b) for b in punto["jugadas"]),
+            })
+        return salida
+
+    # ------------------------------------------------------------------
+    def estadisticas(self) -> str:
+        estado = self.estado
+        return av.formatear_estadisticas(
+            estado["puntos"], estado["nombres"], estado["armadores"]
+        )
+
+    def guardar(self) -> str:
+        """Escribe el .txt igual que la consola y devuelve el nombre."""
+        estado = self.estado
+        historial = list(estado["historial_sets"]) + [dict(estado["marcador"])]
+        return av.guardar_reporte_txt(
+            estado["entradas_totales"], estado["puntos"], estado["marcador"],
+            estado["nombres"], historial, estado["sets_ganados"],
+            estado["rotaciones_por_set"], estado["cambios"], estado["armadores"],
+        )
+
+
+def _describir(bloque: dict) -> str:
+    try:
+        if bloque.get("resultado_saque") is not None or bloque.get("sacador") is not None:
+            return av.describir_bloque_saque(bloque)
+        return av.describir_bloque_defensa(bloque)
+    except Exception:      # un bloque raro no puede tumbar la pantalla
+        return "(jugada)"
+
+
+def _ultimo_mensaje(texto: str) -> str:
+    """La ultima linea util de lo que imprimio el motor."""
+    lineas = [l.strip() for l in texto.splitlines() if l.strip()]
+    return lineas[-1] if lineas else ""

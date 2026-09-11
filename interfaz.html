@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Estadisticas de voley</title>
+<link rel="stylesheet" href="interfaz.css">
+</head>
+<body>
+<div class="envoltorio">
+
+  <!-- La barra de pestanas es lo unico que se comparte entre las tres vistas.
+       Se queda pegada arriba porque en el celular se navega con el pulgar. -->
+  <nav class="pestanas" id="pestanas">
+    <button class="pestana activa" data-vista="cargar">Cargar<span class="chip" id="chipCargar" hidden></span></button>
+    <button class="pestana" data-vista="partidos">Partidos</button>
+    <button class="pestana" data-vista="jugadores">Jugadores</button>
+  </nav>
+
+  <!-- ============================================================ -->
+  <!-- 1) CARGAR: la pantalla de la cancha. No se le agrega nada que -->
+  <!--    se meta en el camino de tipear una jugada.                 -->
+  <!-- ============================================================ -->
+  <section class="vista activa" id="vista-cargar">
+
+    <div class="marcador">
+      <div class="equipo" id="eqA">
+        <div class="nombre" id="nomA">Equipo A</div>
+        <div class="puntos" id="ptsA">0</div>
+      </div>
+      <div class="centro">
+        <div class="set" id="numSet">Set 1</div>
+        <div id="sets">0 - 0</div>
+        <div id="cargados" style="margin-top:4px">0 puntos</div>
+      </div>
+      <div class="equipo" id="eqB">
+        <div class="nombre" id="nomB">Equipo B</div>
+        <div class="puntos" id="ptsB">0</div>
+      </div>
+    </div>
+
+    <div class="turno" id="turno">Cargando…</div>
+
+    <form class="carga" id="form" autocomplete="off">
+      <input id="linea" placeholder="…" autocomplete="off" autocapitalize="off"
+             autocorrect="off" spellcheck="false">
+      <button class="primario" type="submit">Cargar</button>
+    </form>
+
+    <div class="mensaje" id="mensaje"></div>
+    <div class="fila" id="enlacesArchivo" hidden></div>
+
+    <div class="atajos" id="atajos">
+      <span class="etiqueta">Rapido</span>
+      <button data-enviar="f">f · error en juego</button>
+      <button data-enviar="x">x · deshacer punto</button>
+      <button data-enviar="w">w · cerrar set</button>
+      <button id="btnCambio">C · cambio</button>
+      <span class="etiqueta" style="margin-left:8px">Sesion</span>
+      <button id="btnBorrar">Borrar ultima linea</button>
+      <button id="btnGuardar">Guardar .txt</button>
+      <button id="btnExcel">Excel</button>
+      <button id="btnReiniciar" class="peligro">Reiniciar</button>
+    </div>
+
+    <!-- Elegir el equipo del informe con dos botones: en el celular escribir
+         el nombre a mano en un prompt() era la parte mas incomoda. -->
+    <div class="eleccion" id="eleccionExcel" hidden>
+      <span class="etiqueta">Informe de</span>
+      <button id="btnExcelA" data-equipo="A">A</button>
+      <button id="btnExcelB" data-equipo="B">B</button>
+      <button id="btnExcelCancelar" class="tenue">Cancelar</button>
+    </div>
+
+    <div class="columnas">
+      <details class="panel" open>
+        <summary>Ultimos puntos</summary>
+        <div class="cuerpo" id="log"></div>
+      </details>
+
+      <details class="panel" open>
+        <summary>Rotacion en cancha</summary>
+        <div class="cuerpo" id="rotacion"></div>
+      </details>
+
+      <details class="panel" id="panelAyuda">
+        <summary>Como se escribe una jugada</summary>
+        <div class="cuerpo ayuda">
+          <p class="nota" style="margin-top:0">Con la rotacion cargada el numero del
+          sacador es opcional: <code>28_1_5_X/…</code> y <code>1_5_X/…</code> son lo mismo.</p>
+          <dl>
+            <dt><code>5_1_6_A</code></dt><dd>saque directo, punto (as)</dd>
+            <dt><code>5_1_6_E</code></dt><dd>error de saque</dd>
+            <dt><code>5_1_6_X/3_3/2_4/4_1_P</code></dt>
+            <dd>saque · recepcion (calidad 0-3, o -1 si se paso) · armado zona · ataque</dd>
+            <dt><code>…/4_1_D</code></dt><dd>lo defienden, sigue el punto</dd>
+            <dt><code>…/4_1_O</code> <code>_M</code></dt><dd>afuera / a la malla</dd>
+            <dt><code>…/4_1_B_7_P</code></dt><dd>lo bloquea el 7, punto del bloqueo</dd>
+            <dt><code>…/4_1_U_7</code></dt><dd>usa el bloqueo del 7, punto del ataque</dd>
+            <dt><code>…/4_1_R_7</code></dt><dd>bloqueo rejugable, sigue el mismo equipo</dd>
+            <dt><code>…/9_F_3</code> <code>9_T_3</code></dt><dd>libre / toque hacia zona 3</dd>
+            <dt><code>…/9_S_6_P</code></dt><dd>pasada de segunda (sin armado antes)</dd>
+            <dt><code>2_-1</code> <code>2_-2</code></dt>
+            <dd>armado que se pasa / armado malo que pierde el punto</dd>
+            <dt><code>7_2/1_4/9_5_D</code></dt><dd>defensa · armado · ataque</dd>
+            <dt><code>9_A_1_P</code></dt><dd>ataque de primera, sin armado</dd>
+            <dt><code>f</code> <code>w</code> <code>x</code></dt>
+            <dd>error en juego · cerrar set · deshacer</dd>
+            <dt><code>C_7_28</code></dt><dd>entra el 7, sale el 28</dd>
+            <dt><code>C_7_S_28</code></dt><dd>lo mismo, y el 7 pasa a ser armador</dd>
+          </dl>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary>Estadisticas</summary>
+        <div class="cuerpo">
+          <button id="btnStats">Actualizar</button>
+          <pre id="stats" style="margin-top:10px">—</pre>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary>Cargar un partido ya escrito</summary>
+        <div class="cuerpo">
+          <p class="nota" style="margin-top:0">Pega la lista de inputs de un .txt
+          (desde el nombre del equipo A hasta la ultima jugada).</p>
+          <textarea id="pegar" placeholder="Palestino&#10;UVC&#10;28 15 99_S 88 10 13&#10;&#10;B&#10;…"></textarea>
+          <div class="fila"><button id="btnPegar">Cargar todo</button></div>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary>Cambios registrados</summary>
+        <div class="cuerpo" id="cambios"></div>
+      </details>
+    </div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 2) PARTIDOS: buscar y abrir lo que ya esta guardado          -->
+  <!-- ============================================================ -->
+  <section class="vista" id="vista-partidos" hidden>
+
+    <div class="buscador">
+      <input id="busca" placeholder="Buscar equipo, rival o fecha" autocomplete="off"
+             autocapitalize="off" spellcheck="false">
+      <div class="filtros">
+        <label>Equipo
+          <select id="filtroEquipo"><option value="">Todos</option></select>
+        </label>
+        <label>Desde <input type="date" id="filtroDesde"></label>
+        <label>Hasta <input type="date" id="filtroHasta"></label>
+        <label class="interruptor">
+          <input type="checkbox" id="filtroInforme"> Solo con informe
+        </label>
+        <button id="btnLimpiar" class="tenue">Limpiar</button>
+      </div>
+    </div>
+
+    <div class="panel suelto">
+      <div class="cuerpo alto" id="listaPartidos">
+        <p class="nota" style="margin:0">Cargando…</p>
+      </div>
+    </div>
+
+    <div id="detalle" hidden></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 3) JUGADORES: se arma con los partidos guardados en Datos/.  -->
+  <!-- ============================================================ -->
+  <section class="vista" id="vista-jugadores" hidden>
+    <div id="avisoDuplicados" class="aviso" hidden></div>
+    <div id="jugadores"></div>
+  </section>
+
+</div>
+<script src="interfaz.js"></script>
+</body>
+</html>

@@ -1,0 +1,1107 @@
+=== Jugadas cargadas ===
+Palestino
+O'sommer
+3_S 88 15 13 16 10
+
+A
+1_5_X/4_1/2_1/1_1_D
+3_-2
+6_1_5_X/16_0/3_2/88_1_D
+6_1/5_2/2_1_P
+6_1_1_E
+1_6_X/6_0/5_6_X/2_F_6
+2_3/3_3/15_5_B_3_P
+12_1_6_X/2_0/3_4/16_6_R_3
+2_0/3_2/13_6_B_4_P
+12_1_6_X/2_0/3_6/88_6_D
+12_1/6_4/4_6_B_13_P
+6_5_X/5_3/6_3/3_6_P
+19_5_6_X/88_3/3_2/13_6_P
+1_5_E
+1_1_6_X/88_3/3_4/13_6_D
+12_0/1_4_X/4_F_3
+10_1/3_4/13_6_D
+12_0/1_5_X/5_F_6
+2_1/3_1/13_1_D
+4_0/12_4_X/4_5_D
+10_-1
+3_1/6_1/1_F_6
+88_2/3_4/16_1_D
+1_2/6_3/3_6_P
+9_1_6_X/88_1/3_4/16_6_D
+12_1/6_4/4_1_D
+16_2/3_1/13_6_P
+5_6_X/12_2/6_4/4_1_O
+5_1_X/5_3/6_3/3_6_P
+6_1_6_X/2_3/3_3/10_5_D
+5_1/6_4/12_1_D
+88_3/88_2/3_1_D
+5_2/6_4/12_1_P
+6_1_5_X/88_3/3_4/88_6_B_8_P
+6_1_6_X/2_2/3_4/88_1_P
+6_5_X/12_3/6_3/3_6_P
+3_5_5_E
+1_6_A
+1_5_X/12_3/6_3/3_1_P
+6_1_6_E
+1_5_E
+12_1_6_A
+12_1_6_E
+1_6_X/5_0/6_2/2_6_B_10_P
+1_5_X/4_3/6_3/3_1_P
+7_5_6_A
+7_5_6_X/2_1/3_2/13_1_D
+6_1/3_2/2_1_D
+3_3/2_2_X/13_F_6
+12_2/6_4/4_6_D
+88_1/3_6/88_5_D
+7_0/6_4/4_6_R_10
+4_1/7_2/2_6_O
+1_5_X/5_-1
+3_0/2_4/16_6_R_3
+10_0/3_4/16_5_D
+5_0/2_4/4_5_D
+2_1/13_5_X/16_F_6
+5_1/6_3/3_6_P
+C_99_S_3
+1_1_6_X/2_2/99_2/13_1_P
+5_1_E
+9_6_1_X/13_1/99_4/88_F_5
+12_3/6_1/1_5_P
+9_1_1_X/16_3/99_4/88_5_O
+9_1_1_X/16_3/99_2/8_5_D
+12_3/12_3/6_5_D
+2_1/16_6_X/2_F_6
+3_-2
+6_5_X/12_3/6_4/12_6_B_15_P
+6_6_E
+3_1_1_X/2_2/99_4/28_6_R_3
+99_1/2_4/28_6_D
+9_3/6_4/12_5_P
+10_1_1_X/9_3/99_3/15_6_O
+C_3_S_99
+10_1_1_X/9_3/3_3/15_1_O
+10_1_1_X/9_3/3_4/28_6_B_3_P
+W
+n
+22 3_S 16 10 13 28
+
+B
+6_1_6_X/28_3/3_3/10_6_D
+2_1/6_4/12_1_P
+6_1_6_X/28_0/3_4/13_1_D
+2_2/2_3/3_5_D
+9_1/3_1/13_6_D
+2_-1
+10_A_5_D
+12_-2
+1_6_X/6_3/6_3_X/3_F_3
+10_-2
+12_1_5_X/16_-1
+3_-1
+9_1/3_4/13_1_D
+6_-1
+28_3/3_2/16_6_D
+12_0/6_4/4_6_U_10
+12_1_5_E
+6_6_X/5_0/6_2/2_5_U_28
+3_5_6_X/9_3/3_2/13_6_P
+6_6_X/12_1/6_3/3_1_P
+2_1_1_X/9_2/3_4/28_6_D
+5_-1
+28_A_1_D
+2_1/6_4/4_6_R_13
+6_1/5_4/4_1_D
+3_0/16_2/13_6_D
+2_1/6_4/4_1_P
+2_1_1_X/9_2/3_4/28_6_D
+5_1/6_2/6_6_D
+9_1/3_2/13_6_D
+12_1/6_4/4_1_D
+3_2/9_2/13_6_O
+2_1_2_X/13_1/3_4/28_6_D
+4_3/6_3/3_5_P
+2_1_1_X/9_3/3_2/13_1_D
+2_1/6_4/4_6_D
+28_2/28_3/22_6_U_3
+1_6_A
+1_5_X/4_2/6_3/3_5_P
+6_1_6_X/16_2/3_3/22_6_P
+1_5_E
+5_5_6_X/9_1/3_4/16_1_P
+1_5_E
+6_1_5_X/16_0/28_4/16_6_D
+3_3/6_2/2_5_O
+1_6_X/5_3/6_3/3_6_D
+3_0/28_4/16_1_D
+6_2/6_2/12_5_P
+12_1_1_X/16_2/3_2/16_1_O
+C_88_16
+12_1_6_X/9_1/3_4/13_1_R_2
+3_1/9_4/13_1_D
+6_1/5_4/4_1_D
+3_2/9_2/88_6_R_3
+3_2/9_4/13_6_U_2
+1_1_E
+5_5_5_X/28_0/3_2/13_6_D
+6_2/6_3/3_6_U_10
+C_15_10
+5_5_5_X/28_2/3_3_X/3_F_2
+2_A_1_D
+13_1/3_4/28_6_U_3
+1_6_X/6_2/6_2/2_6_D
+22_0/3_4/28_6_R_3
+15_1/15_3/22_6_D
+6_2/3_2_X/2_F_2
+13_A_6_P
+1_1_X/5_3/6_4/4_1_D
+3_3/15_2/13_6_P
+1_6_X/6_3/6_3/3_6_P
+2_1_1_X/9_3/3_3/22_6_D
+6_1/6_1/1_5_O
+1_6_X/4_2/6_3/3_1_D
+22_3/3_4/28_1_D
+2_2/6_4/4_5_D
+28_2/3_1/13_5_D
+6_2/5_4/4_5_R_22
+6_2/5_4/4_1_B_3_P
+1_5_X/4_3/6_3_X/4_F_5
+9_1/3_6/88_6_D
+6_1/6_1/1_6_D
+88_3/3_4/28_1_D
+1_2/6_4/4_6_O
+1_5_X/4_1/6_4/4_6_D
+88_0/3_1/13_1_D
+1_3/6_3/3_6_D
+9_1/3_6_X/88_F_1
+1_3/6_3/3_6_D
+22_1/9_1/13_6_O
+6_1_5_X/28_2/3_3/22_6_P
+1_5_X/4_3/6_3/3_5_D
+9_1/3_4/88_6_R_3
+9_1/3_6/28_1_D
+1_-1
+88_-1
+4_1/6_4/4_6_R_3
+5_2/6_3/3_6_O
+1_6_X/5_3/6_3/3_5_D
+9_1/28_4/88_6_D
+6_1/3_1/1_1_D
+13_1/3_6/28_6_D
+6_0/5_6_X/4_F_6
+9_2/3_4/88_5_D
+5_-2
+1_5_X/5_2/12_2/3_5_U_88
+3_5_6_X/9_3/3_3/3_6_D
+6_2/3_4/4_1_P
+3_5_6_E
+C_99_22
+1_6_X/6_2/3_4/12_6_P
+1_1_6_X/28_2/3_3/15_1_D
+2_2/6_4/4_1_P
+C_10_15
+6_1_5_X/88_1/3_1/13_5_P
+1_6_E
+12_1_6_A
+12_1_6_X/9_1/3_2/88_6_D
+5_1/6_2/2_1_D
+88_1/3_2/88_6_D
+12_1/6_4/4_5_D
+9_0/3_4/13_6_D
+12_2/3_4/4_6_U_10
+12_1_5_E
+1_5_X/6_3/6_6/12_5_O
+1_6_X/5_3/6_4/4_1_P
+W
+s
+A
+
+=== Rotaciones (zonas 1 a 6, S = armador) ===
+Set 1:
+  Palestino: 3-S / 88 / 15 / 13 / 16 / 10
+Set 2:
+  Palestino: 22 / 3-S / 16 / 10 / 13 / 28
+Set 3:
+  Palestino: 99 / 3-S / 88 / 10 / 13 / 28
+
+=== Cambios ===
+Set 1 - Palestino: entra 99, sale 3 (zona 4) (queda como armador)
+Set 1 - Palestino: entra 3, sale 99 (zona 2) (queda como armador)
+Set 2 - Palestino: entra 88, sale 16 (zona 2)
+Set 2 - Palestino: entra 15, sale 10 (zona 2)
+Set 2 - Palestino: entra 99, sale 22 (zona 1)
+Set 2 - Palestino: entra 10, sale 15 (zona 4)
+
+=== Resultado final ===
+Sets: Palestino 0 - 2 O'sommer
+  Set 1: Palestino 15 - 25 O'sommer
+  Set 2: Palestino 22 - 25 O'sommer
+  Set 3: Palestino 0 - 0 O'sommer
+Marcador del set actual: Palestino 0 - 0 O'sommer
+Total de puntos cargados: 87
+
+=== Estadisticas por equipo ===
+--- Palestino ---
+Puntos por fase del rally:
+  Hechos: 37
+      K1: 12 (32.4%) - ganados 10, por error 2
+      K2: 4 (10.8%) - ganados 2, por error 2
+      K3: 12 (32.4%) - ganados 6, por error 6
+      Saque: 9 (24.3%) - ganados 2, por error 7
+      Sin fase: 0 (0.0%) - ganados 0, por error 0
+  Recibidos: 50
+      K1: 18 (36.0%) - ganados 14, por error 4
+      K2: 11 (22.0%) - ganados 9, por error 2
+      K3: 10 (20.0%) - ganados 8, por error 2
+      Saque: 11 (22.0%) - ganados 3, por error 8
+      Sin fase: 0 (0.0%) - ganados 0, por error 0
+Puntos con el armador en cada zona:
+  Zona 1:
+      Hechos: 6 - K1 0, K2 0, K3 1, As 1, Error de saque 4, Sin fase 0
+      Recibidos: 10 - K1 2, K2 3, K3 3, As 1, Error de saque 1, Sin fase 0
+  Zona 2:
+      Hechos: 5 - K1 2, K2 1, K3 1, As 0, Error de saque 1, Sin fase 0
+      Recibidos: 10 - K1 5, K2 2, K3 1, As 0, Error de saque 2, Sin fase 0
+  Zona 3:
+      Hechos: 7 - K1 3, K2 0, K3 3, As 0, Error de saque 1, Sin fase 0
+      Recibidos: 9 - K1 4, K2 2, K3 1, As 0, Error de saque 2, Sin fase 0
+  Zona 4:
+      Hechos: 7 - K1 3, K2 0, K3 3, As 1, Error de saque 0, Sin fase 0
+      Recibidos: 5 - K1 1, K2 0, K3 3, As 0, Error de saque 1, Sin fase 0
+  Zona 5:
+      Hechos: 7 - K1 2, K2 2, K3 3, As 0, Error de saque 0, Sin fase 0
+      Recibidos: 8 - K1 4, K2 1, K3 2, As 1, Error de saque 0, Sin fase 0
+  Zona 6:
+      Hechos: 5 - K1 2, K2 1, K3 1, As 0, Error de saque 1, Sin fase 0
+      Recibidos: 8 - K1 2, K2 3, K3 0, As 1, Error de saque 2, Sin fase 0
+Puntos por causa:
+  Hechos: 37
+    Ganados: 20 (54.1%)
+        Ataque punto: 11
+        Ataque usando el bloqueo: 3
+        Bloqueo punto: 4
+        As de saque: 2
+    Por error: 17 (45.9%)
+        Ataque afuera: 7
+        Ataque a la malla: 0
+        Error de saque: 7
+        Armado malo: 0
+        Defensa perdida: 3
+        Error en juego: 0
+  Recibidos: 50
+    Ganados: 34 (68.0%)
+        Ataque punto: 22
+        Ataque usando el bloqueo: 5
+        Bloqueo punto: 4
+        As de saque: 3
+    Por error: 16 (32.0%)
+        Ataque afuera: 6
+        Ataque a la malla: 0
+        Error de saque: 8
+        Armado malo: 0
+        Defensa perdida: 2
+        Error en juego: 0
+Armado por zona:
+    Zona 1: 7 (9.2%)
+    Zona 2: 19 (25.0%)
+    Zona 6-5: 5 (6.6%)
+    Zona 3: 12 (15.8%)
+    Zona 4: 33 (43.4%)
+Armado por zona (set 1):
+    Zona 1: 2 (6.9%)
+    Zona 2: 7 (24.1%)
+    Zona 6-5: 2 (6.9%)
+    Zona 3: 4 (13.8%)
+    Zona 4: 14 (48.3%)
+Armado por zona (set 2):
+    Zona 1: 5 (10.6%)
+    Zona 2: 12 (25.5%)
+    Zona 6-5: 3 (6.4%)
+    Zona 3: 8 (17.0%)
+    Zona 4: 19 (40.4%)
+Armado por armador:
+  Jugador 3: 55 armados
+      Zona 1: 6 (10.9%)
+      Zona 2: 12 (21.8%)
+      Zona 6-5: 5 (9.1%)
+      Zona 3: 9 (16.4%)
+      Zona 4: 23 (41.8%)
+  Jugador 99: 6 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 2 (33.3%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (16.7%)
+      Zona 4: 3 (50.0%)
+  Otros jugadores: 15 armados
+Armado por armador (set 1):
+  Jugador 3: 20 armados
+      Zona 1: 2 (10.0%)
+      Zona 2: 4 (20.0%)
+      Zona 6-5: 2 (10.0%)
+      Zona 3: 3 (15.0%)
+      Zona 4: 9 (45.0%)
+  Jugador 99: 6 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 2 (33.3%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (16.7%)
+      Zona 4: 3 (50.0%)
+  Otros jugadores: 3 armados
+Armado por armador (set 2):
+  Jugador 3: 35 armados
+      Zona 1: 4 (11.4%)
+      Zona 2: 8 (22.9%)
+      Zona 6-5: 3 (8.6%)
+      Zona 3: 6 (17.1%)
+      Zona 4: 14 (40.0%)
+  Otros jugadores: 12 armados
+Recepciones por jugador:
+  Jugador 2: 7 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 2 (28.6%)
+      Calidad 1: 1 (14.3%)
+      Calidad 2: 3 (42.9%)
+      Calidad 3: 1 (14.3%)
+  Jugador 9: 12 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 3 (25.0%)
+      Calidad 2: 2 (16.7%)
+      Calidad 3: 7 (58.3%)
+  Jugador 13: 2 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 2 (100.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+  Jugador 16: 7 recepciones
+      Pase al otro lado: 1 (14.3%)
+      Calidad 0: 2 (28.6%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 2 (28.6%)
+      Calidad 3: 2 (28.6%)
+  Jugador 28: 6 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 2 (33.3%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 3 (50.0%)
+      Calidad 3: 1 (16.7%)
+  Jugador 88: 5 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 2 (40.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 3 (60.0%)
+Recepciones por jugador (set 1):
+  Jugador 2: 7 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 2 (28.6%)
+      Calidad 1: 1 (14.3%)
+      Calidad 2: 3 (42.9%)
+      Calidad 3: 1 (14.3%)
+  Jugador 9: 3 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 3 (100.0%)
+  Jugador 13: 1 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (100.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+  Jugador 16: 3 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 1 (33.3%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 2 (66.7%)
+  Jugador 88: 4 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (25.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 3 (75.0%)
+Recepciones por jugador (set 2):
+  Jugador 9: 9 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 3 (33.3%)
+      Calidad 2: 2 (22.2%)
+      Calidad 3: 4 (44.4%)
+  Jugador 13: 1 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (100.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+  Jugador 16: 4 recepciones
+      Pase al otro lado: 1 (25.0%)
+      Calidad 0: 1 (25.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 2 (50.0%)
+      Calidad 3: 0 (0.0%)
+  Jugador 28: 6 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 2 (33.3%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 3 (50.0%)
+      Calidad 3: 1 (16.7%)
+  Jugador 88: 1 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (100.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+Recepcion segun tipo de saque (global del equipo):
+  Paralelo: 6 recibidos
+    De 1 a 5: 6 recibidos
+        Pase al otro lado: 1 (16.7%)
+        Calidad 0: 2 (33.3%)
+        Calidad 1: 1 (16.7%)
+        Calidad 2: 1 (16.7%)
+        Calidad 3: 1 (16.7%)
+  Cruzado: 14 recibidos
+    De 1 a 1: 11 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 0 (0.0%)
+        Calidad 2: 4 (36.4%)
+        Calidad 3: 7 (63.6%)
+    De 5 a 5: 2 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 1 (50.0%)
+        Calidad 1: 0 (0.0%)
+        Calidad 2: 1 (50.0%)
+        Calidad 3: 0 (0.0%)
+    De 6 a 1: 1 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 1 (100.0%)
+        Calidad 2: 0 (0.0%)
+        Calidad 3: 0 (0.0%)
+Armado segun calidad de recepcion (global del equipo):
+  Calidad 0:
+      Hacia zona 2: 2
+      Hacia zona 6-5: 1
+      Hacia zona 4: 3
+  Calidad 1:
+      Hacia zona 1: 1
+      Hacia zona 2: 2
+      Hacia zona 4: 5
+  Calidad 2:
+      Hacia zona 2: 2
+      Hacia zona 3: 3
+      Hacia zona 4: 4
+  Calidad 3:
+      Hacia zona 2: 4
+      Hacia zona 3: 6
+      Hacia zona 4: 4
+Armado segun calidad de recepcion (armador 3):
+  Calidad 0:
+      Hacia zona 2: 2
+      Hacia zona 6-5: 1
+      Hacia zona 4: 2
+  Calidad 1:
+      Hacia zona 1: 1
+      Hacia zona 2: 2
+      Hacia zona 4: 4
+  Calidad 2:
+      Hacia zona 2: 1
+      Hacia zona 3: 3
+      Hacia zona 4: 3
+  Calidad 3:
+      Hacia zona 2: 3
+      Hacia zona 3: 5
+      Hacia zona 4: 3
+Armado segun calidad de recepcion (armador 99):
+  Calidad 1:
+      Hacia zona 4: 1
+  Calidad 2:
+      Hacia zona 2: 1
+      Hacia zona 4: 1
+  Calidad 3:
+      Hacia zona 2: 1
+      Hacia zona 3: 1
+      Hacia zona 4: 1
+Ataques por jugador:
+  Jugador 3:
+    Ataques totales: 2
+    Efectivos/Punto Directo: 0 (0.0%)
+    Defendidos: 2 (100.0%)
+    Fuera: 0 (0.0%)
+    Por zona 1:
+    Por zona 2:
+      1 ataques (0-1-0) (50.0%)
+      Hacia zona 1: 0-1-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-0-0
+    Por zona 6-5:
+    Por zona 3:
+      1 ataques (0-1-0) (50.0%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-1-0
+    Por zona 4:
+  Jugador 8:
+    Ataques totales: 1
+    Efectivos/Punto Directo: 0 (0.0%)
+    Defendidos: 1 (100.0%)
+    Fuera: 0 (0.0%)
+    Por zona 1:
+    Por zona 2:
+      1 ataques (0-1-0) (100.0%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-1-0
+      Hacia zona 6: 0-0-0
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+  Jugador 10:
+    Ataques totales: 3
+    Efectivos/Punto Directo: 0 (0.0%)
+    Defendidos: 3 (100.0%)
+    Fuera: 0 (0.0%)
+    Por zona 1:
+    Por zona 2:
+    Por zona 6-5:
+    Por zona 3:
+      2 ataques (0-2-0) (66.7%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-1-0
+      Hacia zona 6: 0-1-0
+    Por zona 4:
+  Jugador 13:
+    Ataques totales: 27
+    Efectivos/Punto Directo: 8 (29.6%)
+    Defendidos: 16 (59.3%)
+    Fuera: 3 (11.1%)
+    Por zona 1:
+      7 ataques (2-4-1) (25.9%)
+      Hacia zona 1: 0-2-0
+      Hacia zona 5: 1-1-0
+      Hacia zona 6: 1-1-1
+    Por zona 2:
+      11 ataques (4-5-2) (40.7%)
+      Hacia zona 1: 1-2-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 3-3-2
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+      8 ataques (1-7-0) (29.6%)
+      Hacia zona 1: 0-4-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 1-3-0
+  Jugador 15:
+    Ataques totales: 4
+    Efectivos/Punto Directo: 0 (0.0%)
+    Defendidos: 1 (25.0%)
+    Fuera: 3 (75.0%)
+    Por zona 1:
+    Por zona 2:
+    Por zona 6-5:
+    Por zona 3:
+      4 ataques (0-1-3) (100.0%)
+      Hacia zona 1: 0-1-1
+      Hacia zona 5: 0-0-1
+      Hacia zona 6: 0-0-1
+    Por zona 4:
+  Jugador 16:
+    Ataques totales: 10
+    Efectivos/Punto Directo: 1 (10.0%)
+    Defendidos: 8 (80.0%)
+    Fuera: 1 (10.0%)
+    Por zona 1:
+    Por zona 2:
+      2 ataques (0-1-1) (20.0%)
+      Hacia zona 1: 0-0-1
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-1-0
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+      8 ataques (1-7-0) (80.0%)
+      Hacia zona 1: 1-2-0
+      Hacia zona 5: 0-1-0
+      Hacia zona 6: 0-4-0
+  Jugador 22:
+    Ataques totales: 5
+    Efectivos/Punto Directo: 3 (60.0%)
+    Defendidos: 2 (40.0%)
+    Fuera: 0 (0.0%)
+    Por zona 1:
+    Por zona 2:
+    Por zona 6-5:
+    Por zona 3:
+      5 ataques (3-2-0) (100.0%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 3-2-0
+    Por zona 4:
+  Jugador 28:
+    Ataques totales: 13
+    Efectivos/Punto Directo: 1 (7.7%)
+    Defendidos: 11 (84.6%)
+    Fuera: 1 (7.7%)
+    Por zona 1:
+    Por zona 2:
+    Por zona 6-5:
+      2 ataques (0-2-0) (15.4%)
+      Hacia zona 1: 0-1-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-1-0
+    Por zona 3:
+    Por zona 4:
+      10 ataques (1-8-1) (76.9%)
+      Hacia zona 1: 0-2-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 1-6-1
+  Jugador 88:
+    Ataques totales: 13
+    Efectivos/Punto Directo: 1 (7.7%)
+    Defendidos: 10 (76.9%)
+    Fuera: 2 (15.4%)
+    Por zona 1:
+    Por zona 2:
+      4 ataques (0-4-0) (30.8%)
+      Hacia zona 1: 0-1-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-3-0
+    Por zona 6-5:
+      3 ataques (0-3-0) (23.1%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-1-0
+      Hacia zona 6: 0-2-0
+    Por zona 3:
+    Por zona 4:
+      6 ataques (1-3-2) (46.2%)
+      Hacia zona 1: 1-0-0
+      Hacia zona 5: 0-1-1
+      Hacia zona 6: 0-2-1
+Bloqueos punto por jugador:
+  Jugador 3: 1 bloqueos punto (25.0%)
+  Jugador 10: 1 bloqueos punto (25.0%)
+  Jugador 13: 1 bloqueos punto (25.0%)
+  Jugador 15: 1 bloqueos punto (25.0%)
+  Total: 4 bloqueos punto
+
+--- O'sommer ---
+Puntos por fase del rally:
+  Hechos: 50
+      K1: 18 (36.0%) - ganados 14, por error 4
+      K2: 11 (22.0%) - ganados 9, por error 2
+      K3: 10 (20.0%) - ganados 8, por error 2
+      Saque: 11 (22.0%) - ganados 3, por error 8
+      Sin fase: 0 (0.0%) - ganados 0, por error 0
+  Recibidos: 37
+      K1: 12 (32.4%) - ganados 10, por error 2
+      K2: 4 (10.8%) - ganados 2, por error 2
+      K3: 12 (32.4%) - ganados 6, por error 6
+      Saque: 9 (24.3%) - ganados 2, por error 7
+      Sin fase: 0 (0.0%) - ganados 0, por error 0
+Puntos con el armador en cada zona:
+    (sin rotacion cargada)
+Puntos por causa:
+  Hechos: 50
+    Ganados: 34 (68.0%)
+        Ataque punto: 22
+        Ataque usando el bloqueo: 5
+        Bloqueo punto: 4
+        As de saque: 3
+    Por error: 16 (32.0%)
+        Ataque afuera: 6
+        Ataque a la malla: 0
+        Error de saque: 8
+        Armado malo: 0
+        Defensa perdida: 2
+        Error en juego: 0
+  Recibidos: 37
+    Ganados: 20 (54.1%)
+        Ataque punto: 11
+        Ataque usando el bloqueo: 3
+        Bloqueo punto: 4
+        As de saque: 2
+    Por error: 17 (45.9%)
+        Ataque afuera: 7
+        Ataque a la malla: 0
+        Error de saque: 7
+        Armado malo: 0
+        Defensa perdida: 3
+        Error en juego: 0
+Armado por zona:
+    Zona 1: 6 (8.6%)
+    Zona 2: 11 (15.7%)
+    Zona 6-5: 1 (1.4%)
+    Zona 3: 21 (30.0%)
+    Zona 4: 31 (44.3%)
+Armado por zona (set 1):
+    Zona 1: 3 (12.0%)
+    Zona 2: 4 (16.0%)
+    Zona 6-5: 0 (0.0%)
+    Zona 3: 8 (32.0%)
+    Zona 4: 10 (40.0%)
+Armado por zona (set 2):
+    Zona 1: 3 (6.7%)
+    Zona 2: 7 (15.6%)
+    Zona 6-5: 1 (2.2%)
+    Zona 3: 13 (28.9%)
+    Zona 4: 21 (46.7%)
+Armado por armador:
+  Jugador 2: 3 armados
+      Zona 1: 1 (33.3%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (33.3%)
+      Zona 4: 1 (33.3%)
+  Jugador 3: 5 armados
+      Zona 1: 1 (20.0%)
+      Zona 2: 1 (20.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 3 (60.0%)
+  Jugador 5: 5 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (20.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 4 (80.0%)
+  Jugador 6: 54 armados
+      Zona 1: 4 (7.4%)
+      Zona 2: 7 (13.0%)
+      Zona 6-5: 1 (1.9%)
+      Zona 3: 19 (35.2%)
+      Zona 4: 23 (42.6%)
+  Jugador 7: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (100.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 0 (0.0%)
+  Jugador 12: 2 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (50.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (50.0%)
+      Zona 4: 0 (0.0%)
+Armado por armador (set 1):
+  Jugador 2: 2 armados
+      Zona 1: 1 (50.0%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 1 (50.0%)
+  Jugador 3: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (100.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 0 (0.0%)
+  Jugador 5: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (100.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 0 (0.0%)
+  Jugador 6: 19 armados
+      Zona 1: 2 (10.5%)
+      Zona 2: 1 (5.3%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 7 (36.8%)
+      Zona 4: 9 (47.4%)
+  Jugador 7: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (100.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 0 (0.0%)
+  Jugador 12: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (100.0%)
+      Zona 4: 0 (0.0%)
+Armado por armador (set 2):
+  Jugador 2: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 1 (100.0%)
+      Zona 4: 0 (0.0%)
+  Jugador 3: 4 armados
+      Zona 1: 1 (25.0%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 3 (75.0%)
+  Jugador 5: 4 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 0 (0.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 4 (100.0%)
+  Jugador 6: 35 armados
+      Zona 1: 2 (5.7%)
+      Zona 2: 6 (17.1%)
+      Zona 6-5: 1 (2.9%)
+      Zona 3: 12 (34.3%)
+      Zona 4: 14 (40.0%)
+  Jugador 12: 1 armados
+      Zona 1: 0 (0.0%)
+      Zona 2: 1 (100.0%)
+      Zona 6-5: 0 (0.0%)
+      Zona 3: 0 (0.0%)
+      Zona 4: 0 (0.0%)
+Recepciones por jugador:
+  Jugador 4: 7 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 2 (28.6%)
+      Calidad 2: 2 (28.6%)
+      Calidad 3: 3 (42.9%)
+  Jugador 5: 10 recepciones
+      Pase al otro lado: 1 (10.0%)
+      Calidad 0: 2 (20.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 1 (10.0%)
+      Calidad 3: 6 (60.0%)
+  Jugador 6: 6 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 1 (16.7%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 2 (33.3%)
+      Calidad 3: 3 (50.0%)
+  Jugador 12: 5 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (20.0%)
+      Calidad 2: 1 (20.0%)
+      Calidad 3: 3 (60.0%)
+Recepciones por jugador (set 1):
+  Jugador 4: 2 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (50.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 1 (50.0%)
+  Jugador 5: 4 recepciones
+      Pase al otro lado: 1 (25.0%)
+      Calidad 0: 1 (25.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 2 (50.0%)
+  Jugador 6: 1 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 1 (100.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+  Jugador 12: 4 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 1 (25.0%)
+      Calidad 3: 3 (75.0%)
+Recepciones por jugador (set 2):
+  Jugador 4: 5 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (20.0%)
+      Calidad 2: 2 (40.0%)
+      Calidad 3: 2 (40.0%)
+  Jugador 5: 6 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 1 (16.7%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 1 (16.7%)
+      Calidad 3: 4 (66.7%)
+  Jugador 6: 5 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 0 (0.0%)
+      Calidad 2: 2 (40.0%)
+      Calidad 3: 3 (60.0%)
+  Jugador 12: 1 recepciones
+      Pase al otro lado: 0 (0.0%)
+      Calidad 0: 0 (0.0%)
+      Calidad 1: 1 (100.0%)
+      Calidad 2: 0 (0.0%)
+      Calidad 3: 0 (0.0%)
+Recepcion segun tipo de saque (global del equipo):
+  Paralelo: 13 recibidos
+    De 1 a 5: 10 recibidos
+        Pase al otro lado: 1 (10.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 2 (20.0%)
+        Calidad 2: 2 (20.0%)
+        Calidad 3: 5 (50.0%)
+    De 5 a 1: 1 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 0 (0.0%)
+        Calidad 2: 0 (0.0%)
+        Calidad 3: 1 (100.0%)
+    De 6 a 6: 2 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 1 (50.0%)
+        Calidad 1: 1 (50.0%)
+        Calidad 2: 0 (0.0%)
+        Calidad 3: 0 (0.0%)
+  Cruzado: 4 recibidos
+    De 1 a 1: 1 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 0 (0.0%)
+        Calidad 2: 0 (0.0%)
+        Calidad 3: 1 (100.0%)
+    De 6 a 5: 3 recibidos
+        Pase al otro lado: 0 (0.0%)
+        Calidad 0: 0 (0.0%)
+        Calidad 1: 0 (0.0%)
+        Calidad 2: 0 (0.0%)
+        Calidad 3: 3 (100.0%)
+Armado segun calidad de recepcion (global del equipo):
+  Calidad 0:
+      Hacia zona 2: 2
+  Calidad 1:
+      Hacia zona 1: 1
+      Hacia zona 3: 1
+      Hacia zona 4: 1
+  Calidad 2:
+      Hacia zona 2: 2
+      Hacia zona 3: 2
+      Hacia zona 4: 2
+  Calidad 3:
+      Hacia zona 6-5: 1
+      Hacia zona 3: 9
+      Hacia zona 4: 3
+Armado segun calidad de recepcion (armador 2):
+  Calidad 1:
+      Hacia zona 1: 1
+Armado segun calidad de recepcion (armador 3):
+  Calidad 2:
+      Hacia zona 4: 1
+Armado segun calidad de recepcion (armador 6):
+  Calidad 0:
+      Hacia zona 2: 2
+  Calidad 1:
+      Hacia zona 3: 1
+      Hacia zona 4: 1
+  Calidad 2:
+      Hacia zona 2: 1
+      Hacia zona 3: 2
+      Hacia zona 4: 1
+  Calidad 3:
+      Hacia zona 6-5: 1
+      Hacia zona 3: 9
+      Hacia zona 4: 3
+Armado segun calidad de recepcion (armador 12):
+  Calidad 2:
+      Hacia zona 2: 1
+Ataques por jugador:
+  Jugador 1:
+    Ataques totales: 5
+    Efectivos/Punto Directo: 1 (20.0%)
+    Defendidos: 3 (60.0%)
+    Fuera: 1 (20.0%)
+    Por zona 1:
+      5 ataques (1-3-1) (100.0%)
+      Hacia zona 1: 0-2-0
+      Hacia zona 5: 1-0-1
+      Hacia zona 6: 0-1-0
+    Por zona 2:
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+  Jugador 2:
+    Ataques totales: 9
+    Efectivos/Punto Directo: 2 (22.2%)
+    Defendidos: 4 (44.4%)
+    Fuera: 3 (33.3%)
+    Por zona 1:
+    Por zona 2:
+      8 ataques (2-3-3) (88.9%)
+      Hacia zona 1: 1-2-0
+      Hacia zona 5: 1-0-1
+      Hacia zona 6: 0-1-2
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+  Jugador 3:
+    Ataques totales: 21
+    Efectivos/Punto Directo: 13 (61.9%)
+    Defendidos: 7 (33.3%)
+    Fuera: 1 (4.8%)
+    Por zona 1:
+    Por zona 2:
+      1 ataques (1-0-0) (4.8%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 1-0-0
+      Hacia zona 6: 0-0-0
+    Por zona 6-5:
+    Por zona 3:
+      20 ataques (12-7-1) (95.2%)
+      Hacia zona 1: 3-1-0
+      Hacia zona 5: 2-3-0
+      Hacia zona 6: 7-3-1
+    Por zona 4:
+  Jugador 4:
+    Ataques totales: 26
+    Efectivos/Punto Directo: 6 (23.1%)
+    Defendidos: 16 (61.5%)
+    Fuera: 4 (15.4%)
+    Por zona 1:
+    Por zona 2:
+    Por zona 6-5:
+    Por zona 3:
+    Por zona 4:
+      26 ataques (6-16-4) (100.0%)
+      Hacia zona 1: 4-5-2
+      Hacia zona 5: 0-5-0
+      Hacia zona 6: 2-6-2
+  Jugador 6:
+    Ataques totales: 2
+    Efectivos/Punto Directo: 0 (0.0%)
+    Defendidos: 2 (100.0%)
+    Fuera: 0 (0.0%)
+    Por zona 1:
+    Por zona 2:
+      1 ataques (0-1-0) (50.0%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-0-0
+      Hacia zona 6: 0-1-0
+    Por zona 6-5:
+    Por zona 3:
+      1 ataques (0-1-0) (50.0%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-1-0
+      Hacia zona 6: 0-0-0
+    Por zona 4:
+  Jugador 12:
+    Ataques totales: 8
+    Efectivos/Punto Directo: 5 (62.5%)
+    Defendidos: 1 (12.5%)
+    Fuera: 2 (25.0%)
+    Por zona 1:
+    Por zona 2:
+      1 ataques (1-0-0) (12.5%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 1-0-0
+      Hacia zona 6: 0-0-0
+    Por zona 6-5:
+      1 ataques (0-0-1) (12.5%)
+      Hacia zona 1: 0-0-0
+      Hacia zona 5: 0-0-1
+      Hacia zona 6: 0-0-0
+    Por zona 3:
+    Por zona 4:
+      6 ataques (4-1-1) (75.0%)
+      Hacia zona 1: 2-1-0
+      Hacia zona 5: 1-0-0
+      Hacia zona 6: 1-0-1
+Bloqueos punto por jugador:
+  Jugador 3: 2 bloqueos punto (50.0%)
+  Jugador 4: 1 bloqueos punto (25.0%)
+  Jugador 8: 1 bloqueos punto (25.0%)
+  Total: 4 bloqueos punto
