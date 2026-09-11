@@ -20,9 +20,33 @@ leen de ahi, aunque no se puedan modificar.
 
 ## Los pasos
 
-1. **Crear el Blob store.** En el panel de Vercel: Storage → Create Database →
-   Blob. Al conectarlo al proyecto, Vercel agrega solo la variable
-   `BLOB_READ_WRITE_TOKEN`.
+1. **Crear el Blob store.** Desde el panel:
+
+   1. Entrar a [vercel.com](https://vercel.com) y elegir arriba a la izquierda
+      la cuenta (o el equipo) donde esta el proyecto.
+   2. Pestaña **Storage** → **Create Database** → **Blob**.
+   3. Ponerle un nombre (`voley-archivos`, por ejemplo) y dejar la region que
+      viene sugerida. **Create**.
+   4. Ya creado, entrar al store → **Connect Project** → elegir este proyecto →
+      marcar los tres entornos (Production, Preview, Development) → **Connect**.
+
+   Eso solo agrega la variable `BLOB_READ_WRITE_TOKEN` a las del proyecto: no
+   hay que copiarla ni pegarla a mano en ningun lado.
+
+   Lo mismo desde la terminal, si esta el CLI instalado:
+
+       npm i -g vercel
+       vercel login
+       vercel link                        # atar la carpeta al proyecto
+       vercel blob store add voley-archivos
+
+   **Importante:** las variables de entorno solo entran en los deploys nuevos.
+   Despues de conectar el store hay que volver a desplegar (Deployments → el
+   ultimo → los tres puntos → **Redeploy**), o el sitio sigue sin verla.
+
+   Si los nombres de los botones no coinciden exactamente, es que cambio el
+   panel: lo que se busca es crear un store de tipo **Blob** y conectarlo al
+   proyecto.
 
 2. **Poner la clave de carga como variable de entorno.** Settings →
    Environment Variables:
@@ -49,6 +73,23 @@ leen de ahi, aunque no se puedan modificar.
 La pantalla avisa sola: si no hay Blob configurado aparece una franja amarilla
 arriba de las pestañas diciendo que lo que se guarde se va a perder. Sin esa
 franja, esta guardando de verdad.
+
+Para confirmarlo del todo: cargar cualquier cosa, darle a Guardar, y mirar el
+store en el panel (Storage → el store → **Browse**). Tiene que aparecer el
+`.txt` dentro de `Datos/`.
+
+## Probar el blob desde casa
+
+El token sirve tambien en la notebook, y es la unica forma de probar todo el
+camino sin desplegar. En PowerShell:
+
+    vercel env pull .env.local          # baja las variables del proyecto
+    $env:BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_..."
+    python servidor_voley.py
+
+El proyecto lee la variable del entorno y no del archivo `.env.local`, asi que
+hay que ponerla en la sesion como esta arriba. Con ella puesta, lo que se
+guarde en casa va al mismo store que el del sitio.
 
 ## Que hay en cada archivo
 

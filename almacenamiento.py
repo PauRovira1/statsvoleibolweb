@@ -375,6 +375,17 @@ def version_de_sesion() -> str:
 
 # ----------------------------------------------------------------------
 
+# Las variables de entorno que el proyecto mira. En /api/estado se informa
+# cuales llegaron y cuales no (solo eso: el nombre y un si/no, nunca el valor).
+# Es para poder distinguir "falta configurarla" de "esta configurada pero el
+# deploy es anterior y todavia no la ve", que desde afuera se ven igual.
+VARIABLES = ("BLOB_READ_WRITE_TOKEN", "VOLEY_CLAVE", "VOLEY_SECRETO")
+
+
+def variables_presentes() -> dict:
+    return {nombre: bool(os.environ.get(nombre, "").strip()) for nombre in VARIABLES}
+
+
 def estado() -> dict:
     """Como quedo configurado el almacenamiento. Va en /api/estado para que la
     pantalla pueda avisar que lo que se guarde no va a durar."""
@@ -386,5 +397,6 @@ def estado() -> dict:
         "persistente": hay_blob() or not EN_SERVERLESS,
         "blob": hay_blob(),
         "escritura": str(CARPETA_ESCRITURA),
+        "variables": variables_presentes(),
         "avisos": avisos,
     }
