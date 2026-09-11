@@ -143,17 +143,56 @@ _candado_blob = threading.Lock()
 _ultimo_listado: dict[str, tuple[float, list[dict]]] = {}
 
 
+class ErrorDeBlob(RuntimeError):
+    """El blob contesto algo que no esperabamos.
+
+    Existe para no perder el cuerpo de la respuesta: urllib deja el detalle
+    del error adentro del HTTPError y hay que leerlo antes de que se cierre.
+    Ese detalle es lo unico que dice si fallo la credencial, la version de la
+    API o el nombre del archivo, y es lo que se termina mostrando en pantalla."""
+
+
+# Por que fallo la ultima llamada al blob. Se guarda para poder decirlo en el
+# mensaje del guardado: el que esta en la cancha no va a ir a mirar los logs
+# del proyecto, y sin el motivo "no se pudo subir" no se puede arreglar.
+_ultimo_error = ""
+
+
+def ultimo_error() -> str:
+    with _candado_blob:
+        return _ultimo_error
+
+
+def _anotar_error(texto: str) -> None:
+    global _ultimo_error
+    with _candado_blob:
+        _ultimo_error = texto
+    print(f"[almacenamiento] {texto}")      # ademas queda en los logs de Vercel
+
+
 def _pedir(url: str, *, metodo="GET", cuerpo=None, cabeceras=None, timeout=10):
     pedido = urllib.request.Request(url, data=cuerpo, method=metodo)
     pedido.add_header("authorization", f"Bearer {token_blob()}")
     pedido.add_header("x-api-version", VERSION_API_BLOB)
     for clave, valor in (cabeceras or {}).items():
         pedido.add_header(clave, valor)
-    with urllib.request.urlopen(pedido, timeout=timeout) as respuesta:
-        return respuesta.read()
+    # el token va en la cabecera, asi que la URL se puede mostrar entera
+    donde = f"{metodo} {url.split('?')[0]}"
+    try:
+        with urllib.request.urlopen(pedido, timeout=timeout) as respuesta:
+            return respuesta.read()
+    except urllib.error.HTTPError as error:
+        try:
+            detalle = error.read().decode("utf-8", "replace").strip()[:300]
+        except OSError:
+            detalle = ""
+        raise ErrorDeBlob(f"{donde} -> HTTP {error.code} {detalle}") from None
+    except urllib.error.URLError as error:
+        raise ErrorDeBlob(f"{donde} -> no se pudo contactar al blob: {error.reason}") from None
 
 
-FALLAS_DE_RED = (urllib.error.URLError, OSError, ValueError, json.JSONDecodeError)
+FALLAS_DE_RED = (ErrorDeBlob, urllib.error.URLError, OSError,
+                 ValueError, json.JSONDecodeError)
 
 
 def _listar_blobs_crudo(prefijo: str) -> list[dict]:
@@ -194,7 +233,8 @@ def listar_blobs(prefijo: str, *, refrescar=False) -> list[dict]:
 
     try:
         blobs = _listar_blobs_crudo(prefijo)
-    except FALLAS_DE_RED:
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo listar {prefijo!r}: {error}")
         with _candado_blob:
             guardado = _ultimo_listado.get(prefijo)
         return guardado[1] if guardado else []
@@ -307,11 +347,8 @@ def publicar(ruta) -> str:
     tipo = TIPO_POR_EXTENSION.get(ruta.suffix.lower(), "application/octet-stream")
     try:
         url = subir_blob(f"{logica}/{ruta.name}", ruta.read_bytes(), tipo)
-    except (urllib.error.URLError, OSError, ValueError) as error:
-        # queda en los logs de Vercel: desde la pantalla se ve que fallo, pero
-        # no por que, y esto es lo unico que lo dice
-        print(f"[almacenamiento] no se pudo subir {logica}/{ruta.name}: "
-              f"{type(error).__name__}: {error}")
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo subir {logica}/{ruta.name}: {error}")
         return ""
     with _candado_blob:
         _ultimo_listado.pop(f"{logica}/", None)   # que el proximo listado lo vea
@@ -334,7 +371,8 @@ def publicado(logica: str, nombre: str) -> bool:
     prefijo = f"{logica}/"
     try:
         blobs = _listar_blobs_crudo(prefijo)
-    except FALLAS_DE_RED:
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo confirmar {logica}/{nombre}: {error}")
         return False
     _guardar_listado(prefijo, blobs)
     return any(b.get("pathname") == f"{prefijo}{nombre}" for b in blobs)
@@ -447,5 +485,9 @@ def estado() -> dict:
         # para Production y el deploy que contesta es un preview, no las ve
         "entorno": os.environ.get("VERCEL_ENV", ""),
         "variables": variables_presentes(),
+        # solo lo sabe la instancia que fallo, asi que puede venir vacio
+        # aunque algo haya fallado recien; el mensaje del guardado es el que
+        # siempre lo trae, porque lo contesta esa misma instancia
+        "ultimo_error": ultimo_error(),
         "avisos": avisos,
     }

@@ -187,9 +187,13 @@ def aviso_de_blob(logica: str, nombre: str) -> str:
     arriba, y repetirlo en cada guardado seria ruido."""
     if not alm.hay_blob() or alm.publicado(logica, nombre):
         return ""
+    # el motivo lo sabe esta misma instancia, que es la que acaba de fallar:
+    # va en el mensaje para no tener que ir a buscarlo a los logs
+    motivo = alm.ultimo_error()
     return (f"  [OJO: {nombre} no se pudo subir al Blob y por ahora solo esta "
             f"en {alm.CARPETA_ESCRITURA}, que se borra solo. Descargalo ahora "
-            f"o volve a guardar.]")
+            f"o volve a guardar."
+            + (f" Motivo: {motivo}]" if motivo else "]"))
 
 
 def ip_en_la_red() -> str:
