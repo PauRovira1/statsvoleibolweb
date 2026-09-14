@@ -412,3 +412,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .teclado .todo{grid-column:1/-1}
 .enCurso .falta{font:12px/1.3 var(--mono);color:var(--acento);
                 margin-top:-4px;word-break:break-word}
+
+/* El libero se distingue del resto: no rota y entra solo por el que cubre. */
+.jugador.libero{border-style:dashed;border-color:var(--ok)}
+.jugador.libero.viva{border-color:var(--ok);background:#14251e}

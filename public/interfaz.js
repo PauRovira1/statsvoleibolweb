@@ -297,7 +297,7 @@ function pintar(e){
           `<td style="color:var(--suave)">${esc(r.giros)}</td></tr>`;
       }).join("") + `</table></div>
       <p class="nota">Formacion actual, no la inicial. En amarillo el armador;
-      resaltada la zona 1, que es la que saca.</p>`
+      resaltada la zona 1, que es la que saca.</p>` + liberosHTML(e)
     : `<p class="nota" style="margin:0">Sin rotacion cargada: el numero del sacador es obligatorio.</p>`;
 
   pintarVisual(e);
@@ -459,10 +459,13 @@ $$(".modos button").forEach(b =>
   b.addEventListener("click", () => guardarModo(b.dataset.modo)));
 
 // ----------------------------------------------------------------------
+// Los que se pueden tocar son los que estan REALMENTE en la cancha, no la
+// rotacion nominal: con un libero declarado, el cubierto que esta atras no
+// esta jugando y el libero si.
 function plantelesDe(e){
   const salida = {};
   ["A", "B"].forEach(l => {
-    salida[l] = (e.rotaciones[l] && e.rotaciones[l].jugadores) || [];
+    salida[l] = (e.rotaciones[l] && e.rotaciones[l].formacion) || [];
   });
   return salida;
 }
@@ -516,6 +519,18 @@ function vivosPorEquipo(){
 }
 
 // ----------------------------------------------------------------------
+// Los liberos no salen en la tabla de rotacion porque no ocupan una zona: no
+// rotan, entran por el que cubren cuando ese esta atras.
+function liberosHTML(e){
+  const filas = ["A", "B"].flatMap(letra =>
+    ((e.rotaciones[letra] && e.rotaciones[letra].liberos) || []).map(l =>
+      `<li><b>${esc(l.jugador)}</b> de ${esc(e.nombres[letra])}, juega por el
+       ${l.cubre.map(esc).join(" y el ")}</li>`));
+  if(!filas.length) return "";
+  return `<p class="nota" style="margin-bottom:4px">Liberos</p>
+          <ul class="nota" style="margin:0;padding-left:18px">${filas.join("")}</ul>`;
+}
+
 function canchaHTML(e, vivos, opciones){
   return mitadHTML(e, "A", vivos, opciones) +
          `<div class="red"></div>` +
@@ -525,8 +540,12 @@ function canchaHTML(e, vivos, opciones){
 function mitadHTML(e, letra, vivos, opciones){
   opciones = opciones || {};
   const rotacion = e.rotaciones[letra];
-  const jugadores = (rotacion && rotacion.jugadores) || [];
+  // en el cambio se toca sobre la rotacion nominal, porque tambien se puede
+  // sacar a un jugador que ahora mismo esta cubierto por el libero
+  const jugadores = (rotacion && (opciones.nominal ? rotacion.jugadores
+                                                  : rotacion.formacion)) || [];
   const elArmador = rotacion ? rotacion.armador : null;
+  const liberos = new Set(((rotacion && rotacion.liberos) || []).map(l => l.jugador));
   const vivo = vivos[letra] || {jugadores: new Set(), zonas: new Set()};
   // "equipoActivo" es de quien es el paso segun el armador. Hace falta
   // ademas de los circulos vivos porque un equipo sin rotacion no tiene
@@ -544,6 +563,7 @@ function mitadHTML(e, letra, vivos, opciones){
     const circulo = dorsal == null ? "" : `
       <button class="jugador ${jugadorVivo ? "viva" : ""}
         ${dorsal === elArmador ? "armador" : ""}
+        ${liberos.has(dorsal) ? "libero" : ""}
         ${(zona === 1 && e.equipo_saca === letra && e.jugador_saca === dorsal) ? "saca" : ""}"
         ${jugadorVivo ? marca : "disabled"}>${esc(dorsal)}</button>`;
     return `<div class="celda ${zonaViva ? "zonaViva" : ""}"
@@ -669,6 +689,8 @@ function usarTecla(tecla){
       if(armador.cerrada) return mandarJugada();
     } else if(destino === "rotacion"){
       rotacionBorrador.jugadores[ranura] = numero;
+    } else if(destino === "libero"){
+      rotacionBorrador.libero = {jugador: numero, cubre: []};
     } else if(destino === "cambio"){
       cambioVisual.entra = numero;
     }
@@ -713,15 +735,21 @@ function pintarPreparacion(e){
 
 function pintarRotacion(e, espera){
   if(!rotacionBorrador || rotacionBorrador.equipo !== espera.equipo){
-    rotacionBorrador = {equipo: espera.equipo, armador: null,
+    rotacionBorrador = {equipo: espera.equipo, armador: null, liberos: [],
+                        libero: null,
                         jugadores: [null, null, null, null, null, null]};
   }
   const puestos = rotacionBorrador.jugadores;
+  const declarando = rotacionBorrador.libero;
   const celdas = ZONAS_MITAD.B.map(zona => {
     const dorsal = zona <= 6 ? puestos[zona - 1] : null;
+    // mientras se declara un libero, tocar una zona dice a quien cubre en vez
+    // de cargar el dorsal de esa zona
+    const cubierto = declarando && dorsal != null && declarando.cubre.includes(dorsal);
     const slot = zona > 6 ? "" : `
       <button class="jugador ${dorsal == null ? "" : "viva"}
-              ${rotacionBorrador.armador === zona ? "armador" : ""}"
+              ${rotacionBorrador.armador === zona ? "armador" : ""}
+              ${cubierto ? "libero" : ""}"
               data-accion="ranura" data-valor="${zona}">${dorsal == null ? "+" : esc(dorsal)}</button>`;
     return `<div class="celda"><span class="numeroZona">${zona}</span>${slot}</div>`;
   }).join("");
@@ -735,17 +763,37 @@ function pintarRotacion(e, espera){
   $("#quePide").textContent =
     `Rotacion de ${e.nombres[espera.equipo]}: tocá cada zona y poné el dorsal`;
 
-  if(tecleando && tecleando.destino === "rotacion"){
+  if(tecleando && (tecleando.destino === "rotacion" || tecleando.destino === "libero")){
     $("#opciones").innerHTML = tecladoHTML(true);
     return;
   }
+  if(declarando){
+    $("#quePide").textContent =
+      `Libero ${declarando.jugador}: tocá a quién cubre (uno o dos)`;
+    $("#opciones").innerHTML = `<div class="preparacion" style="width:100%">
+      <div class="fila">
+        <button class="primario grande" data-accion="liberoListo"
+                ${declarando.cubre.length ? "" : "disabled"}>Listo con el libero</button>
+        <button class="tenue" data-accion="liberoCancelar">Cancelar</button>
+      </div></div>`;
+    return;
+  }
+
   const completa = puestos.every(d => d != null) && rotacionBorrador.armador != null;
   const elegirArmador = puestos.map((dorsal, i) => dorsal == null ? "" :
     `<button class="secundaria ${rotacionBorrador.armador === i + 1 ? "bien" : ""}"
              data-accion="armador" data-valor="${i + 1}">${esc(dorsal)}</button>`).join("");
+  const yaDeclarados = rotacionBorrador.liberos.map((l, i) =>
+    `<button class="secundaria bien" data-accion="liberoSacar" data-valor="${i}"
+             title="tocar para quitarlo">${esc(l.jugador)} por el
+       ${l.cubre.map(esc).join(" y el ")} ✕</button>`).join("");
   $("#opciones").innerHTML = `<div class="preparacion" style="width:100%">
     <div class="quePide" style="margin:0">Cual es el armador</div>
     <div class="opciones">${elegirArmador || `<span class="nota">Poné los dorsales primero.</span>`}</div>
+    <div class="quePide" style="margin:0">Liberos <span class="nota">(opcional)</span></div>
+    <div class="opciones">${yaDeclarados}
+      <button class="secundaria" data-accion="liberoNuevo"
+              ${completa && rotacionBorrador.liberos.length < 2 ? "" : "disabled"}>+ libero</button></div>
     <div class="fila">
       <button class="primario grande" data-accion="rotacionListo" ${completa ? "" : "disabled"}>
         Listo</button>
@@ -767,11 +815,17 @@ function pintarCambio(e){
         .forEach(d => todos[letra].jugadores.add(d)));
   }
   $("#cancha").hidden = false;
-  $("#cancha").innerHTML = canchaHTML(e, todos, {accion: "cambioSale"});
+  $("#cancha").innerHTML = canchaHTML(e, todos, {accion: "cambioSale", nominal: true});
 
   if(cambioVisual.sale == null){
     $("#quePide").textContent = "Cambio: tocá al que sale";
-    $("#opciones").innerHTML =
+    // los liberos no ocupan zona, asi que no estan en la cancha dibujada; van
+    // aparte para poder cambiar uno por otro, que tambien pasa en un partido
+    const liberos = ["A", "B"].flatMap(letra =>
+      ((e.rotaciones[letra] && e.rotaciones[letra].liberos) || []).map(l =>
+        `<button data-accion="cambioSale" data-valor="${esc(l.jugador)}">
+           ${esc(l.jugador)} · libero de ${esc(e.nombres[letra])}</button>`));
+    $("#opciones").innerHTML = liberos.join("") +
       `<button class="tenue" data-accion="cambioCancelar">Cancelar el cambio</button>`;
     return;
   }
@@ -806,6 +860,16 @@ function accionVisual(accion, boton){
   if(accion === "mantener") return enviar(valor);
 
   if(accion === "ranura"){
+    const declarando = rotacionBorrador.libero;
+    if(declarando){
+      // tocar una zona mientras se declara un libero dice a quien cubre
+      const dorsal = rotacionBorrador.jugadores[Number(valor) - 1];
+      if(dorsal == null) return;
+      const puesto = declarando.cubre.indexOf(dorsal);
+      if(puesto >= 0) declarando.cubre.splice(puesto, 1);
+      else if(declarando.cubre.length < 2) declarando.cubre.push(dorsal);
+      return pintarVisual(estadoActual);
+    }
     tecleando = {destino: "rotacion", digitos: "", ranura: Number(valor) - 1};
     return pintarVisual(estadoActual);
   }
@@ -813,11 +877,31 @@ function accionVisual(accion, boton){
     rotacionBorrador.armador = Number(valor);
     return pintarVisual(estadoActual);
   }
+  if(accion === "liberoNuevo"){
+    tecleando = {destino: "libero", digitos: ""};
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "liberoListo"){
+    rotacionBorrador.liberos.push(rotacionBorrador.libero);
+    rotacionBorrador.libero = null;
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "liberoCancelar"){
+    rotacionBorrador.libero = null;
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "liberoSacar"){
+    rotacionBorrador.liberos.splice(Number(valor), 1);
+    return pintarVisual(estadoActual);
+  }
   if(accion === "rotacionListo"){
-    const texto = rotacionBorrador.jugadores.map((dorsal, i) =>
-      dorsal + (rotacionBorrador.armador === i + 1 ? "_S" : "")).join(" ");
+    const campo = rotacionBorrador.jugadores.map((dorsal, i) =>
+      dorsal + (rotacionBorrador.armador === i + 1 ? "_S" : ""));
+    // el libero va al final, aparte de los 6: "9_L_15_10"
+    const liberos = rotacionBorrador.liberos.map(l =>
+      [l.jugador, "L"].concat(l.cubre).join("_"));
     rotacionBorrador = null;
-    return enviar(texto);
+    return enviar(campo.concat(liberos).join(" "));
   }
   if(accion === "sinRotacion"){ rotacionBorrador = null; return enviar(""); }
 

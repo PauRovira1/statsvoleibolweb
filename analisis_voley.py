@@ -384,6 +384,14 @@ EQUIPOS = {"A", "B"}
 CANTIDAD_ROTACION = 6
 MARCA_ARMADOR = "_S"
 
+# El libero no rota: entra por el jugador al que cubre mientras ese esta en una
+# zona de atras, y sale cuando ese pasa adelante. Se declara al final de la
+# misma linea de rotacion ("9_L_15_10" = el libero 9 juega por el 15 y por el
+# 10), asi que una linea sin _L es exactamente la de siempre.
+PATRON_LIBERO = re.compile(r"^(?P<libero>\d+)_L(?P<cubiertos>(?:_\d+)+)$", re.IGNORECASE)
+CANTIDAD_LIBEROS = 2
+ZONAS_DE_ATRAS = (1, 6, 5)
+
 GRUPOS_ZONA_ARMADO = ("1", "2", "6-5", "3", "4")
 ZONA_A_GRUPO = {
     "1": "1",
@@ -776,13 +784,66 @@ def preguntar_nombres_equipos() -> tuple[dict, list[str]]:
     return nombres, entradas_crudas
 
 
+def separar_liberos(entrada: str) -> tuple[list[str], list[dict]]:
+    """Parte la linea de rotacion en (los que juegan de campo, los liberos).
+
+    El libero no entra en la rotacion: no rota, solo ocupa el lugar del jugador
+    al que cubre mientras ese esta en una zona de atras. Por eso se declara
+    aparte, como un token mas al final de la misma linea:
+
+        3_S 88 15 13 16 10  9_L_15_10
+
+    "el libero 9 juega por el 15 y por el 10". Sin ningun token _L la linea es
+    exactamente la de siempre, asi que los partidos ya guardados se recargan
+    sin tocar nada."""
+    de_campo, liberos = [], []
+    for parte in entrada.replace(",", " ").replace("/", " ").split():
+        coincidencia = PATRON_LIBERO.match(parte)
+        if coincidencia is None:
+            de_campo.append(parte)
+            continue
+        liberos.append({
+            "jugador": int(coincidencia.group("libero")),
+            "cubre": [int(n) for n in coincidencia.group("cubiertos").split("_") if n],
+        })
+    return de_campo, liberos
+
+
+def parsear_liberos(entrada: str, jugadores: list[int]) -> list[dict]:
+    """Los liberos declarados en la linea, ya validados contra los 6 de campo.
+
+    Levanta ValueError con el motivo, igual que parsear_rotacion."""
+    _, liberos = separar_liberos(entrada)
+    vistos = set()
+    for libero in liberos:
+        numero = libero["jugador"]
+        if numero in jugadores:
+            raise ValueError(f"El libero {numero} no puede estar tambien en la rotacion.")
+        if numero in vistos:
+            raise ValueError(f"El libero {numero} esta declarado dos veces.")
+        vistos.add(numero)
+        if not libero["cubre"]:
+            raise ValueError(f"Falta decir a quien cubre el libero {numero}.")
+        for cubierto in libero["cubre"]:
+            if cubierto not in jugadores:
+                raise ValueError(
+                    f"El libero {numero} cubre al {cubierto}, que no esta en la rotacion."
+                )
+    if len(liberos) > CANTIDAD_LIBEROS:
+        raise ValueError(f"Como maximo {CANTIDAD_LIBEROS} liberos por equipo.")
+    return liberos
+
+
 def parsear_rotacion(entrada: str) -> tuple[list[int], int]:
     """Convierte "28_S 5 13 88 3 40" en ([28, 5, 13, 88, 3, 40], 28).
 
     Los jugadores van en el orden de las zonas 1 a 6 de la cancha, y exactamente
     uno lleva la marca _S para indicar que es el armador. Si algo no cuadra
-    levanta ValueError con el motivo, para que el que pregunta lo muestre."""
-    partes = entrada.replace(",", " ").replace("/", " ").split()
+    levanta ValueError con el motivo, para que el que pregunta lo muestre.
+
+    Los liberos que vengan en la misma linea se sacan antes de contar: se
+    parsean aparte con parsear_liberos()."""
+    partes, _ = separar_liberos(entrada)
     if len(partes) != CANTIDAD_ROTACION:
         raise ValueError(
             f"Tienen que ser {CANTIDAD_ROTACION} jugadores (zonas 1 a 6), vinieron {len(partes)}."
@@ -818,6 +879,7 @@ def preguntar_rotacion(nombre_equipo: str) -> tuple[dict | None, str]:
     print(f"  Rotacion de {nombre_equipo}: {CANTIDAD_ROTACION} jugadores en las zonas 1 a 6.")
     print(f"    La zona 1 es la que saca primero. Marca al armador con {MARCA_ARMADOR}.")
     print("    Ejemplo: 28_S 5 13 88 3 40   (vacio = sin rotacion)")
+    print("    El libero va al final, aparte de los 6: 9_L_15_10 (juega por el 15 y el 10).")
     while True:
         entrada = input(f"  [Rotacion {nombre_equipo}]: ").strip()
         if not entrada:
@@ -825,10 +887,11 @@ def preguntar_rotacion(nombre_equipo: str) -> tuple[dict | None, str]:
             return None, entrada
         try:
             jugadores, armador = parsear_rotacion(entrada)
+            liberos = parsear_liberos(entrada, jugadores)
         except ValueError as error:
             print(f"    {error}")
             continue
-        return {"jugadores": jugadores, "armador": armador}, entrada
+        return {"jugadores": jugadores, "armador": armador, "liberos": liberos}, entrada
 
 
 def preguntar_rotaciones(nombres: dict) -> tuple[dict, list[str]]:
@@ -849,9 +912,36 @@ def copiar_rotaciones(rotaciones: dict) -> dict:
     """Copia independiente, para guardar la formacion inicial de un set sin que
     los cambios posteriores la modifiquen."""
     return {
-        letra: {"jugadores": list(rotacion["jugadores"]), "armador": rotacion["armador"]}
+        letra: {
+            "jugadores": list(rotacion["jugadores"]),
+            "armador": rotacion["armador"],
+            "liberos": [{"jugador": l["jugador"], "cubre": list(l["cubre"])}
+                        for l in rotacion.get("liberos") or []],
+        }
         for letra, rotacion in rotaciones.items()
     }
+
+
+def _cambiar_libero(rotaciones: dict, entra: int, sale: int, nombres: dict) -> dict | None:
+    """Reemplaza un libero por el otro: el que entra cubre a los mismos.
+
+    Pasa de verdad en un partido (el libero que arranca se cambia a mitad de
+    set) y no lo resuelve el cambio normal, porque el libero no ocupa ninguna
+    zona de la rotacion. Devuelve None si "sale" no es un libero declarado."""
+    for equipo, rotacion in rotaciones.items():
+        for libero in rotacion.get("liberos") or []:
+            if libero["jugador"] != sale:
+                continue
+            if entra in rotacion["jugadores"]:
+                print(f"  El jugador {entra} ya esta en cancha en {nombres[equipo]}.")
+                return None
+            libero["jugador"] = entra
+            cubre = " y el ".join(str(c) for c in libero["cubre"])
+            print(f"  Cambio de libero en {nombres[equipo]}: entra el {entra} "
+                  f"por el {sale} (juega por el {cubre}).")
+            return {"equipo": equipo, "entra": entra, "sale": sale, "zona": "L",
+                    "armador": False, "armador_desplazado": None, "libero": True}
+    return None
 
 
 def aplicar_cambio(
@@ -885,6 +975,11 @@ def aplicar_cambio(
 
     equipos = [letra for letra, rotacion in rotaciones.items() if sale in rotacion["jugadores"]]
     if not equipos:
+        # el libero no esta en la rotacion, asi que el cambio normal no lo
+        # encuentra; igual se cambia como cualquier otro, con el mismo C_
+        cambio = _cambiar_libero(rotaciones, entra, sale, nombres)
+        if cambio is not None:
+            return cambio
         print(f"  El jugador {sale} no esta en cancha en ninguno de los dos equipos.")
         return None
     if len(equipos) > 1:
@@ -964,6 +1059,42 @@ def rotacion_en_cancha(
     if not rotacion:
         return None
     return rotar(rotacion["jugadores"], veces_que_roto(puntos, numero_set, equipo))
+
+
+def formacion_en_cancha(
+    rotaciones: dict, puntos: list[dict], numero_set: int, equipo: str,
+    equipo_saca: str | None = None,
+) -> list[int]:
+    """Los 6 que estan REALMENTE parados en la cancha, en las zonas 1 a 6.
+
+    Es rotacion_en_cancha con los liberos puestos: el libero ocupa el lugar del
+    jugador al que cubre mientras ese esta en una zona de atras (1, 6 o 5) y
+    sale cuando pasa adelante.
+
+    La excepcion es el saque. El libero no saca, asi que el cubierto entra a
+    sacar, y como el cambio de libero no se puede hacer con la pelota en juego
+    se queda hasta que muera: mientras este equipo saca, la zona 1 es suya.
+
+    rotacion_en_cancha sigue siendo la rotacion nominal y es la que manda el
+    turno de saque y la zona del armador. Esta funcion es para mostrar y para
+    saber a quien se puede tocar en la cancha; las estadisticas no se enteran."""
+    jugadores = rotacion_en_cancha(rotaciones, puntos, numero_set, equipo)
+    liberos = (rotaciones.get(equipo) or {}).get("liberos") or []
+    if not liberos:
+        return jugadores
+
+    formacion = list(jugadores)
+    disponibles = list(liberos)
+    for zona in ZONAS_DE_ATRAS:
+        if zona == 1 and equipo == equipo_saca:
+            continue                      # el cubierto entro a sacar y se queda
+        indice = zona - 1
+        # el primero declarado gana si dos liberos cubren al mismo jugador
+        libero = next((l for l in disponibles if formacion[indice] in l["cubre"]), None)
+        if libero is not None:
+            formacion[indice] = libero["jugador"]
+            disponibles.remove(libero)    # un libero ocupa una sola zona
+    return formacion
 
 
 def jugador_que_saca(rotaciones: dict, puntos: list[dict], numero_set: int, equipo: str) -> int | None:

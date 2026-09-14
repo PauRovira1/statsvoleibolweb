@@ -9,6 +9,7 @@ import io
 import os
 import re
 
+import analisis_voley as av
 import sesion_web
 import unittest
 from unittest.mock import patch
@@ -2259,6 +2260,134 @@ class TestSesionWeb(unittest.TestCase):
         self.assertEqual(sesion.lineas, [])
         self.assertEqual(sesion.instantanea()["etapa"], "nombres")
         self.assertEqual(sesion.instantanea()["puntos_cargados"], 0)
+
+
+class TestLiberos(unittest.TestCase):
+    """El libero no rota: entra por el jugador al que cubre mientras ese esta
+    atras, y sale cuando pasa adelante. La excepcion es el saque, porque el
+    libero no saca."""
+
+    ROTACION = "3_S 88 15 13 16 10"          # zonas 1..6
+    CON_LIBERO = ROTACION + "  9_L_15_10"
+
+    def _rotaciones(self, entrada=None):
+        entrada = entrada or self.CON_LIBERO
+        jugadores, armador = parsear_rotacion(entrada)
+        return {"A": {"jugadores": jugadores, "armador": armador,
+                      "liberos": av.parsear_liberos(entrada, jugadores)}}
+
+    # ---------------- como se declara ----------------
+    def test_la_rotacion_se_lee_igual_con_libero_al_final(self):
+        self.assertEqual(parsear_rotacion(self.CON_LIBERO),
+                         parsear_rotacion(self.ROTACION))
+
+    def test_el_libero_dice_a_quien_cubre(self):
+        jugadores, _ = parsear_rotacion(self.CON_LIBERO)
+        self.assertEqual(av.parsear_liberos(self.CON_LIBERO, jugadores),
+                         [{"jugador": 9, "cubre": [15, 10]}])
+
+    def test_una_rotacion_sin_libero_no_declara_ninguno(self):
+        jugadores, _ = parsear_rotacion(self.ROTACION)
+        self.assertEqual(av.parsear_liberos(self.ROTACION, jugadores), [])
+
+    def test_se_pueden_declarar_dos_liberos(self):
+        entrada = self.ROTACION + "  9_L_15  2_L_10"
+        jugadores, _ = parsear_rotacion(entrada)
+        self.assertEqual(av.parsear_liberos(entrada, jugadores),
+                         [{"jugador": 9, "cubre": [15]},
+                          {"jugador": 2, "cubre": [10]}])
+
+    def test_el_libero_no_puede_estar_en_la_rotacion(self):
+        entrada = self.ROTACION + "  15_L_10"
+        jugadores, _ = parsear_rotacion(entrada)
+        with self.assertRaisesRegex(ValueError, "no puede estar tambien"):
+            av.parsear_liberos(entrada, jugadores)
+
+    def test_no_puede_cubrir_a_alguien_que_no_juega(self):
+        entrada = self.ROTACION + "  9_L_77"
+        jugadores, _ = parsear_rotacion(entrada)
+        with self.assertRaisesRegex(ValueError, "no esta en la rotacion"):
+            av.parsear_liberos(entrada, jugadores)
+
+    # ---------------- quien esta en la cancha ----------------
+    def _formacion(self, rotaciones, giros=0, equipo_saca=None):
+        # cada punto que gana el que recibia hace rotar al que recupera el saque
+        puntos = [{"set": 1, "equipo_saca": "B", "equipo_gana": "A", "jugadas": []}
+                  for _ in range(giros)]
+        return av.formacion_en_cancha(rotaciones, puntos, 1, "A", equipo_saca)
+
+    def test_el_libero_entra_por_el_cubierto_que_esta_atras(self):
+        # el 10 arranca en zona 6 (atras) y el 15 en zona 3 (adelante)
+        formacion = self._formacion(self._rotaciones(), equipo_saca="B")
+        self.assertEqual(formacion, [3, 88, 15, 13, 16, 9])
+
+    def test_sin_libero_declarado_la_formacion_es_la_rotacion(self):
+        rotaciones = self._rotaciones(self.ROTACION)
+        self.assertEqual(self._formacion(rotaciones, equipo_saca="B"),
+                         av.rotacion_en_cancha(rotaciones, [], 1, "A"))
+
+    def test_el_cubierto_que_esta_adelante_sigue_jugando(self):
+        # el 15 esta en zona 3: adelante, asi que no lo cubre nadie
+        self.assertIn(15, self._formacion(self._rotaciones(), equipo_saca="B"))
+
+    def test_el_cubierto_entra_a_sacar_y_el_libero_sale(self):
+        # con dos giros el 15 queda en zona 1; si saca su equipo, saca el
+        rotaciones = self._rotaciones()
+        sacando = self._formacion(rotaciones, giros=2, equipo_saca="A")
+        self.assertEqual(sacando[0], 15)
+        self.assertNotIn(9, sacando)
+
+    def test_si_recibe_el_libero_ocupa_tambien_la_zona_1(self):
+        rotaciones = self._rotaciones()
+        recibiendo = self._formacion(rotaciones, giros=2, equipo_saca="B")
+        self.assertEqual(recibiendo[0], 9)
+        self.assertNotIn(15, recibiendo)
+
+    def test_un_libero_ocupa_una_sola_zona(self):
+        # cubre a dos que estan los dos atras: entra por uno solo
+        rotaciones = {"A": {"jugadores": [3, 88, 15, 13, 16, 10], "armador": 3,
+                            "liberos": [{"jugador": 9, "cubre": [16, 10]}]}}
+        formacion = self._formacion(rotaciones, equipo_saca="B")
+        self.assertEqual(formacion.count(9), 1)
+
+    def test_dos_liberos_ocupan_las_dos_zonas(self):
+        rotaciones = {"A": {"jugadores": [3, 88, 15, 13, 16, 10], "armador": 3,
+                            "liberos": [{"jugador": 9, "cubre": [16]},
+                                        {"jugador": 2, "cubre": [10]}]}}
+        self.assertEqual(self._formacion(rotaciones, equipo_saca="B"),
+                         [3, 88, 15, 13, 9, 2])
+
+    def test_la_rotacion_nominal_no_se_toca(self):
+        # de ella salen el turno de saque y la zona del armador, asi que las
+        # estadisticas no se pueden enterar del libero
+        rotaciones = self._rotaciones()
+        self.assertEqual(av.rotacion_en_cancha(rotaciones, [], 1, "A"),
+                         [3, 88, 15, 13, 16, 10])
+        self.assertEqual(av.jugador_que_saca(rotaciones, [], 1, "A"), 3)
+
+    # ---------------- cambiar un libero por otro ----------------
+    def test_entra_un_libero_por_el_otro_cubriendo_a_los_mismos(self):
+        rotaciones = self._rotaciones()
+        cambio = av.aplicar_cambio(rotaciones, "C_2_9", {"A": "Local", "B": "Rival"})
+        self.assertEqual(cambio["entra"], 2)
+        self.assertTrue(cambio["libero"])
+        self.assertEqual(rotaciones["A"]["liberos"], [{"jugador": 2, "cubre": [15, 10]}])
+        self.assertEqual(self._formacion(rotaciones, equipo_saca="B")[5], 2)
+
+    def test_el_cambio_de_un_jugador_de_campo_sigue_igual(self):
+        rotaciones = self._rotaciones()
+        cambio = av.aplicar_cambio(rotaciones, "C_7_88", {"A": "Local", "B": "Rival"})
+        self.assertEqual((cambio["entra"], cambio["sale"]), (7, 88))
+        self.assertNotIn("libero", cambio)
+
+    def test_la_sesion_web_publica_la_formacion_y_los_liberos(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", self.CON_LIBERO, "", "B"]:
+            sesion.enviar(linea)
+        rotacion = sesion.instantanea()["rotaciones"]["A"]
+        self.assertEqual(rotacion["jugadores"], [3, 88, 15, 13, 16, 10])
+        self.assertEqual(rotacion["formacion"], [3, 88, 15, 13, 16, 9])
+        self.assertEqual(rotacion["liberos"], [{"jugador": 9, "cubre": [15, 10]}])
 
 
 class TestPuntoPendiente(unittest.TestCase):

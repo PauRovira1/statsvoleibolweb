@@ -77,7 +77,8 @@ def armador_para(instantanea: dict) -> notacion.Armador:
         espera=pendiente["espera"],
         equipo_saca=instantanea["equipo_saca"],
         equipo_con_la_pelota=pendiente["equipo_con_la_pelota"],
-        planteles={letra: rotacion["jugadores"]
+        # los que se pueden tocar son los que estan realmente en la cancha
+        planteles={letra: rotacion["formacion"]
                    for letra, rotacion in instantanea["rotaciones"].items()},
         sacador_conocido=instantanea["jugador_saca"] is not None,
     )
