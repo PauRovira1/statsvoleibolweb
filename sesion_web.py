@@ -189,7 +189,23 @@ class SesionPartido:
             "esperando": {clave: valor for clave, valor in esperando.items()
                           if clave not in ("jugadas", "entradas")},
             "pendiente": self._pendiente(esperando),
+            "deshacer": self._que_deshace(esperando),
         }
+
+    def _que_deshace(self, esperando: dict) -> str:
+        """Que va a hacer la "x" del motor si se manda ahora.
+
+        Deshacer una jugada, deshacer un punto y reabrir un set se escriben
+        igual y no son lo mismo; la pantalla lo dice en el boton, porque desde
+        afuera no hay como saber cual de las tres toca."""
+        estado = self.estado
+        if esperando.get("jugadas"):
+            return "jugada"
+        if len(estado["puntos"]) > estado["puntos_al_iniciar_set"]:
+            return "punto"
+        if estado["historial_sets"]:
+            return "set"
+        return "nada"
 
     def _etapa(self, esperando: dict) -> str:
         """En que paso de la carga esta: sirve para que la pantalla sepa que

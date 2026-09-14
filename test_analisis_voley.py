@@ -2262,6 +2262,102 @@ class TestSesionWeb(unittest.TestCase):
         self.assertEqual(sesion.instantanea()["puntos_cargados"], 0)
 
 
+class TestDeshacerUnSet(unittest.TestCase):
+    """Cerrar un set toca media docena de cosas a la vez. Si se cerro de mas, o
+    la rotacion del siguiente se cargo mal, la unica salida es volver atras el
+    cambio de set entero."""
+
+    SETUP = ["Local", "Rival", "1_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A"]
+    SET1 = ["1_5_A", "1_5_A", "1_5_E"]              # Local 2 - Rival 1
+    CIERRE = ["w", "n", "99_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A"]
+
+    def _sesion(self, extra=()):
+        sesion = sesion_web.SesionPartido()
+        for linea in list(self.SETUP) + list(self.SET1) + list(self.CIERRE) + list(extra):
+            sesion.enviar(linea)
+        return sesion
+
+    def test_la_x_reabre_el_set_anterior(self):
+        sesion = self._sesion()
+        resultado = sesion.enviar("x")
+        self.assertTrue(resultado["ok"])
+        self.assertIn("se reabrio el set 1", resultado["mensaje"])
+
+    def test_vuelve_el_marcador_del_set_reabierto(self):
+        sesion = self._sesion(["x"])
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["set"], 1)
+        self.assertEqual(instantanea["marcador"], {"A": 2, "B": 1})
+        self.assertEqual(instantanea["sets_ganados"], {"A": 0, "B": 0})
+        self.assertEqual(instantanea["historial_sets"], [])
+
+    def test_vuelve_la_rotacion_que_tenia_ese_set(self):
+        # la del set 2 se habia cargado mal (el 99); tiene que desaparecer
+        sesion = self._sesion(["x"])
+        self.assertEqual(sesion.instantanea()["rotaciones"]["A"]["jugadores"],
+                         [1, 2, 3, 4, 5, 6])
+
+    def test_vuelve_quien_tenia_el_saque(self):
+        sesion = self._sesion(["x"])
+        # el ultimo punto del set 1 lo gano Rival (error de saque de Local)
+        self.assertEqual(sesion.instantanea()["equipo_saca"], "B")
+
+    def test_los_puntos_del_set_reabierto_siguen_estando(self):
+        sesion = self._sesion(["x"])
+        self.assertEqual(sesion.instantanea()["puntos_cargados"], len(self.SET1))
+
+    def test_otra_x_deshace_el_ultimo_punto_de_ese_set(self):
+        sesion = self._sesion(["x", "x"])
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["marcador"], {"A": 2, "B": 0})
+        self.assertEqual(instantanea["puntos_cargados"], len(self.SET1) - 1)
+
+    def test_se_puede_volver_a_cerrar_el_set_con_la_rotacion_bien(self):
+        sesion = self._sesion(["x", "w", "n", "13_S 2 3 4 5 6",
+                               "7_S 8 9 10 11 12", "B"])
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["set"], 2)
+        self.assertEqual(instantanea["sets_ganados"], {"A": 1, "B": 0})
+        self.assertEqual(instantanea["historial_sets"], [{"A": 2, "B": 1}])
+        self.assertEqual(instantanea["rotaciones"]["A"]["jugadores"],
+                         [13, 2, 3, 4, 5, 6])
+
+    def test_el_volcado_no_guarda_lo_deshecho(self):
+        sesion = self._sesion(["x", "w", "n", "13_S 2 3 4 5 6",
+                               "7_S 8 9 10 11 12", "B"])
+        entradas = sesion.estado["entradas_totales"]
+        self.assertNotIn("99_S 2 3 4 5 6", entradas)   # la rotacion mal
+        self.assertNotIn("x", entradas)                # el comando de deshacer
+        self.assertEqual(entradas.count("w"), 1)       # un solo cierre de set
+
+    def test_la_rotacion_por_set_queda_con_la_buena(self):
+        sesion = self._sesion(["x", "w", "n", "13_S 2 3 4 5 6",
+                               "7_S 8 9 10 11 12", "B"])
+        por_set = sesion.estado["rotaciones_por_set"]
+        self.assertEqual(sorted(por_set), [1, 2])
+        self.assertEqual(por_set[2]["A"]["jugadores"], [13, 2, 3, 4, 5, 6])
+
+    def test_sin_sets_cerrados_no_hay_nada_que_deshacer(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in self.SETUP:
+            sesion.enviar(linea)
+        resultado = sesion.enviar("x")
+        self.assertIn("recien empieza", resultado["mensaje"])
+        self.assertEqual(sesion.instantanea()["marcador"], {"A": 0, "B": 0})
+
+    def test_se_pueden_reabrir_dos_sets_seguidos(self):
+        sesion = self._sesion(["1_5_A", "w", "s", "A"])   # se juega y cierra el set 2
+        self.assertEqual(sesion.instantanea()["set"], 3)
+        sesion.enviar("x")                                 # reabre el 2
+        self.assertEqual(sesion.instantanea()["set"], 2)
+        sesion.enviar("x")                                 # deshace su unico punto
+        sesion.enviar("x")                                 # reabre el 1
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["set"], 1)
+        self.assertEqual(instantanea["marcador"], {"A": 2, "B": 1})
+        self.assertEqual(instantanea["sets_ganados"], {"A": 0, "B": 0})
+
+
 class TestLiberos(unittest.TestCase):
     """El libero no rota: entra por el jugador al que cubre mientras ese esta
     atras, y sale cuando pasa adelante. La excepcion es el saque, porque el

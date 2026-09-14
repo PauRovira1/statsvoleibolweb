@@ -55,8 +55,12 @@ Escribir solo "x" deshace la ultima jugada cargada:
     pedir desde el saque.
   - Si se escribe en el prompt "[Saca ...]" (sin haber cargado nada de este
     punto), se deshace el ultimo punto ya cerrado: se le resta al marcador,
-    se borran sus jugadas y se vuelve a preguntar el saque de ese punto. No
-    se puede deshacer un punto de un set ya cerrado con "w".
+    se borran sus jugadas y se vuelve a preguntar el saque de ese punto.
+  - Si ahi tampoco quedan puntos porque el set recien empieza, lo que se
+    deshace es el cambio de set: se reabre el anterior con su marcador, su
+    rotacion y su saque, tal como estaba antes de la "w". Es la forma de
+    arreglar un set que se cerro de mas, o una rotacion mal cargada al empezar
+    el siguiente. Otra "x" sigue deshaciendo los puntos de ese set.
 
 Escribir solo "f" en cualquier prompt de jugada (tanto "[Saca ...]" como
 "[Juega ...]") registra un error en juego (falta cualquiera: dobles, cuatro
@@ -2245,6 +2249,7 @@ def ejecutar_partido() -> dict:
     marcador = {"A": 0, "B": 0}
     equipo_saca = "A"
     esperando = None   # que pregunta quedo sin contestar, si la carga se corto
+    inicios_de_set = []   # una foto por set cerrado, para poder reabrirlo
 
     print("=== Carga de jugadas ===")
     print(f"Escribi {'/'.join(COMANDOS_SALIDA)} en cualquier momento para terminar.")
@@ -2281,6 +2286,23 @@ def ejecutar_partido() -> dict:
                 break
 
             if resultado[0] == "CAMBIO_SET":
+                # Como estaba todo justo antes de cerrar el set. Cerrar un set
+                # toca media docena de cosas a la vez (marcador, sets ganados,
+                # rotaciones, quien saca) y ademas se come varias entradas,
+                # asi que para poder volver conviene una foto y no deshacer
+                # cada cosa por separado.
+                inicios_de_set.append({
+                    "marcador": dict(marcador),
+                    "sets_ganados": dict(sets_ganados),
+                    "puntos": len(puntos),
+                    "puntos_al_iniciar_set": puntos_al_iniciar_set,
+                    "equipo_saca": equipo_saca,
+                    "rotaciones": copiar_rotaciones(rotaciones),
+                    "rotaciones_por_set": {n: copiar_rotaciones(r)
+                                           for n, r in rotaciones_por_set.items()},
+                    "entradas": len(entradas_totales),
+                    "historial": len(historial_sets),
+                })
                 entradas_totales.append(resultado[1])
 
                 historial_sets.append(dict(marcador))
@@ -2333,7 +2355,31 @@ def ejecutar_partido() -> dict:
 
             if resultado[0] == "DESHACER":
                 if len(puntos) <= puntos_al_iniciar_set:
-                    print("  No hay ningun punto para deshacer en este set.\n")
+                    # No hay puntos de este set, pero si hay un set anterior se
+                    # vuelve a abrir. Es la unica forma de arreglar un set que
+                    # se cerro antes de tiempo, o una rotacion mal cargada al
+                    # empezar el siguiente: lo que hay que deshacer ahi no es
+                    # un punto, es el cambio de set.
+                    if not inicios_de_set:
+                        print("  No hay nada para deshacer: el partido recien empieza.\n")
+                        continue
+                    foto = inicios_de_set.pop()
+                    marcador = dict(foto["marcador"])
+                    sets_ganados = dict(foto["sets_ganados"])
+                    del puntos[foto["puntos"]:]
+                    del entradas_por_punto[foto["puntos"]:]
+                    puntos_al_iniciar_set = foto["puntos_al_iniciar_set"]
+                    equipo_saca = foto["equipo_saca"]
+                    rotaciones = copiar_rotaciones(foto["rotaciones"])
+                    rotaciones_por_set = {n: copiar_rotaciones(r)
+                                          for n, r in foto["rotaciones_por_set"].items()}
+                    del historial_sets[foto["historial"]:]
+                    del entradas_totales[foto["entradas"]:]
+                    print(
+                        f"  Deshecho: se reabrio el set {len(historial_sets) + 1}. "
+                        f"Marcador {nombres['A']} {marcador['A']} - "
+                        f"{marcador['B']} {nombres['B']}\n"
+                    )
                     continue
 
                 punto_deshecho = puntos.pop()
