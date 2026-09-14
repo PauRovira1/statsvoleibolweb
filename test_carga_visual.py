@@ -475,7 +475,9 @@ class TestInterpreteDelNavegador(unittest.TestCase):
                             "espera": espera,
                             "equipoSaca": instantanea["equipo_saca"],
                             "equipoConLaPelota": instantanea["pendiente"]["equipo_con_la_pelota"],
-                            "planteles": {letra: rotacion["jugadores"]
+                            # la formacion, no la rotacion nominal: es la que
+                            # tiene al libero puesto (ver armador_para)
+                            "planteles": {letra: rotacion["formacion"]
                                           for letra, rotacion in instantanea["rotaciones"].items()},
                             "sacadorConocido": instantanea["jugador_saca"] is not None,
                         },
