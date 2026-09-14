@@ -431,3 +431,17 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .campoCorreccion input:focus,.campoCorreccion select:focus{outline:none;
         border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
 .correccion .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}
+
+/* ---------- nombres y buscador de la pestana Jugadores ---------- */
+.buscadorJugadores{display:flex;gap:7px;margin:10px 0}
+#buscarJugador{flex:1;min-width:0;background:var(--panel2);
+               border:1px solid var(--borde);border-radius:10px;color:var(--texto);
+               padding:10px 13px;font:14px/1.2 system-ui,sans-serif}
+#buscarJugador:focus{outline:none;border-color:var(--acento);
+                     box-shadow:0 0 0 3px #4aa3ff33}
+/* el dorsal manda y el nombre acompaña: se busca por "el 13", no por el nombre */
+#selectorDorsal button{display:inline-flex;align-items:baseline;gap:6px}
+#selectorDorsal button[hidden]{display:none}
+.nombreJugador{font-size:11.5px;color:var(--suave);font-weight:400}
+#selectorDorsal button.activa .nombreJugador{color:#cfe4ff}
+.nombreFicha{font-size:17px;font-weight:700;margin-bottom:2px}

@@ -109,8 +109,8 @@ function irA(vista, tocarHash = true){
   $$(".pestana").forEach(b => b.classList.toggle("activa", b.dataset.vista === vista));
   if(tocarHash && location.hash !== "#" + vista) location.hash = vista;
   if(vista === "cargar") foco();
-  if(vista === "partidos") entrarAPartidos();
-  if(vista === "jugadores") pintarJugadores();
+  if(vista === "partidos") traerPlantel().then(entrarAPartidos);
+  if(vista === "jugadores") traerPlantel().then(pintarJugadores);
 }
 
 $$(".pestana").forEach(b => b.addEventListener("click", () => irA(b.dataset.vista)));
@@ -1101,9 +1101,12 @@ function avisoDetalle(texto, ok){
   caja.hidden = !texto;
 }
 
+let volcadoAbierto = null;   // de que partido es el detalle que se esta mirando
+
 async function abrirPartido(id){
   const fila = PARTIDOS.find(p => p.id === id);
   if(!fila) return;
+  volcadoAbierto = fila.volcado || null;
   avisoPartidos("");      // el aviso del borrado anterior ya no viene al caso
   elegido = id;
   filtrar();
@@ -1170,6 +1173,9 @@ function cabezaPartido(fila){
   // que una forma de que te pidan la clave a destiempo.
   if(token && fila.volcado){
     botones.push(`<button id="btnCorregir">Corregir estos datos</button>`);
+    // el editor vive al lado de las tablas que muestran los nombres, que
+    // estan adentro del panel plegado: desde aca se llega sin buscarlo
+    botones.push(`<button id="btnAbrirNombres">Nombres de los jugadores</button>`);
   }
   if(token){
     botones.push(`<button class="peligro" id="btnBorrarPartido">Borrar este partido</button>`);
@@ -1281,6 +1287,15 @@ function cablearCorreccion(fila){
 function cablearBotonesPartido(fila){
   cablearBorrado(fila);
   cablearCorreccion(fila);
+
+  const atajo = $("#btnAbrirNombres");
+  if(atajo) atajo.addEventListener("click", () => {
+    $("#panelVolcado").open = true;
+    const boton = $("#btnNombresPartido");
+    if(!boton) return avisoDetalle("Este partido no trae jugadores en el volcado.", false);
+    if($("#cajaNombresPartido").hidden) boton.click();
+    boton.scrollIntoView({behavior: "smooth", block: "center"});
+  });
   const boton = $("#btnACargar");
   if(!boton) return;
   boton.addEventListener("click", async () => {
@@ -1365,28 +1380,105 @@ function cuerpoPartido(p){
         p.cambios.map(c => ({celdas: [c.set, c.equipo, c.entra, c.sale, c.zona, c.detalle || "—"]}))));
   }
 
+  // id propio y no "selectorEquipo": la pestana Jugadores tiene el suyo, y
+  // con las dos vistas pintadas los ids repetidos cruzaban los clicks
   const equipos = p.orden_equipos;
-  partes.push(`<div class="selector" id="selectorEquipo">` + equipos.map((e, i) =>
+  partes.push(`<div class="selector" id="selectorEquipoPartido">` + equipos.map((e, i) =>
     `<button data-equipo="${esc(e)}" class="${i ? "" : "activa"}">${esc(e)}</button>`).join("") +
-    `</div><div id="statsEquipo"></div>`);
+    `</div><div id="statsEquipoPartido"></div>`);
   return partes.join("");
 }
 
 function cablearSelectorEquipo(p){
   const pintarEquipo = nombre => {
-    $("#statsEquipo").innerHTML = tablasDeEquipo(nombre, p.equipos[nombre]);
-    $$("#selectorEquipo button").forEach(b =>
+    $("#statsEquipoPartido").innerHTML = tablasDeEquipo(nombre, p.equipos[nombre]);
+    $$("#selectorEquipoPartido button").forEach(b =>
       b.classList.toggle("activa", b.dataset.equipo === nombre));
+    cablearNombresDelPartido(nombre, p.equipos[nombre], pintarEquipo);
   };
-  $$("#selectorEquipo button").forEach(b =>
+  $$("#selectorEquipoPartido button").forEach(b =>
     b.addEventListener("click", () => pintarEquipo(b.dataset.equipo)));
   if(p.orden_equipos.length) pintarEquipo(p.orden_equipos[0]);
+}
+
+// Los dorsales que jugaron ese partido con ese equipo. Salen de las propias
+// tablas del volcado: no hay una lista de plantel adentro del .txt.
+function dorsalesDelPartido(datos){
+  const vistos = new Set();
+  [datos.recepciones, datos.ataques_jugador, datos.bloqueos_jugador].forEach(obj =>
+    Object.keys(obj || {}).forEach(clave => {
+      const dorsal = String(clave).replace(/\D+/g, "");
+      if(dorsal) vistos.add(dorsal);
+    }));
+  return Array.from(vistos).sort((a, b) => Number(a) - Number(b));
+}
+
+// El numero no es de nadie para siempre: el 13 del año pasado puede no ser el
+// de este. Por eso un partido viejo puede tener sus propios nombres, que
+// pisan a los del equipo sin tocarlos.
+function editorNombresPartido(equipo, datos){
+  const delEquipo = ((PLANTEL || {}).plantel || {})[equipo] || {};
+  const propios = (((PLANTEL || {}).partidos || {})[volcadoAbierto] || {})[equipo] || {};
+  const campos = dorsalesDelPartido(datos).map(d =>
+    `<label class="campoCorreccion"><span>${esc(d)}</span>
+       <input data-dorsal="${esc(d)}" value="${esc(propios[d] || "")}"
+              placeholder="${esc(delEquipo[d] || "sin nombre")}" autocomplete="off"></label>`).join("");
+  if(!campos) return "";
+  return `<div class="correccion" id="panelNombresPartido">
+    <p class="nota" style="margin-top:0">Nombres de ${esc(equipo)} en ESTE partido.
+    En gris estan los del equipo, que es lo que se usa si dejas el campo vacio.</p>
+    <div class="camposCorreccion">${campos}</div>
+    <div class="fila">
+      <button class="primario" id="btnGuardarNombresPartido">Guardar</button>
+      <button class="tenue" id="btnQuitarNombresPartido">Usar los del equipo</button>
+      <button class="tenue" id="btnCerrarNombresPartido">Cancelar</button>
+    </div></div>`;
+}
+
+function cablearNombresDelPartido(equipo, datos, repintar){
+  const abrir = $("#btnNombresPartido");
+  if(!abrir) return;
+  const caja = $("#cajaNombresPartido");
+  abrir.addEventListener("click", () => {
+    caja.hidden = !caja.hidden;
+    caja.innerHTML = caja.hidden ? "" : editorNombresPartido(equipo, datos);
+    if(caja.hidden) return;
+
+    const mandar = async nombres => {
+      const r = await api("/api/plantel",
+                          {equipo, nombres, volcado: volcadoAbierto});
+      avisoDetalle(r.mensaje, r.ok);
+      if(!r.ok) return;
+      PLANTEL = null;            // que las tablas los vuelvan a leer
+      await traerPlantel();
+      repintar(equipo);          // se repinta con los nombres nuevos
+    };
+    $("#btnGuardarNombresPartido").addEventListener("click", () => {
+      const nombres = {};
+      $$("#panelNombresPartido [data-dorsal]").forEach(c => {
+        nombres[c.dataset.dorsal] = c.value.trim();
+      });
+      mandar(nombres);
+    });
+    $("#btnQuitarNombresPartido").addEventListener("click", () => mandar({}));
+    $("#btnCerrarNombresPartido").addEventListener("click", () => {
+      caja.hidden = true; caja.innerHTML = "";
+    });
+  });
 }
 
 function tablasDeEquipo(nombre, datos){
   if(!datos) return `<p class="nota">El volcado no trae estadisticas de ${esc(nombre)}.</p>`;
   const FASES = ["K1", "K2", "K3", "Saque", "Sin fase"];
   const partes = [];
+
+  // Solo con la clave puesta: guardar nombres escribe, y sin token el
+  // servidor contestaria 401
+  if(token && volcadoAbierto && dorsalesDelPartido(datos).length){
+    partes.push(`<div class="fila" style="margin:0 0 4px">
+      <button id="btnNombresPartido">Nombres de este partido</button></div>
+      <div id="cajaNombresPartido" hidden></div>`);
+  }
 
   // 1) puntos por fase, hechos contra recibidos
   const vacia = {total:0, ganados:0, error:0};
@@ -1434,7 +1526,8 @@ function tablasDeEquipo(nombre, datos){
     const filas = receptores.map(j => {
       const r = datos.recepciones[j], t = totalDe(r);
       Object.keys(acumulado).forEach(k => { acumulado[k] += num(r[k]); });
-      return {celdas: [j, t, num(r.cal3), num(r.cal2), num(r.cal1), num(r.cal0), num(r.pase),
+      return {celdas: [conNombre(nombre, j, volcadoAbierto), t,
+                       num(r.cal3), num(r.cal2), num(r.cal1), num(r.cal0), num(r.pase),
                        pct(num(r.cal3) + num(r.cal2), t), pct(num(r.cal3), t)]};
     });
     const t = totalDe(acumulado);
@@ -1453,7 +1546,8 @@ function tablasDeEquipo(nombre, datos){
     const filas = atacantes.map(j => {
       const a = datos.ataques_jugador[j];
       Object.keys(acumulado).forEach(k => { acumulado[k] += num(a[k]); });
-      return {celdas: [j, num(a.totales), num(a.puntos), num(a.defendidos), num(a.fuera),
+      return {celdas: [conNombre(nombre, j, volcadoAbierto),
+                       num(a.totales), num(a.puntos), num(a.defendidos), num(a.fuera),
                        pct(num(a.puntos), num(a.totales)), pct(num(a.fuera), num(a.totales))]};
     });
     filas.push({total:true, celdas: ["TOTAL", acumulado.totales, acumulado.puntos,
@@ -1467,7 +1561,8 @@ function tablasDeEquipo(nombre, datos){
   const bloqueadores = ordenJugadores(Object.keys(datos.bloqueos_jugador || {}));
   if(bloqueadores.length){
     const total = bloqueadores.reduce((t, j) => t + num(datos.bloqueos_jugador[j]), 0);
-    const filas = bloqueadores.map(j => ({celdas: [j, num(datos.bloqueos_jugador[j]),
+    const filas = bloqueadores.map(j => ({celdas: [conNombre(nombre, j, volcadoAbierto),
+                                                   num(datos.bloqueos_jugador[j]),
                                                    pct(num(datos.bloqueos_jugador[j]), total)]}));
     filas.push({total:true, celdas: ["TOTAL", total, pct(total, total)]});
     partes.push(`<div class="sub-titulo">Bloqueos punto por jugador</div>` +
@@ -1537,9 +1632,63 @@ function pintarHoja(hoja){
 // el propio queda primero, y "Palestino B" va a aparecer solo el dia que se
 // cargue un partido suyo.
 
+// {plantel: {equipo: {dorsal: nombre}}, partidos: {volcado: {equipo: {...}}}}
+let PLANTEL = null;
+
+async function traerPlantel(){
+  if(PLANTEL) return PLANTEL;
+  const r = await api("/api/plantel");
+  PLANTEL = (r && r.ok) ? {plantel: r.plantel || {}, partidos: r.partidos || {}}
+                        : {plantel: {}, partidos: {}};
+  return PLANTEL;
+}
+
+// Las tablas de un volcado hablan de "Jugador 13", que es lo que el .txt
+// guarda. Si ese numero tiene nombre anotado se muestra al lado: el numero
+// manda igual, porque es por lo que se lo busca.
+function nombresDe(equipo, volcado){
+  // los del equipo valen para todos sus partidos; los del partido los pisan,
+  // que es lo que hace falta cuando el 13 del año pasado no es el de este
+  const base = ((PLANTEL || {}).plantel || {})[equipo] || {};
+  const propios = (((PLANTEL || {}).partidos || {})[volcado] || {})[equipo] || {};
+  return Object.assign({}, base, propios);
+}
+
+function conNombre(equipo, clave, volcado){
+  const dorsal = String(clave).replace(/\D+/g, "");
+  const nombre = nombresDe(equipo, volcado)[dorsal];
+  return nombre ? `${clave} · ${nombre}` : clave;
+}
+
 let planteles = null;
 let equipoElegido = null;
 let dorsalElegido = null;
+let filtroJugadores = "";       // lo escrito en el buscador
+let editandoNombres = false;    // si el panel de nombres esta abierto
+
+// Para buscar "Sofia" y que aparezca "Sofía": sin sacar los acentos, el
+// buscador obliga a escribirlos igual que quien cargo el nombre.
+const sinAcentos = texto => String(texto || "").toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+// El volcado guarda numeros, no nombres: en la cancha se grita "el 13". Pero
+// el numero solo no dice quien es -- dos equipos pueden tener un 13, y el 13
+// de este año puede no ser el del anterior -- asi que los nombres se anotan
+// aparte. No tocan el volcado ni el Excel.
+function editorDeNombres(equipo, jugadores){
+  const campos = jugadores.map(j =>
+    `<label class="campoCorreccion"><span>${esc(j.dorsal)}${j.armador ? " ·S" : ""}</span>
+       <input data-dorsal="${esc(j.dorsal)}" value="${esc(j.nombre || "")}"
+              placeholder="sin nombre" autocomplete="off"></label>`).join("");
+  return `<div class="correccion" id="panelNombres">
+    <p class="nota" style="margin-top:0">Nombres de ${esc(equipo.nombre)}. Se usan solo
+    para mirar: el volcado y el Excel siguen guardando el numero.</p>
+    <div class="camposCorreccion">${campos}</div>
+    <div class="fila">
+      <button class="primario" id="btnGuardarNombres">Guardar</button>
+      <button class="tenue" id="btnCerrarNombres">Cancelar</button>
+    </div></div>`;
+}
 
 async function pintarJugadores(){
   const caja = $("#jugadores");
@@ -1582,11 +1731,24 @@ async function pintarJugadores(){
 
   const selectorDorsales = `<div class="selector" id="selectorDorsal">` +
     jugadores.map(j =>
-      `<button data-dorsal="${esc(j.dorsal)}" class="${j.dorsal === dorsalElegido ? "activa" : ""}"
-        title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${j.armador ? " ·S" : ""}</button>`).join("") +
+      `<button data-dorsal="${esc(j.dorsal)}" data-nombre="${esc(j.nombre || "")}"
+        class="${j.dorsal === dorsalElegido ? "activa" : ""}"
+        title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${j.armador ? " ·S" : ""}${
+          j.nombre ? `<span class="nombreJugador">${esc(j.nombre)}</span>` : ""}</button>`).join("") +
+    `<span class="nota" id="sinCoincidencias" hidden>Ningun jugador con ese nombre o numero.</span>` +
     `</div>`;
 
-  const cabecera = selectorEquipos + selectorDorsales;
+  // El buscador filtra los botones en el DOM, sin volver a pintar: si
+  // repintara, cada tecla pediria la ficha de vuelta y el campo perderia el
+  // foco a la segunda letra.
+  const buscador = `<div class="buscadorJugadores">
+    <input id="buscarJugador" placeholder="Buscar por nombre o numero"
+           value="${esc(filtroJugadores)}" autocomplete="off" spellcheck="false">
+    ${token ? `<button id="btnNombres">${editandoNombres ? "Cerrar" : "Nombres"}</button>` : ""}
+  </div>`;
+
+  const cabecera = selectorEquipos + buscador +
+    (editandoNombres ? editorDeNombres(equipo, jugadores) : "") + selectorDorsales;
   if(dorsalElegido == null){
     caja.innerHTML = cabecera + `<p class="nota">Sin jugadores en este equipo.</p>`;
     engancharSelectores();
@@ -1606,6 +1768,7 @@ async function pintarJugadores(){
     <div class="ficha" style="margin-top:12px">
       <div class="dorsal">${esc(j.dorsal)}</div>
       <div>
+        ${j.nombre ? `<div class="nombreFicha">${esc(j.nombre)}</div>` : ""}
         <div class="rol">${j.armador ? "Armador" : "No armador"} · ${esc(j.equipo)}</div>
         <div class="datos">${esc(j.partidos)} partido(s) cargado(s)</div>
       </div>
@@ -1628,12 +1791,73 @@ function engancharSelectores(){
   $$("#selectorEquipo button").forEach(b => b.addEventListener("click", () => {
     equipoElegido = b.dataset.equipo;
     dorsalElegido = null;
+    filtroJugadores = "";        // el filtro es de un equipo, no del otro
     pintarJugadores();
   }));
   $$("#selectorDorsal button").forEach(b => b.addEventListener("click", () => {
     dorsalElegido = b.dataset.dorsal;
     pintarJugadores();
   }));
+
+  const buscador = $("#buscarJugador");
+  if(buscador){
+    aplicarFiltroJugadores();
+    buscador.addEventListener("input", () => {
+      filtroJugadores = buscador.value;
+      aplicarFiltroJugadores();
+    });
+  }
+
+  const abrir = $("#btnNombres");
+  if(abrir) abrir.addEventListener("click", () => {
+    editandoNombres = !editandoNombres;
+    pintarJugadores();
+  });
+  const cerrar = $("#btnCerrarNombres");
+  if(cerrar) cerrar.addEventListener("click", () => {
+    editandoNombres = false;
+    pintarJugadores();
+  });
+  const guardar = $("#btnGuardarNombres");
+  if(guardar) guardar.addEventListener("click", async () => {
+    const nombres = {};
+    $$("#panelNombres [data-dorsal]").forEach(c => { nombres[c.dataset.dorsal] = c.value.trim(); });
+    guardar.disabled = true;
+    const r = await api("/api/plantel", {equipo: equipoElegido, nombres});
+    guardar.disabled = false;
+    if(!r.ok) return avisoJugadores(r.mensaje, false);
+    editandoNombres = false;
+    planteles = null;            // que se vuelvan a pedir con los nombres nuevos
+    PLANTEL = null;              // y que las tablas de Partidos los vean tambien
+    await traerPlantel();
+    await pintarJugadores();
+    avisoJugadores(r.mensaje, true);
+  });
+}
+
+// El buscador esconde botones en vez de repintar: repintar pediria la ficha
+// de nuevo en cada tecla y el campo perderia el foco.
+function aplicarFiltroJugadores(){
+  const buscado = sinAcentos(filtroJugadores).trim();
+  let visibles = 0;
+  $$("#selectorDorsal button").forEach(b => {
+    const entra = !buscado ||
+      sinAcentos(b.dataset.dorsal).includes(buscado) ||
+      sinAcentos(b.dataset.nombre).includes(buscado);
+    b.hidden = !entra;
+    if(entra) visibles++;
+  });
+  const aviso = $("#sinCoincidencias");
+  if(aviso) aviso.hidden = visibles > 0;
+}
+
+function avisoJugadores(texto, ok){
+  const caja = $("#avisoDuplicados");
+  if(!caja) return;
+  caja.textContent = texto || "";
+  caja.hidden = !texto;
+  caja.style.borderColor = ok ? "var(--ok)" : "var(--error)";
+  caja.style.color = ok ? "var(--ok)" : "var(--error)";
 }
 
 // Una linea por partido: es lo que deja ver si mejora o empeora, que en un
@@ -1825,7 +2049,9 @@ function notaAlPie(j){
       el saque de cada punto pero no lo suma por sacador.</li>
       <li class="falta">Ataque abierto por set. Hoy solo la recepcion y el armado se
       guardan set por set.</li>
-      <li class="falta">Nombres: el volcado guarda numeros, no nombres.</li>
+      <li>Nombres: el volcado sigue guardando numeros, que es lo que se grita en
+      la cancha. Los nombres se anotan con el boton "Nombres" de aca arriba y se
+      usan solo para mirar; el .txt y el Excel no cambian.</li>
     </ul></div>`;
 }
 

@@ -109,7 +109,7 @@ version_de_la_sesion = ""
 RUTAS_CON_CLAVE = {
     "/api/enviar", "/api/deshacer", "/api/reiniciar",
     "/api/cargar", "/api/guardar", "/api/excel", "/api/borrar",
-    "/api/corregir",
+    "/api/corregir", "/api/plantel",
 }
 
 
@@ -185,6 +185,43 @@ def anotar_sesion() -> None:
     # la version la trae la propia subida; solo se pregunta si no vino, que es
     # lo que hacia siempre y costaba una operacion advanced por jugada
     version_de_la_sesion = alm.guardar_sesion(sesion.lineas) or alm.version_de_sesion()
+
+
+def guardar_nombres(equipo, nombres, volcado=None) -> dict:
+    """Anota como se llama cada dorsal de un equipo.
+
+    El volcado guarda numeros porque es lo que se grita en la cancha, pero el
+    numero solo no dice quien es: dos equipos pueden tener un 13, y el 13 de
+    este año puede no ser el del anterior. Esto no toca el volcado ni el
+    Excel; es para poder mirar las estadisticas y saber de quien son.
+
+    Sin "volcado" son los nombres del equipo, que valen para todos sus
+    partidos. Con "volcado" son los de ESE partido, que pisan a los del equipo
+    y sirven justo para cuando el plantel cambio de un año al otro."""
+    equipo = str(equipo or "").strip()
+    if not equipo:
+        raise arch.RutaInvalida("Falta decir de que equipo son los nombres.")
+    limpios = {str(d).strip(): str(n or "").strip()
+               for d, n in (nombres or {}).items() if str(d or "").strip()}
+    puestos = sum(1 for n in limpios.values() if n)
+
+    if volcado:
+        # solo el nombre: es una clave, nunca una ruta
+        partido = Path(str(volcado)).name
+        if not partido.lower().endswith(".txt"):
+            raise arch.RutaInvalida("Ese no es un volcado.")
+        guardado = alm.guardar_nombres_de_partido(partido, equipo, limpios)
+        donde = f"{equipo} en {partido}"
+        propios = alm.leer_nombres_de_partido().get(partido, {}).get(equipo, {})
+    else:
+        guardado = alm.guardar_plantel(equipo, limpios)
+        donde = equipo
+        propios = alm.leer_plantel().get(equipo, {})
+
+    aviso = "" if guardado else "  [OJO: no se pudo guardar afuera, se pierde al reiniciar]"
+    detalle = (f"{puestos} nombre(s) anotado(s)" if puestos
+               else "vuelve a usar los nombres del equipo")
+    return {"ok": True, "plantel": propios, "mensaje": f"{donde}: {detalle}.{aviso}"}
 
 
 def corregir_partido(volcado, campos) -> dict:
@@ -283,9 +320,18 @@ def responder_jugadores() -> dict:
     volcados: son milisegundos, y asi no hay numeros guardados que se puedan
     desactualizar cuando se borra o se recarga un partido."""
     import estadisticas_jugadores as ej
+    datos = ej.listado()
+    # Los nombres no salen de los volcados (ahi solo hay numeros): se anotan
+    # aparte y se pegan aca. El modulo de estadisticas sigue leyendo archivos
+    # y nada mas; ponerle los nombres adentro lo ataria a donde se guardan.
+    plantel = alm.leer_plantel()
+    for equipo in datos.get("equipos", []):
+        nombres = plantel.get(equipo["nombre"], {})
+        for jugador in equipo["jugadores"]:
+            jugador["nombre"] = nombres.get(str(jugador["dorsal"]), "")
     # igual que el listado de partidos: si el Blob esta fallando, esto es lo
     # que se ve incompleto, asi que el aviso tiene que viajar con los datos
-    return {"ok": True, **ej.listado(), "almacenamiento": alm.estado()}
+    return {"ok": True, **datos, "plantel": plantel, "almacenamiento": alm.estado()}
 
 
 def responder_jugador(equipo: str, dorsal: str) -> dict:
@@ -293,6 +339,7 @@ def responder_jugador(equipo: str, dorsal: str) -> dict:
     ficha = ej.ficha(equipo, dorsal)
     if ficha is None:
         return {"ok": False, "mensaje": f"No hay datos del {dorsal} en {equipo}."}
+    ficha["nombre"] = alm.leer_plantel().get(equipo, {}).get(str(dorsal), "")
     return {"ok": True, "jugador": ficha}
 
 
@@ -439,6 +486,10 @@ class Manejador(BaseHTTPRequestHandler):
             "/api/partido": lambda: responder_partido(consulta.get("archivo", "")),
             "/api/informe": lambda: responder_informe(consulta.get("archivo", "")),
             "/api/jugadores": lambda: responder_jugadores(),
+            # solo lectura y sin clave: los nombres se muestran en las tablas
+            # de cualquier partido, no solo en la pestana Jugadores
+            "/api/plantel": lambda: {"ok": True, "plantel": alm.leer_plantel(),
+                                     "partidos": alm.leer_nombres_de_partido()},
             "/api/jugador": lambda: responder_jugador(consulta.get("equipo", ""),
                                                       consulta.get("dorsal", "")),
         }
@@ -500,6 +551,14 @@ class Manejador(BaseHTTPRequestHandler):
             # toma el candado y no frena al que esta cargando un punto
             respuesta, codigo = self._leer_de_disco(
                 lambda: borrar_partido(datos.get("volcado"), datos.get("informe")))
+            return self._responder(respuesta, codigo)
+
+        if ruta == "/api/plantel":
+            # los nombres de un equipo. Como /api/corregir: toca archivos pero
+            # no la sesion, asi que no toma el candado
+            respuesta, codigo = self._leer_de_disco(
+                lambda: guardar_nombres(datos.get("equipo"), datos.get("nombres"),
+                                        datos.get("volcado")))
             return self._responder(respuesta, codigo)
 
         if ruta == "/api/corregir":

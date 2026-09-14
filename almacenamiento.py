@@ -530,6 +530,140 @@ def guardar_correccion(nombre: str, campos: dict | None) -> bool:
     return True
 
 
+# ----------------------------------------------------------------------
+# Los nombres de los jugadores.
+#
+# El volcado guarda numeros, no nombres: en la cancha se grita "el 13" y eso
+# es lo que se tipea. Pero el numero solo no alcanza para saber de quien se
+# esta hablando -- dos equipos pueden tener un 13, y el 13 de este año puede
+# no ser el mismo del anterior -- asi que los nombres se anotan aparte, por
+# equipo y dorsal. No entran al volcado ni al Excel: son para mirar.
+RUTA_PLANTEL = "plantel/lista.json"
+
+_plantel: dict | None = None
+_momento_plantel = 0.0
+
+
+def _archivo_plantel() -> Path:
+    return CARPETA_ESCRITURA / "plantel" / "lista.json"
+
+
+def _plantel_local() -> dict:
+    try:
+        return json.loads(_archivo_plantel().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _leer_todo_el_plantel(*, refrescar: bool = False) -> dict:
+    """El archivo entero: los nombres del equipo y los de cada partido."""
+    global _plantel, _momento_plantel
+    ahora = time.monotonic()
+    if (not refrescar and _plantel is not None
+            and ahora - _momento_plantel < SEGUNDOS_DE_CACHE):
+        return _plantel
+
+    if not hay_blob():
+        _plantel, _momento_plantel = _plantel_local(), ahora
+        return _plantel
+
+    try:
+        blob = _blob_puntual(RUTA_PLANTEL)
+        datos = (json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
+                 if blob else {})
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo leer el plantel: {error}")
+        if _plantel is not None:
+            return _plantel
+        return _plantel_local()
+
+    _plantel, _momento_plantel = datos, ahora
+    return datos
+
+
+def leer_plantel(*, refrescar: bool = False) -> dict:
+    """Los nombres del equipo, como {equipo: {dorsal: nombre}}.
+
+    Son el valor por defecto: valen para todos los partidos de ese equipo
+    salvo que alguno tenga los suyos (ver leer_nombres_de_partido)."""
+    return dict(_leer_todo_el_plantel(refrescar=refrescar).get("plantel") or {})
+
+
+def leer_nombres_de_partido(*, refrescar: bool = False) -> dict:
+    """Los nombres propios de cada partido, {volcado: {equipo: {dorsal: nombre}}}.
+
+    Hacen falta porque el numero no es de nadie para siempre: el 13 del año
+    pasado puede no ser el 13 de este, y un partido viejo tiene que poder
+    decir quien era el 13 ESE dia."""
+    return dict(_leer_todo_el_plantel(refrescar=refrescar).get("partidos") or {})
+
+
+def nombres_de(volcado: str, equipo: str) -> dict:
+    """Los nombres que valen para ese equipo en ese partido.
+
+    Los del equipo primero y encima los propios del partido, si los hay."""
+    nombres = dict(leer_plantel().get(equipo) or {})
+    nombres.update(leer_nombres_de_partido().get(volcado, {}).get(equipo) or {})
+    return nombres
+
+
+def _limpiar_nombres(nombres: dict) -> dict:
+    return {str(d): str(n).strip() for d, n in (nombres or {}).items()
+            if str(n or "").strip()}
+
+
+def _guardar_todo_el_plantel(datos: dict) -> bool:
+    global _plantel
+    crudo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
+    local = _archivo_plantel()
+    carpeta_lista(local.parent)
+    try:
+        local.write_bytes(crudo)
+    except OSError:
+        pass
+
+    _plantel = datos
+    if not hay_blob():
+        return True
+    try:
+        subir_blob(RUTA_PLANTEL, crudo, TIPO_POR_EXTENSION[".json"])
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo guardar el plantel: {error}")
+        return False
+    with _candado_blob:
+        _ultimo_listado.pop("plantel/", None)
+    return True
+
+
+def guardar_plantel(equipo: str, nombres: dict) -> bool:
+    """Deja los nombres por defecto de un equipo. Un dorsal sin nombre se saca."""
+    datos = _leer_todo_el_plantel(refrescar=True)
+    plantel = {e: dict(n) for e, n in (datos.get("plantel") or {}).items()}
+    limpios = _limpiar_nombres(nombres)
+    if limpios:
+        plantel[equipo] = limpios
+    else:
+        plantel.pop(equipo, None)
+    return _guardar_todo_el_plantel({**datos, "plantel": plantel})
+
+
+def guardar_nombres_de_partido(volcado: str, equipo: str, nombres: dict) -> bool:
+    """Deja los nombres propios de un partido. Sin nombres vuelve a los del
+    equipo, que es lo que corresponde cuando no cambio nadie."""
+    datos = _leer_todo_el_plantel(refrescar=True)
+    partidos = {v: {e: dict(n) for e, n in equipos.items()}
+                for v, equipos in (datos.get("partidos") or {}).items()}
+    limpios = _limpiar_nombres(nombres)
+    delpartido = partidos.setdefault(volcado, {})
+    if limpios:
+        delpartido[equipo] = limpios
+    else:
+        delpartido.pop(equipo, None)
+    if not delpartido:
+        partidos.pop(volcado, None)
+    return _guardar_todo_el_plantel({**datos, "partidos": partidos})
+
+
 def _anotar_borrado(logica: str, nombre: str) -> bool:
     """Agrega el archivo a la lista de los que hay que ocultar."""
     global _borrados

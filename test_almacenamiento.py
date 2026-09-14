@@ -423,3 +423,116 @@ class TestAvisosDelBlob(unittest.TestCase):
         with mock.patch.object(alm, "_ultimo_error", ""), \
              mock.patch.object(alm, "EN_SERVERLESS", False):
             self.assertEqual(alm.estado()["avisos"], [])
+
+
+class TestPlantel(unittest.TestCase):
+    """Los nombres no salen del volcado (ahi solo hay numeros): se anotan
+    aparte, por equipo y dorsal, y tienen que sobrevivir al proceso."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        parches = [
+            mock.patch.object(alm, "hay_blob", lambda: False),
+            mock.patch.object(alm, "CARPETA_ESCRITURA", Path(carpeta.name)),
+            mock.patch.object(alm, "_plantel", None),
+            mock.patch.object(alm, "_momento_plantel", 0.0),
+        ]
+        for parche in parches:
+            parche.start()
+            self.addCleanup(parche.stop)
+
+    def test_sin_nada_anotado_el_plantel_esta_vacio(self):
+        self.assertEqual(alm.leer_plantel(refrescar=True), {})
+
+    def test_se_guarda_y_se_vuelve_a_leer(self):
+        alm.guardar_plantel("Palestino", {"13": "Sofia", "88": "Valentina"})
+        self.assertEqual(alm.leer_plantel(refrescar=True),
+                         {"Palestino": {"13": "Sofia", "88": "Valentina"}})
+
+    def test_cada_equipo_tiene_su_propio_13(self):
+        # es justo el motivo de todo esto: el 13 de un equipo no es el del otro
+        alm.guardar_plantel("Palestino", {"13": "Sofia"})
+        alm.guardar_plantel("UVC", {"13": "Martina"})
+        plantel = alm.leer_plantel(refrescar=True)
+        self.assertEqual(plantel["Palestino"]["13"], "Sofia")
+        self.assertEqual(plantel["UVC"]["13"], "Martina")
+
+    def test_un_nombre_vacio_saca_al_jugador(self):
+        alm.guardar_plantel("Palestino", {"13": "Sofia", "88": "Valentina"})
+        alm.guardar_plantel("Palestino", {"13": "Sofia", "88": ""})
+        self.assertEqual(alm.leer_plantel(refrescar=True), {"Palestino": {"13": "Sofia"}})
+
+    def test_un_equipo_sin_ningun_nombre_se_saca_entero(self):
+        alm.guardar_plantel("Palestino", {"13": "Sofia"})
+        alm.guardar_plantel("Palestino", {})
+        self.assertEqual(alm.leer_plantel(refrescar=True), {})
+
+    def test_los_nombres_se_guardan_sin_espacios_de_mas(self):
+        alm.guardar_plantel("Palestino", {"13": "  Sofia Munoz  "})
+        self.assertEqual(alm.leer_plantel(refrescar=True)["Palestino"]["13"], "Sofia Munoz")
+
+    def test_sobrevive_a_reiniciar_el_proceso(self):
+        alm.guardar_plantel("Palestino", {"13": "Sofia"})
+        with mock.patch.object(alm, "_plantel", None):
+            self.assertEqual(alm.leer_plantel(refrescar=True),
+                             {"Palestino": {"13": "Sofia"}})
+
+
+class TestNombresPorPartido(unittest.TestCase):
+    """El numero no es de nadie para siempre: el 13 del año pasado puede no ser
+    el de este. Por eso un partido puede tener sus propios nombres, que pisan a
+    los del equipo sin tocarlos."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        parches = [
+            mock.patch.object(alm, "hay_blob", lambda: False),
+            mock.patch.object(alm, "CARPETA_ESCRITURA", Path(carpeta.name)),
+            mock.patch.object(alm, "_plantel", None),
+            mock.patch.object(alm, "_momento_plantel", 0.0),
+        ]
+        for parche in parches:
+            parche.start()
+            self.addCleanup(parche.stop)
+        alm.guardar_plantel("Palestino", {"13": "Sofia", "88": "Valentina"})
+
+    def test_sin_nombres_propios_valen_los_del_equipo(self):
+        self.assertEqual(alm.nombres_de("partido_viejo.txt", "Palestino"),
+                         {"13": "Sofia", "88": "Valentina"})
+
+    def test_los_del_partido_pisan_a_los_del_equipo(self):
+        alm.guardar_nombres_de_partido("partido_viejo.txt", "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.nombres_de("partido_viejo.txt", "Palestino"),
+                         {"13": "Martina", "88": "Valentina"})
+
+    def test_solo_pisan_en_ese_partido(self):
+        alm.guardar_nombres_de_partido("partido_viejo.txt", "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.nombres_de("partido_nuevo.txt", "Palestino")["13"], "Sofia")
+
+    def test_no_tocan_los_del_equipo(self):
+        alm.guardar_nombres_de_partido("partido_viejo.txt", "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.leer_plantel(refrescar=True)["Palestino"]["13"], "Sofia")
+
+    def test_sacarlos_vuelve_a_los_del_equipo(self):
+        alm.guardar_nombres_de_partido("partido_viejo.txt", "Palestino", {"13": "Martina"})
+        alm.guardar_nombres_de_partido("partido_viejo.txt", "Palestino", {})
+        self.assertEqual(alm.nombres_de("partido_viejo.txt", "Palestino")["13"], "Sofia")
+        self.assertEqual(alm.leer_nombres_de_partido(refrescar=True), {})
+
+    def test_cada_equipo_del_partido_va_por_su_lado(self):
+        alm.guardar_nombres_de_partido("p.txt", "Palestino", {"13": "Martina"})
+        alm.guardar_nombres_de_partido("p.txt", "UVC", {"13": "Renata"})
+        self.assertEqual(alm.nombres_de("p.txt", "Palestino")["13"], "Martina")
+        self.assertEqual(alm.nombres_de("p.txt", "UVC")["13"], "Renata")
+
+    def test_guardar_el_plantel_no_borra_los_de_los_partidos(self):
+        alm.guardar_nombres_de_partido("p.txt", "Palestino", {"13": "Martina"})
+        alm.guardar_plantel("Palestino", {"13": "Sofia", "88": "Valentina", "9": "Antonia"})
+        self.assertEqual(alm.nombres_de("p.txt", "Palestino")["13"], "Martina")
+
+    def test_sobrevive_a_reiniciar_el_proceso(self):
+        alm.guardar_nombres_de_partido("p.txt", "Palestino", {"13": "Martina"})
+        with mock.patch.object(alm, "_plantel", None):
+            self.assertEqual(alm.nombres_de("p.txt", "Palestino")["13"], "Martina")

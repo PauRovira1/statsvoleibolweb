@@ -10,3 +10,4 @@ __pycache__/
 # Se regeneran solos y no son parte del proyecto.
 sesion/
 correcciones/
+plantel/
