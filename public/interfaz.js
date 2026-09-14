@@ -1156,9 +1156,15 @@ function cabezaPartido(fila){
   // Borrar pide la contraseña, asi que el boton solo esta cuando ya se
   // escribio: sin sesion el servidor contestaria 401 y el boton no seria mas
   // que una forma de que te pidan la clave a destiempo.
+  if(token && fila.volcado){
+    botones.push(`<button id="btnCorregir">Corregir estos datos</button>`);
+  }
   if(token){
     botones.push(`<button class="peligro" id="btnBorrarPartido">Borrar este partido</button>`);
   }
+  const corregido = (fila.corregido || []).length
+    ? `<div class="nota">Corregido a mano: ${esc((fila.corregido || []).join(", "))}</div>`
+    : "";
   return `<div class="cabeza">
     <h2>${esc(fila.equipo)} vs ${esc(fila.rival)}</h2>
     <div class="sub">${esc(fila.fecha || "sin fecha")}${fila.hora ? " · " + esc(fila.hora) : ""}
@@ -1167,11 +1173,102 @@ function cabezaPartido(fila){
     <div class="parciales">${fila.parciales.map(p =>
         `<span class="parcial">${esc(p)}</span>`).join("") ||
         `<span class="nota">Sin parciales</span>`}</div>
-    <div class="fila">${botones.join("")}</div></div>`;
+    ${corregido}
+    <div class="fila">${botones.join("")}</div>
+    <div id="correccion" hidden></div></div>`;
+}
+
+// El resumen de la fila se lee del .txt, y casi siempre con eso alcanza. Lo
+// que el archivo no puede saber es cual de varios informes del mismo dia le
+// corresponde: el nombre del informe no lleva la hora, asi que dos guardados
+// del mismo partido comparten archivo y el automatico se lo cuelga al primero.
+const CAMPOS_CORREGIBLES = [
+  ["fecha", "Fecha", "2026-09-14"],
+  ["hora", "Hora", "04:30"],
+  ["equipo", "Equipo", "Palestino"],
+  ["rival", "Rival", "Español"],
+  ["sets", "Sets", "0-2"],
+  ["puntos", "Puntos cargados", "92"],
+];
+
+function informesConocidos(){
+  const nombres = new Set();
+  (PARTIDOS || []).forEach(f => { if(f.informe) nombres.add(f.informe); });
+  return Array.from(nombres).sort();
+}
+
+function formularioCorreccion(fila){
+  const campos = CAMPOS_CORREGIBLES.map(([clave, etiqueta, ejemplo]) =>
+    `<label class="campoCorreccion"><span>${esc(etiqueta)}</span>
+       <input data-campo="${clave}" value="${esc(fila[clave] == null ? "" : fila[clave])}"
+              placeholder="${esc(ejemplo)}"></label>`).join("");
+  const opciones = ['<option value="">(ninguno)</option>'].concat(
+    informesConocidos().map(n =>
+      `<option value="${esc(n)}" ${n === fila.informe ? "selected" : ""}>${esc(n)}</option>`));
+  return `<div class="correccion">
+    <p class="nota" style="margin-top:0">Lo que pongas acá gana sobre lo que dice el .txt.
+    El archivo no se toca: se puede volver atrás cuando quieras.</p>
+    <div class="camposCorreccion">${campos}
+      <label class="campoCorreccion"><span>Parciales</span>
+        <input data-campo="parciales" value="${esc((fila.parciales || []).join(", "))}"
+               placeholder="20-25, 22-25"></label>
+      <label class="campoCorreccion"><span>Informe .xlsx</span>
+        <select data-campo="informe">${opciones.join("")}</select></label>
+    </div>
+    <div class="fila">
+      <button class="primario" id="btnGuardarCorreccion">Guardar</button>
+      <button class="tenue" id="btnQuitarCorreccion">Volver a lo que dice el .txt</button>
+      <button class="tenue" id="btnCerrarCorreccion">Cancelar</button>
+    </div></div>`;
+}
+
+function cablearCorreccion(fila){
+  const abrir = $("#btnCorregir");
+  if(!abrir) return;
+  const caja = $("#correccion");
+  abrir.addEventListener("click", () => {
+    caja.hidden = !caja.hidden;
+    caja.innerHTML = caja.hidden ? "" : formularioCorreccion(fila);
+    if(caja.hidden) return;
+
+    const mandar = async campos => {
+      const r = await api("/api/corregir", {volcado: fila.volcado, campos});
+      avisoDetalle(r.mensaje, r.ok);
+      if(!r.ok) return;
+      listaPartidosVencida = true;
+      await entrarAPartidos();
+      await abrirPartido(fila.volcado || fila.id);
+    };
+    // Lo que tenia el formulario al abrirse. Solo se guarda como correccion
+    // lo que se haya tocado (o lo que ya estaba corregido): si se mandaran
+    // todos los campos, la fila dejaria de seguir al .txt para cosas que
+    // nadie quiso cambiar, y arreglar el .txt despues no serviria de nada.
+    const inicial = {};
+    $$("#correccion [data-campo]").forEach(c => { inicial[c.dataset.campo] = c.value.trim(); });
+
+    $("#btnGuardarCorreccion").addEventListener("click", () => {
+      const campos = {};
+      const yaCorregidos = fila.corregido || [];
+      $$("#correccion [data-campo]").forEach(campo => {
+        const clave = campo.dataset.campo, valor = campo.value.trim();
+        if(!valor) return;
+        if(valor === inicial[clave] && !yaCorregidos.includes(clave)) return;
+        campos[clave] = clave === "parciales"
+          ? valor.split(",").map(p => p.trim()).filter(Boolean)
+          : valor;
+      });
+      mandar(campos);
+    });
+    $("#btnQuitarCorreccion").addEventListener("click", () => mandar({}));
+    $("#btnCerrarCorreccion").addEventListener("click", () => {
+      caja.hidden = true; caja.innerHTML = "";
+    });
+  });
 }
 
 function cablearBotonesPartido(fila){
   cablearBorrado(fila);
+  cablearCorreccion(fila);
   const boton = $("#btnACargar");
   if(!boton) return;
   boton.addEventListener("click", async () => {

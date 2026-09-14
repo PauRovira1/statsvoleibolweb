@@ -416,3 +416,18 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 /* El libero se distingue del resto: no rota y entra solo por el que cubre. */
 .jugador.libero{border-style:dashed;border-color:var(--ok)}
 .jugador.libero.viva{border-color:var(--ok);background:#14251e}
+
+/* ---------- corregir a mano el resumen de un partido ---------- */
+.correccion{margin-top:10px;background:var(--panel2);border:1px solid var(--borde);
+            border-radius:10px;padding:12px 14px}
+.camposCorreccion{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));
+                  gap:9px;margin-bottom:10px}
+.campoCorreccion{display:flex;flex-direction:column;gap:4px;min-width:0}
+.campoCorreccion > span{font-size:11px;color:var(--suave);text-transform:uppercase;
+                        letter-spacing:.06em}
+.campoCorreccion input,.campoCorreccion select{background:var(--fondo);
+        border:1px solid var(--borde);border-radius:8px;color:var(--texto);
+        padding:9px 11px;font:14px/1.2 var(--mono);min-width:0}
+.campoCorreccion input:focus,.campoCorreccion select:focus{outline:none;
+        border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+.correccion .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}

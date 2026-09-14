@@ -5,3 +5,8 @@ __pycache__/
 # Variables de entorno locales
 .env
 .env.*
+
+# Estado de ejecucion: el partido en curso y los arreglos hechos a mano.
+# Se regeneran solos y no son parte del proyecto.
+sesion/
+correcciones/

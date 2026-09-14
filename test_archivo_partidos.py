@@ -551,8 +551,10 @@ class TestEndpointsDeLectura(unittest.TestCase):
         self.assertIsInstance(datos["partidos"], list)
         for fila in datos["partidos"]:
             self.assertEqual(sorted(fila), sorted(
+                # "corregido" dice que campos de esta fila no salen del .txt
+                # sino de un arreglo hecho a mano
                 ["id", "fecha", "hora", "equipo", "rival", "sets", "parciales",
-                 "puntos", "volcado", "informe"]))
+                 "puntos", "volcado", "informe", "corregido"]))
 
     def test_descargar_fuera_de_la_carpeta_da_400_y_no_lee_nada(self):
         for ruta in ["/api/descargar?archivo=../../algo",

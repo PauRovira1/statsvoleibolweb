@@ -263,3 +263,81 @@ class TestSinBlob(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNombreParaArchivo(unittest.TestCase):
+    """El informe se llama Informe_<equipo>_vs_<rival>_<fecha>.xlsx, asi que el
+    nombre del equipo termina adentro de un nombre de archivo. El volcado no
+    (se llama partido_<fecha>.txt): por eso un nombre con un caracter prohibido
+    hacia que el .txt se guardara y el Excel no."""
+
+    def test_saca_los_caracteres_que_windows_no_acepta(self):
+        for prohibido in '<>:"/\|?*':
+            with self.subTest(caracter=prohibido):
+                limpio = alm.nombre_para_archivo(f"Club{prohibido}A")
+                self.assertNotIn(prohibido, limpio)
+
+    def test_una_barra_no_puede_mandar_el_archivo_a_otra_carpeta(self):
+        self.assertNotIn("/", alm.nombre_para_archivo("Palestino/B"))
+        self.assertNotIn("\\", alm.nombre_para_archivo("Palestino\B"))
+
+    def test_un_nombre_normal_no_se_toca(self):
+        for nombre in ("Palestino", "O'sommer", "Español", "UVC 2026"):
+            with self.subTest(nombre=nombre):
+                self.assertEqual(alm.nombre_para_archivo(nombre), nombre)
+
+    def test_saca_los_puntos_y_espacios_del_final(self):
+        self.assertEqual(alm.nombre_para_archivo("Palestino. "), "Palestino")
+
+    def test_nunca_devuelve_vacio(self):
+        # un nombre vacio dejaria el archivo como "Informe__vs_..."
+        for entrada in ("", "   ", ".", None):
+            with self.subTest(entrada=entrada):
+                self.assertTrue(alm.nombre_para_archivo(entrada))
+
+    def test_saca_los_caracteres_de_control(self):
+        self.assertEqual(alm.nombre_para_archivo("Pale\tstino"), "Pale-stino")
+
+
+class TestCorrecciones(unittest.TestCase):
+    """El resumen de un partido sale leido del .txt. Lo que el archivo no puede
+    saber (cual de varios informes del mismo dia le toca) se arregla a mano, y
+    ese arreglo tiene que ganar y poder sacarse."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        parches = [
+            mock.patch.object(alm, "hay_blob", lambda: False),
+            mock.patch.object(alm, "CARPETA_ESCRITURA", Path(carpeta.name)),
+            mock.patch.object(alm, "_correcciones", None),
+            mock.patch.object(alm, "_momento_correcciones", 0.0),
+        ]
+        for parche in parches:
+            parche.start()
+            self.addCleanup(parche.stop)
+
+    def test_sin_correcciones_no_hay_ninguna(self):
+        self.assertEqual(alm.leer_correcciones(refrescar=True), {})
+
+    def test_se_guarda_y_se_vuelve_a_leer(self):
+        alm.guardar_correccion("partido_1.txt", {"informe": "Informe_X.xlsx"})
+        self.assertEqual(alm.leer_correcciones(refrescar=True),
+                         {"partido_1.txt": {"informe": "Informe_X.xlsx"}})
+
+    def test_guardar_vacio_la_saca(self):
+        alm.guardar_correccion("partido_1.txt", {"informe": "Informe_X.xlsx"})
+        alm.guardar_correccion("partido_1.txt", {})
+        self.assertEqual(alm.leer_correcciones(refrescar=True), {})
+
+    def test_cada_partido_tiene_la_suya(self):
+        alm.guardar_correccion("partido_1.txt", {"equipo": "Palestino"})
+        alm.guardar_correccion("partido_2.txt", {"equipo": "UVC"})
+        correcciones = alm.leer_correcciones(refrescar=True)
+        self.assertEqual(sorted(correcciones), ["partido_1.txt", "partido_2.txt"])
+
+    def test_sobrevive_a_reiniciar_el_proceso(self):
+        alm.guardar_correccion("partido_1.txt", {"puntos": 92})
+        with mock.patch.object(alm, "_correcciones", None):
+            self.assertEqual(alm.leer_correcciones(refrescar=True),
+                             {"partido_1.txt": {"puntos": 92}})

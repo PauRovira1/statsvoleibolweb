@@ -366,8 +366,13 @@ def _fecha_y_hora(nombre: str) -> tuple[str | None, str | None]:
 
 def _clave_partido(equipo, rival, fecha) -> tuple:
     """Los dos equipos ordenados, porque el informe puede estar hecho desde
-    cualquiera de los dos lados (Informe_A_vs_B o Informe_B_vs_A)."""
-    nombres = sorted(str(n or "").strip().lower() for n in (equipo, rival))
+    cualquiera de los dos lados (Informe_A_vs_B o Informe_B_vs_A).
+
+    Se comparan como quedan en el nombre del archivo: el informe los lleva ya
+    limpios de caracteres que no se pueden usar, y el volcado no, asi que sin
+    limpiar los dos el informe de "Colegio | 2026" no se emparejaria nunca."""
+    nombres = sorted(alm.nombre_para_archivo(n).strip().lower()
+                     for n in (equipo, rival))
     return (nombres[0], nombres[1], fecha or "")
 
 
@@ -394,6 +399,29 @@ def archivos_de(carpetas, patron: str, logica: str | None = None) -> list[Path]:
     return [vistos[nombre] for nombre in sorted(vistos)]
 
 
+# Lo que se puede arreglar a mano de la fila de un partido. El resumen sale
+# leido del .txt, que es lo correcto mientras el .txt diga la verdad; esto es
+# para lo que el archivo no puede saber, como cual de varios informes del
+# mismo dia le corresponde.
+CAMPOS_CORREGIBLES = ("fecha", "hora", "equipo", "rival", "sets", "parciales",
+                      "puntos", "informe")
+
+
+def aplicar_correccion(fila: dict, correcciones: dict) -> dict:
+    """Pisa lo leido del .txt con lo que se corrigio a mano.
+
+    Deja ademas la lista de campos corregidos, para que la pantalla pueda
+    mostrar cuales no salen del archivo y ofrecer volver atras."""
+    arreglo = correcciones.get(fila["id"]) or {}
+    corregidos = []
+    for campo in CAMPOS_CORREGIBLES:
+        if arreglo.get(campo) not in (None, ""):
+            fila[campo] = arreglo[campo]
+            corregidos.append(campo)
+    fila["corregido"] = corregidos
+    return fila
+
+
 def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
     """Una fila por partido, la mas nueva arriba.
 
@@ -411,6 +439,7 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
     else:
         carpetas_informes = [Path(carpeta_informes)]
 
+    correcciones = alm.leer_correcciones()
     filas, por_clave = [], {}
 
     for ruta in archivos_de(carpetas_datos, "*.txt",
@@ -434,10 +463,12 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
             "volcado": ruta.name,
             "informe": None,
         }
+        aplicar_correccion(fila, correcciones)
         filas.append(fila)
         por_clave.setdefault(_clave_partido(fila["equipo"], fila["rival"], fila["fecha"]),
                              []).append(fila)
 
+    elegidos_a_mano = {f["informe"] for f in filas if f["informe"]}
     for ruta in archivos_de(carpetas_informes, "*.xlsx",
                             alm.INFORMES if carpeta_informes is None else None):
         if es_temporal(ruta.name):
@@ -445,6 +476,8 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
         m = RE_NOMBRE_INFORME.match(ruta.name)
         if not m:
             continue
+        if ruta.name in elegidos_a_mano:
+            continue      # ya se lo asigno alguien a mano; no va a otra fila
         equipo, rival, fecha = m.group("equipo"), m.group("rival"), m.group("fecha")
         candidatos = por_clave.get(_clave_partido(equipo, rival, fecha), [])
         pegado = False

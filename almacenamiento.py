@@ -102,6 +102,26 @@ def carpetas_de_lectura(logica: str) -> list[Path]:
     return [carpeta_de_escritura(logica), carpeta_semilla(logica)]
 
 
+# Lo que Windows no acepta en el nombre de un archivo. La barra ademas es
+# separador de carpetas, asi que un equipo llamado "Palestino/B" no fallaba:
+# escribia el informe adentro de una carpeta inventada, donde no lo encuentra
+# nadie.
+PROHIBIDOS_EN_NOMBRE = '<>:"/\\|?*'
+
+
+def nombre_para_archivo(texto: str) -> str:
+    """El nombre de un equipo, servible como parte de un nombre de archivo.
+
+    El volcado se llama partido_<fecha>.txt y el informe
+    Informe_<equipo>_vs_<rival>_<fecha>.xlsx: por eso un nombre con un "|" o
+    un "?" hacia que el .txt se guardara bien y el Excel no, con un OSError
+    que en pantalla se veia como que el boton no hacia nada."""
+    limpio = "".join("-" if c in PROHIBIDOS_EN_NOMBRE or ord(c) < 32 else c
+                     for c in str(texto or ""))
+    # Windows tampoco quiere puntos ni espacios al final de un nombre
+    return limpio.strip().rstrip(". ") or "equipo"
+
+
 def carpeta_lista(carpeta: Path) -> Path:
     """La carpeta, creandola la primera vez que hace falta.
 
@@ -421,6 +441,95 @@ def esta_borrado(logica: str, nombre: str) -> bool:
     return f"{logica}/{nombre}" in _cargar_borrados()
 
 
+# ----------------------------------------------------------------------
+# Correcciones a mano del resumen de un partido.
+#
+# La fila que se ve en Partidos se lee del propio .txt, que es lo correcto
+# mientras el .txt diga la verdad. Pero hay cosas que el archivo no puede
+# saber: cual de varios guardados del mismo partido es el bueno, o que
+# informe le corresponde cuando hay mas de uno del mismo dia. Para eso esta
+# esto: un arreglo escrito a mano que gana sobre lo que dice el archivo, y
+# que se puede sacar para volver a lo que dice el archivo.
+#
+# Se guarda igual que la sesion: siempre local, y ademas en el blob si hay.
+# Asi funciona lo mismo corriendo en casa que alojado.
+RUTA_CORRECCIONES = "correcciones/lista.json"
+
+_correcciones: dict | None = None
+_momento_correcciones = 0.0
+
+
+def _archivo_correcciones() -> Path:
+    return CARPETA_ESCRITURA / "correcciones" / "lista.json"
+
+
+def _correcciones_locales() -> dict:
+    try:
+        datos = json.loads(_archivo_correcciones().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dict(datos.get("correcciones") or {})
+
+
+def leer_correcciones(*, refrescar: bool = False) -> dict:
+    """Los arreglos a mano, por nombre de volcado."""
+    global _correcciones, _momento_correcciones
+    ahora = time.monotonic()
+    if (not refrescar and _correcciones is not None
+            and ahora - _momento_correcciones < SEGUNDOS_DE_CACHE):
+        return _correcciones
+
+    if not hay_blob():
+        _correcciones, _momento_correcciones = _correcciones_locales(), ahora
+        return _correcciones
+
+    try:
+        blob = _blob_puntual(RUTA_CORRECCIONES)
+        datos = (json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
+                 if blob else {})
+        lista = dict(datos.get("correcciones") or {})
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo leer las correcciones: {error}")
+        # lo ultimo que se supo es mejor que nada: sin esto, un partido
+        # corregido volveria a verse mal en cuanto falle una lectura
+        if _correcciones is not None:
+            return _correcciones
+        return _correcciones_locales()
+
+    _correcciones, _momento_correcciones = lista, ahora
+    return lista
+
+
+def guardar_correccion(nombre: str, campos: dict | None) -> bool:
+    """Guarda el arreglo de un volcado, o lo saca si campos viene vacio."""
+    global _correcciones
+    lista = dict(leer_correcciones(refrescar=True))
+    if campos:
+        lista[nombre] = campos
+    else:
+        lista.pop(nombre, None)
+
+    datos = json.dumps({"correcciones": lista}, ensure_ascii=False).encode("utf-8")
+    local = _archivo_correcciones()
+    carpeta_lista(local.parent)
+    try:
+        local.write_bytes(datos)
+    except OSError:
+        pass
+
+    _correcciones = lista
+    if not hay_blob():
+        return True
+    try:
+        subir_blob(RUTA_CORRECCIONES, datos, TIPO_POR_EXTENSION[".json"])
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo guardar la correccion de {nombre}: {error}")
+        return False
+    with _candado_blob:
+        _ultimo_listado.pop("correcciones/", None)
+    return True
+
+
 def _anotar_borrado(logica: str, nombre: str) -> bool:
     """Agrega el archivo a la lista de los que hay que ocultar."""
     global _borrados
@@ -641,35 +750,39 @@ _hay_cabeza = True
 _ultima_version: dict[str, tuple[float, str]] = {}
 
 
-def _blob_de_la_sesion(*, refrescar: bool = True) -> dict | None:
-    """Los datos del archivo de la sesion, sin bajarlo.
+def _blob_puntual(ruta: str, *, refrescar: bool = True) -> dict | None:
+    """Los datos de UN archivo del blob, sin bajarlo.
 
     Por la cabeza si el servicio la contesta, y si no listando el store como
     se hacia antes. La diferencia importa: listar cuenta como operacion
     ADVANCED (2.000 al mes en el plan Hobby) y la cabeza como SIMPLE (10.000).
-    Esto se pregunta una vez por pedido, asi que es la llamada mas repetida de
-    todo el proyecto.
+    La de la sesion se pregunta una vez por pedido, asi que es la llamada mas
+    repetida de todo el proyecto.
 
     Si la cabeza falla por algo que no sea "no esta", se apaga para el resto
-    del proceso: mejor gastar de mas que quedarse sin saber si la sesion
-    cambio."""
+    del proceso: mejor gastar de mas que quedarse sin saber si algo cambio."""
     global _hay_cabeza
     if _hay_cabeza:
         try:
-            return cabeza_blob(RUTA_SESION)
+            return cabeza_blob(ruta)
         except ErrorDeBlob as error:
             if error.codigo == 404:
-                return None            # todavia no se guardo ninguna sesion
+                return None            # todavia no se guardo
             _hay_cabeza = False
-            _anotar_error(f"no se pudo pedir la cabeza de la sesion: {error}")
+            _anotar_error(f"no se pudo pedir la cabeza de {ruta}: {error}")
         except FALLAS_DE_RED as error:
             _hay_cabeza = False
-            _anotar_error(f"no se pudo pedir la cabeza de la sesion: {error}")
+            _anotar_error(f"no se pudo pedir la cabeza de {ruta}: {error}")
 
-    for blob in listar_blobs("sesion/", refrescar=refrescar):
-        if blob.get("pathname") == RUTA_SESION:
+    prefijo = ruta.rsplit("/", 1)[0] + "/" if "/" in ruta else ""
+    for blob in listar_blobs(prefijo, refrescar=refrescar):
+        if blob.get("pathname") == ruta:
             return blob
     return None
+
+
+def _blob_de_la_sesion(*, refrescar: bool = True) -> dict | None:
+    return _blob_puntual(RUTA_SESION, refrescar=refrescar)
 
 
 def leer_sesion() -> tuple[list[str], str] | None:

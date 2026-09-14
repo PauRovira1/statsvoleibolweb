@@ -2213,7 +2213,9 @@ def generar_informe_excel(nombre_archivo_txt: str, nombres: dict) -> str | None:
     libro, avisos = generar_informe_volley.build_workbook(equipo_nombre, rival_nombre, parsed)
     fecha = (generar_informe_volley.guess_fecha_from_filename(nombre_archivo_txt)
              or f"{datetime.now():%Y-%m-%d}")
-    salida = carpeta_lista(CARPETA_INFORMES) / f"Informe_{equipo_nombre}_vs_{rival_nombre}_{fecha}.xlsx"
+    salida = (carpeta_lista(CARPETA_INFORMES) /
+              f"Informe_{alm.nombre_para_archivo(equipo_nombre)}_vs_"
+              f"{alm.nombre_para_archivo(rival_nombre)}_{fecha}.xlsx")
 
     try:
         archivo, avisos_guardado = generar_informe_volley.guardar_informe(libro, salida)

@@ -109,6 +109,7 @@ version_de_la_sesion = ""
 RUTAS_CON_CLAVE = {
     "/api/enviar", "/api/deshacer", "/api/reiniciar",
     "/api/cargar", "/api/guardar", "/api/excel", "/api/borrar",
+    "/api/corregir",
 }
 
 
@@ -186,6 +187,41 @@ def anotar_sesion() -> None:
     version_de_la_sesion = alm.guardar_sesion(sesion.lineas) or alm.version_de_sesion()
 
 
+def corregir_partido(volcado, campos) -> dict:
+    """Guarda (o saca) el arreglo a mano del resumen de un partido.
+
+    El resumen sale leido del .txt y casi siempre eso alcanza. Lo que el
+    archivo no puede saber es cual de varios informes del mismo dia le
+    corresponde: el nombre del informe no lleva la hora, asi que dos guardados
+    del mismo partido comparten archivo y el emparejado automatico se lo
+    cuelga al primero."""
+    # solo el nombre: es la clave con la que se guarda la correccion, nunca
+    # una ruta, y .name deja afuera cualquier intento de salir de la carpeta
+    nombre = Path(str(volcado or "")).name
+    if not nombre.lower().endswith(".txt"):
+        raise arch.RutaInvalida("Hay que decir de que volcado es la correccion.")
+
+    limpios = {}
+    for campo in arch.CAMPOS_CORREGIBLES:
+        valor = (campos or {}).get(campo)
+        if valor in (None, ""):
+            continue
+        if campo == "parciales":
+            limpios[campo] = [str(p).strip() for p in valor if str(p).strip()]
+        elif campo == "puntos":
+            limpios[campo] = int(valor)
+        else:
+            limpios[campo] = str(valor).strip()
+
+    guardado = alm.guardar_correccion(nombre, limpios)
+    if not limpios:
+        return {"ok": True, "mensaje": f"{nombre}: vuelve a mostrar lo que dice el .txt.",
+                "corregido": []}
+    aviso = "" if guardado else "  [OJO: no se pudo guardar afuera, se pierde al reiniciar]"
+    return {"ok": True, "corregido": sorted(limpios),
+            "mensaje": f"{nombre}: corregido {', '.join(sorted(limpios))}.{aviso}"}
+
+
 def aviso_de_blob(logica: str, nombre: str) -> str:
     """Lo que hay que agregarle al mensaje si el archivo no llego al Blob.
 
@@ -229,7 +265,9 @@ def generar_excel(nombre_txt: str, equipo: str) -> str:
     rival = next((n for n in volcado["teams"] if n != equipo), "Rival")
     libro, avisos = gi.build_workbook(equipo, rival, volcado)
     fecha = gi.guess_fecha_from_filename(nombre_txt) or f"{datetime.now():%Y-%m-%d}"
-    salida = av.carpeta_lista(av.CARPETA_INFORMES) / f"Informe_{equipo}_vs_{rival}_{fecha}.xlsx"
+    salida = (av.carpeta_lista(av.CARPETA_INFORMES) /
+          f"Informe_{alm.nombre_para_archivo(equipo)}_vs_"
+          f"{alm.nombre_para_archivo(rival)}_{fecha}.xlsx")
     archivo, _ = gi.guardar_informe(libro, salida)
     return archivo
 
@@ -459,6 +497,14 @@ class Manejador(BaseHTTPRequestHandler):
                 lambda: borrar_partido(datos.get("volcado"), datos.get("informe")))
             return self._responder(respuesta, codigo)
 
+        if ruta == "/api/corregir":
+            # arregla a mano el resumen de un partido. Como /api/borrar: toca
+            # los archivos pero no la sesion, asi que no toma el candado y no
+            # frena al que esta cargando un punto
+            respuesta, codigo = self._leer_de_disco(
+                lambda: corregir_partido(datos.get("volcado"), datos.get("campos")))
+            return self._responder(respuesta, codigo)
+
         if ruta == "/api/abrir":
             # no toca la sesion, asi que tampoco toma el candado: si alguien
             # esta cargando un punto no tiene por que esperar a que abra Excel
@@ -508,6 +554,18 @@ class Manejador(BaseHTTPRequestHandler):
                         "estado": sesion.instantanea()}
             except PermissionError:
                 return {"ok": False, "mensaje": arch.MENSAJE_ARCHIVO_ABIERTO,
+                        "estado": sesion.instantanea()}
+            except Exception as error:      # noqa: BLE001
+                # El volcado se guarda ANTES de armar el Excel, asi que si esto
+                # falla el partido igual quedo a salvo. Hay que decirlo: desde
+                # la pantalla se veia como que el boton no hacia nada y solo
+                # aparecia un .txt, sin ninguna pista de por que.
+                return {"ok": False,
+                        "mensaje": (f"No se pudo generar el Excel "
+                                    f"({type(error).__name__}: {error}). El partido "
+                                    f"igual quedo guardado como {Path(nombre_txt).name}; "
+                                    f"se puede generar el informe despues desde Partidos."),
+                        "archivo": Path(nombre_txt).name, "tipo": "txt",
                         "estado": sesion.instantanea()}
             # el nombre suelto ademas del mensaje: con eso la pantalla arma el
             # enlace para abrir o descargar el informe sin copiar la ruta
