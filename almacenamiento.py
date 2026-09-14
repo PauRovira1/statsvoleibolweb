@@ -557,19 +557,20 @@ def borrar(logica: str, nombre: str) -> tuple[bool, str]:
     anotando el nombre para que deje de aparecer."""
     hechos = []
 
-    local = carpeta_de_escritura(logica) / nombre
-    if local.exists():
-        try:
-            local.unlink()
-            hechos.append("del disco")
-        except OSError as error:
-            return False, f"No se pudo borrar {nombre}: {error}"
-
+    # El Blob primero, que es el que manda: la copia local es un cache que se
+    # vuelve a bajar sola. Borrando al reves, un fallo al borrar afuera dejaba
+    # el archivo "borrado" hasta la proxima sincronizacion, y despues volvia a
+    # aparecer sin que nadie entendiera por que.
     if hay_blob():
         objetivo = f"{logica}/{nombre}"
-        for blob in listar_blobs(f"{logica}/", refrescar=True):
-            if blob.get("pathname") != objetivo:
-                continue
+        try:
+            blob = _blob_puntual(objetivo, estricto=True)
+        except FALLAS_DE_RED as error:
+            _anotar_error(f"no se pudo preguntar por {objetivo}: {error}")
+            return False, (f"No se pudo saber si {nombre} esta en el Blob ({error}). "
+                           f"No se borro nada: borrar solo la copia local lo haria "
+                           f"reaparecer en cuanto se vuelva a sincronizar.")
+        if blob is not None:
             try:
                 borrar_blob(blob.get("url", ""))
                 hechos.append("del Blob")
@@ -578,7 +579,14 @@ def borrar(logica: str, nombre: str) -> tuple[bool, str]:
                 return False, f"No se pudo borrar {nombre} del Blob: {error}"
             with _candado_blob:
                 _ultimo_listado.pop(f"{logica}/", None)
-            break
+
+    local = carpeta_de_escritura(logica) / nombre
+    if local.exists():
+        try:
+            local.unlink()
+            hechos.append("del disco")
+        except OSError as error:
+            return False, f"No se pudo borrar {nombre}: {error}"
 
     # si despues de todo eso sigue existiendo, es de los que vienen en el
     # deploy: no se puede borrar, pero si dejar de mostrar
@@ -750,7 +758,7 @@ _hay_cabeza = True
 _ultima_version: dict[str, tuple[float, str]] = {}
 
 
-def _blob_puntual(ruta: str, *, refrescar: bool = True) -> dict | None:
+def _blob_puntual(ruta: str, *, refrescar: bool = True, estricto: bool = False) -> dict | None:
     """Los datos de UN archivo del blob, sin bajarlo.
 
     Por la cabeza si el servicio la contesta, y si no listando el store como
@@ -760,14 +768,19 @@ def _blob_puntual(ruta: str, *, refrescar: bool = True) -> dict | None:
     repetida de todo el proyecto.
 
     Si la cabeza falla por algo que no sea "no esta", se apaga para el resto
-    del proceso: mejor gastar de mas que quedarse sin saber si algo cambio."""
+    del proceso: mejor gastar de mas que quedarse sin saber si algo cambio.
+
+    Con estricto=True, no poder preguntar levanta en vez de devolver None. Lo
+    usa el borrado, donde "no esta" y "no pude averiguar si esta" llevan a
+    cosas muy distintas: dar por borrado algo que sigue en el Blob hace que
+    reaparezca en cuanto se vuelva a sincronizar."""
     global _hay_cabeza
     if _hay_cabeza:
         try:
             return cabeza_blob(ruta)
         except ErrorDeBlob as error:
             if error.codigo == 404:
-                return None            # todavia no se guardo
+                return None            # no esta, y eso es una respuesta
             _hay_cabeza = False
             _anotar_error(f"no se pudo pedir la cabeza de {ruta}: {error}")
         except FALLAS_DE_RED as error:
@@ -775,6 +788,12 @@ def _blob_puntual(ruta: str, *, refrescar: bool = True) -> dict | None:
             _anotar_error(f"no se pudo pedir la cabeza de {ruta}: {error}")
 
     prefijo = ruta.rsplit("/", 1)[0] + "/" if "/" in ruta else ""
+    if estricto:
+        # sin red de contencion: si el listado falla, se propaga
+        for blob in _listar_blobs_crudo(prefijo):
+            if blob.get("pathname") == ruta:
+                return blob
+        return None
     for blob in listar_blobs(prefijo, refrescar=refrescar):
         if blob.get("pathname") == ruta:
             return blob
@@ -884,6 +903,14 @@ def estado() -> dict:
     avisos = []
     if EN_SERVERLESS and not hay_blob():
         avisos.append(MENSAJE_SIN_BLOB)
+    # Un Blob que falla no se nota: los partidos que ya se bajaron se siguen
+    # viendo, los nuevos no aparecen, y lo que se borra vuelve. Se avisa aca
+    # para que se vea, en vez de quedar solo en los logs del proyecto.
+    fallo = ultimo_error()
+    if fallo:
+        avisos.append(f"Ultimo problema con el Blob: {fallo}. Mientras no se "
+                      f"arregle, los partidos nuevos pueden no aparecer y lo "
+                      f"que borres puede volver.")
     return {
         "serverless": EN_SERVERLESS,
         "persistente": hay_blob() or not EN_SERVERLESS,

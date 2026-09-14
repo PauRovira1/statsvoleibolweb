@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 import estadisticas_jugadores as ej
+import sesion_web
 
 DATOS_REALES = Path(__file__).resolve().parent / "Datos"
 
@@ -139,3 +140,57 @@ class TestListado(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestGuardadosParcialesDelMismoPartido(unittest.TestCase):
+    """Guardar el partido varias veces mientras avanza es lo normal. Los
+    guardados intermedios no pueden contarse como partidos aparte: sus jugadas
+    se sumarian de nuevo y todos los numeros de la ficha quedarian inflados.
+
+    Compararlos por parciales no alcanza: un guardado hecho a mitad de un set
+    dice 15-14 donde el completo dice 20-25."""
+
+    LINEAS = (["Local", "Rival", "1_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A"] +
+              ["1_5_X/8_3/7_4/9_1_O"] * 10)
+
+    def _carpeta_con_guardados(self, cortes):
+        carpeta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, carpeta, ignore_errors=True)
+        for numero, corte in enumerate(cortes):
+            sesion = sesion_web.SesionPartido()
+            for linea in self.LINEAS[:corte]:
+                sesion.enviar(linea)
+            guardado = Path(sesion.guardar())
+            shutil.move(str(guardado), Path(carpeta) / f"partido_2026091{numero}_010000.txt")
+        return carpeta
+
+    def test_los_guardados_a_medias_no_cuentan_como_partidos(self):
+        carpeta = self._carpeta_con_guardados([7, 9, 12, len(self.LINEAS)])
+        elegidos, descartados = ej.partidos_unicos(carpeta)
+        self.assertEqual(len(elegidos), 1, [e["archivo"] for e in elegidos])
+        self.assertEqual(len(descartados), 3)
+
+    def test_se_queda_con_el_mas_completo(self):
+        carpeta = self._carpeta_con_guardados([7, len(self.LINEAS)])
+        elegidos, _ = ej.partidos_unicos(carpeta)
+        self.assertEqual(elegidos[0]["jugadas"][-1], self.LINEAS[-1])
+
+    def test_las_jugadas_se_cuentan_una_sola_vez(self):
+        completo, _ = ej.partidos_unicos(self._carpeta_con_guardados([len(self.LINEAS)]))
+        con_parciales, _ = ej.partidos_unicos(
+            self._carpeta_con_guardados([7, 9, 12, len(self.LINEAS)]))
+        self.assertEqual(completo[0]["puntos"], con_parciales[0]["puntos"])
+
+    def test_dos_partidos_de_verdad_siguen_siendo_dos(self):
+        carpeta = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, carpeta, ignore_errors=True)
+        for numero, rival in enumerate(("Rival", "Otro")):
+            sesion = sesion_web.SesionPartido()
+            for linea in ["Local", rival, "1_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A",
+                          "1_5_A", "1_5_A"]:
+                sesion.enviar(linea)
+            guardado = Path(sesion.guardar())
+            shutil.move(str(guardado), Path(carpeta) / f"partido_2026091{numero}_010000.txt")
+        elegidos, descartados = ej.partidos_unicos(carpeta)
+        self.assertEqual(len(elegidos), 2)
+        self.assertEqual(descartados, [])

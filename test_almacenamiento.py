@@ -50,6 +50,15 @@ class BlobSimulado:
             return json.dumps({"url": f"https://falso/{nombre}",
                                "pathname": nombre, "etag": etag}).encode()
 
+        if metodo == "POST" and url.endswith("/delete"):
+            # del() no se factura, pero igual hay que sacar el archivo
+            self.cuenta["DELETE"] += 1
+            urls = json.loads(cuerpo.decode("utf-8")).get("urls") or []
+            for nombre in [n for n in self.archivos
+                           if f"https://falso/{n}" in urls]:
+                del self.archivos[nombre]
+            return b"{}"
+
         if metodo == "GET" and url.startswith(alm.API_BLOB) and "url=" in url:
             self.cuenta["HEAD"] += 1
             if not self.cabeza:
@@ -341,3 +350,76 @@ class TestCorrecciones(unittest.TestCase):
         with mock.patch.object(alm, "_correcciones", None):
             self.assertEqual(alm.leer_correcciones(refrescar=True),
                              {"partido_1.txt": {"puntos": 92}})
+
+
+class TestBorrar(BaseBlob):
+    """Borrar toca dos lugares: el Blob, que es el que manda, y la copia local,
+    que es un cache que se vuelve a bajar sola. Si se borra solo la copia
+    local, el archivo reaparece en la proxima sincronizacion."""
+
+    def _con_archivo(self):
+        carpeta = alm.carpeta_de_escritura("Datos")
+        alm.carpeta_lista(carpeta)
+        (carpeta / "partido_x.txt").write_text("hola", encoding="utf-8")
+        return carpeta / "partido_x.txt"
+
+    def test_borra_del_blob_y_del_disco(self):
+        local = self._con_archivo()
+        alm.subir_blob("Datos/partido_x.txt", b"hola", "text/plain")
+        pudo, mensaje = alm.borrar("Datos", "partido_x.txt")
+        self.assertTrue(pudo, mensaje)
+        self.assertIn("del Blob", mensaje)
+        self.assertFalse(local.exists())
+        self.assertNotIn("Datos/partido_x.txt", self.blob.archivos)
+
+    def test_si_no_esta_en_el_blob_igual_borra_la_copia_local(self):
+        local = self._con_archivo()
+        pudo, mensaje = alm.borrar("Datos", "partido_x.txt")
+        self.assertTrue(pudo, mensaje)
+        self.assertFalse(local.exists())
+
+    def test_pregunta_por_el_archivo_sin_listar_el_store(self):
+        self._con_archivo()
+        alm.subir_blob("Datos/partido_x.txt", b"hola", "text/plain")
+        self.blob.cuenta.clear()
+        alm.borrar("Datos", "partido_x.txt")
+        self.assertEqual(self.blob.cuenta["LIST"], 0)
+
+
+class TestBorrarConElBlobCaido(BaseBlob):
+    """Con el Blob caido no se puede saber si el archivo esta afuera. Borrar
+    igual la copia local es lo peor: dice que se borro y reaparece."""
+
+    def setUp(self):
+        super().setUp()
+        def caido(url, **kwargs):
+            raise alm.ErrorDeBlob("GET -> HTTP 403 quota exceeded", 403)
+        parche = mock.patch.object(alm, "_pedir", caido)
+        parche.start()
+        self.addCleanup(parche.stop)
+
+    def test_no_borra_nada_y_lo_dice(self):
+        carpeta = alm.carpeta_de_escritura("Datos")
+        alm.carpeta_lista(carpeta)
+        local = carpeta / "partido_x.txt"
+        local.write_text("hola", encoding="utf-8")
+        pudo, mensaje = alm.borrar("Datos", "partido_x.txt")
+        self.assertFalse(pudo)
+        self.assertIn("reaparecer", mensaje)
+        self.assertTrue(local.exists(), "la copia local no se puede borrar a ciegas")
+
+
+class TestAvisosDelBlob(unittest.TestCase):
+    """Un Blob que falla no se nota: lo que ya se bajo se sigue viendo. El
+    aviso es lo unico que lo hace visible en pantalla."""
+
+    def test_un_fallo_aparece_en_los_avisos(self):
+        with mock.patch.object(alm, "_ultimo_error", "PUT -> HTTP 403 quota exceeded"):
+            avisos = alm.estado()["avisos"]
+        self.assertTrue(any("403" in a for a in avisos))
+        self.assertTrue(any("volver" in a for a in avisos))
+
+    def test_sin_fallos_no_hay_aviso(self):
+        with mock.patch.object(alm, "_ultimo_error", ""), \
+             mock.patch.object(alm, "EN_SERVERLESS", False):
+            self.assertEqual(alm.estado()["avisos"], [])

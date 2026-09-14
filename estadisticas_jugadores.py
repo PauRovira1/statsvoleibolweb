@@ -83,6 +83,25 @@ def _es_prefijo(corto: tuple, largo: tuple) -> bool:
     return len(corto) <= len(largo) and largo[:len(corto)] == corto
 
 
+def _jugadas_cargadas(texto: str) -> tuple:
+    """Las lineas tal como se tipearon, del encabezado a la primera seccion.
+
+    Comparar esto es lo unico exacto para saber si dos volcados son el mismo
+    partido: los parciales no alcanzan porque un guardado hecho a mitad de un
+    set dice 15-14 donde el completo dice 20-25, y asi el parcial se contaba
+    como un partido aparte y sus jugadas se sumaban dos veces."""
+    lineas = []
+    for linea in texto.splitlines():
+        if linea.startswith("==="):
+            if lineas:
+                break
+            continue
+        lineas.append(linea)
+    while lineas and not lineas[-1].strip():
+        lineas.pop()
+    return tuple(lineas)
+
+
 # Secciones que se fueron agregando con el tiempo: un volcado viejo del mismo
 # partido no las trae. Sirven para elegir, entre dos recargas iguales, la que
 # tiene mas datos en vez de la primera que aparezca.
@@ -141,6 +160,7 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
 
         leidos.append({
             "archivo": ruta.name,
+            "jugadas": _jugadas_cargadas(texto),
             "armadores": marcados,
             "fecha": _fecha_de(ruta.name),
             "equipos": tuple(sorted(volcado["teams"])),
@@ -154,11 +174,16 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
     # a igualdad de partido se queda el volcado con mas secciones: los viejos
     # no traen las que se agregaron despues y perderiamos esos datos
     for partido in sorted(leidos,
-                          key=lambda p: (-len(p["parciales"]), -p["puntos"], -p["riqueza"])):
+                          key=lambda p: (-len(p["parciales"]), -len(p["jugadas"]),
+                                         -p["puntos"], -p["riqueza"])):
         gemelo = next(
             (e for e in elegidos
              if e["equipos"] == partido["equipos"]
-             and _es_prefijo(partido["parciales"], e["parciales"])),
+             and (_es_prefijo(partido["parciales"], e["parciales"])
+                  # o directamente lo mismo tipeado: un guardado a mitad de
+                  # set tiene otro parcial pero las mismas jugadas
+                  or (partido["jugadas"]
+                      and _es_prefijo(partido["jugadas"], e["jugadas"])))),
             None,
         )
         if gemelo is None:

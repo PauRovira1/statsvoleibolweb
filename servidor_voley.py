@@ -283,7 +283,9 @@ def responder_jugadores() -> dict:
     volcados: son milisegundos, y asi no hay numeros guardados que se puedan
     desactualizar cuando se borra o se recarga un partido."""
     import estadisticas_jugadores as ej
-    return {"ok": True, **ej.listado()}
+    # igual que el listado de partidos: si el Blob esta fallando, esto es lo
+    # que se ve incompleto, asi que el aviso tiene que viajar con los datos
+    return {"ok": True, **ej.listado(), "almacenamiento": alm.estado()}
 
 
 def responder_jugador(equipo: str, dorsal: str) -> dict:
@@ -295,7 +297,10 @@ def responder_jugador(equipo: str, dorsal: str) -> dict:
 
 
 def responder_partidos() -> dict:
-    return {"ok": True, "partidos": arch.listar_partidos()}
+    # el estado del almacenamiento viaja tambien aca: si el Blob esta fallando,
+    # esta lista es justo la que se ve incompleta
+    return {"ok": True, "partidos": arch.listar_partidos(),
+            "almacenamiento": alm.estado()}
 
 
 def responder_partido(nombre: str) -> dict:

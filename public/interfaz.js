@@ -992,6 +992,7 @@ async function entrarAPartidos(){
   if(!listaPartidosVencida) return;
   listaPartidosVencida = false;
   const r = await api("/api/partidos");
+  avisarDelServidor(r.almacenamiento);
   if(!r.ok){
     $("#listaPartidos").innerHTML = `<p class="nota" style="margin:0">${esc(r.mensaje)}</p>`;
     return;
@@ -1534,6 +1535,7 @@ async function pintarJugadores(){
   if(planteles === null){
     caja.innerHTML = `<p class="nota">Leyendo los partidos guardados…</p>`;
     const r = await api("/api/jugadores");
+    avisarDelServidor(r.almacenamiento);
     planteles = r.ok ? r : {equipos: [], descartados: []};
   }
   // Los duplicados se avisan en vez de descartarlos en silencio: contar dos
