@@ -53,6 +53,17 @@ const ordenZonas = zonas => zonas.slice().sort((a, b) => {
   const ia = ORDEN_ZONAS.indexOf(a), ib = ORDEN_ZONAS.indexOf(b);
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || String(a).localeCompare(String(b));
 });
+// El selector de la pestana Jugadores va por dorsal, de menor a mayor: a
+// alguien se lo busca por su numero ("el 13"), no por cuanto toco la pelota.
+// El servidor los manda por actividad, que es otro orden util, pero no para
+// encontrar a uno.
+const porDorsal = jugadores => jugadores.slice().sort((a, b) => {
+  const na = parseInt(String(a.dorsal).replace(/\D+/g, ""), 10);
+  const nb = parseInt(String(b.dorsal).replace(/\D+/g, ""), 10);
+  if(isNaN(na) || isNaN(nb)) return String(a.dorsal).localeCompare(String(b.dorsal));
+  return na - nb;
+});
+
 // "Jugador 28" ordena por el dorsal, no alfabeticamente (28 antes que 3)
 const ordenJugadores = nombres => nombres.slice().sort((a, b) => {
   const na = parseInt(String(a).replace(/\D+/g, ""), 10);
@@ -1558,8 +1569,9 @@ async function pintarJugadores(){
 
   let equipo = planteles.equipos.find(e => e.nombre === equipoElegido);
   if(!equipo){ equipo = planteles.equipos[0]; equipoElegido = equipo.nombre; }
-  if(!equipo.jugadores.some(j => j.dorsal === dorsalElegido)){
-    dorsalElegido = equipo.jugadores.length ? equipo.jugadores[0].dorsal : null;
+  const jugadores = porDorsal(equipo.jugadores);
+  if(!jugadores.some(j => j.dorsal === dorsalElegido)){
+    dorsalElegido = jugadores.length ? jugadores[0].dorsal : null;
   }
 
   const selectorEquipos = `<div class="selector" id="selectorEquipo">` +
@@ -1569,7 +1581,7 @@ async function pintarJugadores(){
     `</div>`;
 
   const selectorDorsales = `<div class="selector" id="selectorDorsal">` +
-    equipo.jugadores.map(j =>
+    jugadores.map(j =>
       `<button data-dorsal="${esc(j.dorsal)}" class="${j.dorsal === dorsalElegido ? "activa" : ""}"
         title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${j.armador ? " ·S" : ""}</button>`).join("") +
     `</div>`;
