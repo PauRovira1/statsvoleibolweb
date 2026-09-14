@@ -9,6 +9,8 @@ import io
 import os
 import re
 
+from pathlib import Path
+
 import analisis_voley as av
 import sesion_web
 import unittest
@@ -2698,6 +2700,105 @@ try:
     HAY_OPENPYXL = True
 except ImportError:
     HAY_OPENPYXL = False
+
+
+class TestNombresEnElInforme(unittest.TestCase):
+    """El .txt guarda numeros; el nombre se le agrega al armar el informe.
+
+    Se renombra la CLAVE de cada jugador y no solo la etiqueta que se ve: en
+    el informe el mismo texto es lo que dice la celda y el criterio con el que
+    las formulas suman desde Datos_Base. Cambiar una sola de las dos dejaria
+    las tablas en cero."""
+
+    VOLCADO = Path(__file__).resolve().parent / "Datos" / "partido_20260908_141454.txt"
+
+    def _datos(self):
+        import generar_informe_volley as gi
+        return gi.parse_volcado(self.VOLCADO.read_text(encoding="utf-8"))["teams"]["Palestino"]
+
+    def test_le_pone_el_nombre_al_jugador(self):
+        import generar_informe_volley as gi
+        datos = gi.poner_nombres(self._datos(), {"13": "Sofia"})
+        self.assertIn("Jugador 13 · Sofia", datos["ataques_jugador"])
+        self.assertNotIn("Jugador 13", datos["ataques_jugador"])
+
+    def test_el_que_no_tiene_nombre_queda_igual(self):
+        import generar_informe_volley as gi
+        datos = gi.poner_nombres(self._datos(), {"13": "Sofia"})
+        self.assertIn("Jugador 88", datos["ataques_jugador"])
+
+    def test_sin_nombres_no_cambia_nada(self):
+        import generar_informe_volley as gi
+        antes = self._datos()["ataques_jugador"]
+        self.assertEqual(gi.poner_nombres(self._datos(), {})["ataques_jugador"], antes)
+
+    def test_los_numeros_no_se_mueven(self):
+        import generar_informe_volley as gi
+        antes = self._datos()["ataques_jugador"]["Jugador 13"]
+        despues = gi.poner_nombres(self._datos(), {"13": "Sofia"})["ataques_jugador"]
+        self.assertEqual(despues["Jugador 13 · Sofia"], antes)
+
+    def test_renombra_tambien_el_detalle_por_zona(self):
+        # es el que alimenta la tabla de ataques por zona de origen: si la
+        # clave no coincide con la de la fila, esa tabla sale toda en cero
+        import generar_informe_volley as gi
+        datos = gi.poner_nombres(self._datos(), {"13": "Sofia"})
+        jugadores = {fila[0] for fila in datos["ataques_detalle"]}
+        self.assertIn("Jugador 13 · Sofia", jugadores)
+        self.assertNotIn("Jugador 13", jugadores)
+
+    def test_renombra_en_todas_las_tablas_por_jugador(self):
+        import generar_informe_volley as gi
+        datos = gi.poner_nombres(self._datos(), {"13": "Sofia", "3": "Camila"})
+        for campo in ("recepciones", "armado_armador", "armado_calidad_armador",
+                      "ataques_jugador", "bloqueos_jugador"):
+            for clave in datos[campo]:
+                if clave.startswith("Jugador 13"):
+                    self.assertEqual(clave, "Jugador 13 · Sofia", campo)
+                if clave.startswith("Jugador 3 "):
+                    self.assertEqual(clave, "Jugador 3 · Camila", campo)
+
+
+@unittest.skipUnless(HAY_OPENPYXL, "necesita openpyxl")
+class TestElInformeConNombres(unittest.TestCase):
+    """Ponerle nombres al informe no puede cambiar ningun numero."""
+
+    VOLCADO = str(Path(__file__).resolve().parent / "Datos" / "partido_20260908_141454.txt")
+
+    def _celdas(self, nombres):
+        import generar_informe_volley as gi
+        import valores_excel
+        parsed = gi.parse_volcado(Path(self.VOLCADO).read_text(encoding="utf-8"))
+        libro, _ = gi.build_workbook("Palestino", "O'sommer", parsed, nombres)
+        valores_excel.convertir_a_valores(libro)
+        hoja = libro["Ataque jugador"]
+        return [[hoja.cell(row=f, column=c).value for c in range(1, 10)]
+                for f in range(1, hoja.max_row + 1)]
+
+    def test_los_numeros_son_los_mismos_con_y_sin_nombres(self):
+        sin = self._celdas(None)
+        con = self._celdas({"13": "Sofia", "88": "Valentina"})
+        self.assertEqual(len(sin), len(con))
+        for fila_sin, fila_con in zip(sin, con):
+            # la primera celda es la etiqueta; el resto son los numeros
+            self.assertEqual(fila_sin[1:], fila_con[1:])
+
+    def test_el_nombre_aparece_en_la_planilla(self):
+        con = self._celdas({"13": "Sofia"})
+        etiquetas = [str(f[0]) for f in con]
+        self.assertTrue(any("Jugador 13 · Sofia" in e for e in etiquetas))
+
+    def test_la_tabla_por_zona_no_queda_en_cero(self):
+        con = self._celdas({"13": "Sofia"})
+        fila = next(f for f in con if str(f[0]) == "Jugador 13 · Sofia" and f[8] is not None)
+        self.assertGreater(num_o_cero(fila[8]), 0)   # ataques totales
+
+
+def num_o_cero(valor):
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return 0
 
 
 @unittest.skipUnless(HAY_OPENPYXL, "necesita openpyxl")

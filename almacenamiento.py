@@ -601,9 +601,29 @@ def leer_nombres_de_partido(*, refrescar: bool = False) -> dict:
 def nombres_de(volcado: str, equipo: str) -> dict:
     """Los nombres que valen para ese equipo en ese partido.
 
-    Los del equipo primero y encima los propios del partido, si los hay."""
-    nombres = dict(leer_plantel().get(equipo) or {})
+    La base es el ultimo nombre conocido de cada dorsal (ver
+    nombres_del_equipo) y encima van los propios de este partido, si los
+    tiene. Que la base sea "el ultimo conocido" y no solo el del equipo es lo
+    que hace que esto funcione solo: generar el informe guarda un .txt NUEVO,
+    asi que los nombres puestos sobre el volcado viejo no los tendria nunca."""
+    nombres = nombres_del_equipo(equipo)
     nombres.update(leer_nombres_de_partido().get(volcado, {}).get(equipo) or {})
+    return nombres
+
+
+def nombres_del_equipo(equipo: str) -> dict:
+    """El nombre que vale para cada dorsal cuando se miran VARIOS partidos.
+
+    La pestana Jugadores suma todo lo cargado, asi que no hay un partido del
+    que sacar el nombre. Manda el del equipo; si un dorsal no lo tiene, se usa
+    el del partido mas nuevo donde se le haya puesto uno -- el nombre del
+    archivo lleva la fecha, asi que ordenarlos alcanza. Es mejor mostrar el
+    ultimo nombre conocido que dejar el numero pelado."""
+    nombres = {}
+    por_partido = leer_nombres_de_partido()
+    for volcado in sorted(por_partido):
+        nombres.update(por_partido[volcado].get(equipo) or {})
+    nombres.update(leer_plantel().get(equipo) or {})
     return nombres
 
 

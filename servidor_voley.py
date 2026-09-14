@@ -300,7 +300,10 @@ def generar_excel(nombre_txt: str, equipo: str) -> str:
         raise ValueError(f"El equipo {equipo} no aparece en el volcado.")
 
     rival = next((n for n in volcado["teams"] if n != equipo), "Rival")
-    libro, avisos = gi.build_workbook(equipo, rival, volcado)
+    # los nombres de ESE partido: los del equipo y, encima, los propios si
+    # los tiene. El .txt sigue guardando numeros; el nombre se agrega aca
+    nombres = alm.nombres_de(Path(nombre_txt).name, equipo)
+    libro, avisos = gi.build_workbook(equipo, rival, volcado, nombres)
     fecha = gi.guess_fecha_from_filename(nombre_txt) or f"{datetime.now():%Y-%m-%d}"
     salida = (av.carpeta_lista(av.CARPETA_INFORMES) /
           f"Informe_{alm.nombre_para_archivo(equipo)}_vs_"
@@ -326,7 +329,9 @@ def responder_jugadores() -> dict:
     # y nada mas; ponerle los nombres adentro lo ataria a donde se guardan.
     plantel = alm.leer_plantel()
     for equipo in datos.get("equipos", []):
-        nombres = plantel.get(equipo["nombre"], {})
+        # aca se suman varios partidos, asi que vale el nombre del equipo y,
+        # si no lo tiene, el ultimo que se le haya puesto en algun partido
+        nombres = alm.nombres_del_equipo(equipo["nombre"])
         for jugador in equipo["jugadores"]:
             jugador["nombre"] = nombres.get(str(jugador["dorsal"]), "")
     # igual que el listado de partidos: si el Blob esta fallando, esto es lo
@@ -339,7 +344,7 @@ def responder_jugador(equipo: str, dorsal: str) -> dict:
     ficha = ej.ficha(equipo, dorsal)
     if ficha is None:
         return {"ok": False, "mensaje": f"No hay datos del {dorsal} en {equipo}."}
-    ficha["nombre"] = alm.leer_plantel().get(equipo, {}).get(str(dorsal), "")
+    ficha["nombre"] = alm.nombres_del_equipo(equipo).get(str(dorsal), "")
     return {"ok": True, "jugador": ficha}
 
 

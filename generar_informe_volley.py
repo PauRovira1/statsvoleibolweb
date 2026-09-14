@@ -632,8 +632,36 @@ def col_letter(n):
 # 3) CONSTRUCCION DEL LIBRO
 # ======================================================================
 
-def build_workbook(equipo_name, rival_name, parsed):
-    data = parsed["teams"][equipo_name]
+def poner_nombres(data, nombres):
+    """Le agrega el nombre a cada "Jugador N" de este equipo.
+
+    Se renombra la CLAVE y no solo la etiqueta que se ve. En el informe el
+    mismo texto es las dos cosas: lo que dice la celda y el criterio con el
+    que las formulas suman desde Datos_Base. Cambiar una sola de las dos
+    dejaria las tablas en cero, que es justo el bug que costo encontrar la
+    otra vez."""
+    if not nombres:
+        return data
+
+    def etiqueta(clave):
+        dorsal = str(clave).replace("Jugador", "").strip()
+        nombre = nombres.get(dorsal)
+        return f"{clave} · {nombre}" if nombre else clave
+
+    por_jugador = ("armado_armador", "recepciones", "armado_calidad_armador",
+                   "ataques_jugador", "bloqueos_jugador")
+    for campo in por_jugador:
+        data[campo] = {etiqueta(j): v for j, v in data[campo].items()}
+    for campo in ("armado_armador_por_set", "recepciones_por_set"):
+        data[campo] = {s: {etiqueta(j): v for j, v in por.items()}
+                       for s, por in data[campo].items()}
+    data["ataques_detalle"] = [(etiqueta(j),) + tuple(resto)
+                               for j, *resto in data["ataques_detalle"]]
+    return data
+
+
+def build_workbook(equipo_name, rival_name, parsed, nombres=None):
+    data = poner_nombres(parsed["teams"][equipo_name], nombres)
     warnings = []
     reconcile_sin_registrar(data, warnings, equipo_name)
 

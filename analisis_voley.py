@@ -2210,7 +2210,9 @@ def generar_informe_excel(nombre_archivo_txt: str, nombres: dict) -> str | None:
         print(f"  El equipo {equipo_nombre} no aparece en el volcado, no se genera el Excel.")
         return None
 
-    libro, avisos = generar_informe_volley.build_workbook(equipo_nombre, rival_nombre, parsed)
+    nombres = alm.nombres_de(Path(nombre_archivo_txt).name, equipo_nombre)
+    libro, avisos = generar_informe_volley.build_workbook(
+        equipo_nombre, rival_nombre, parsed, nombres)
     fecha = (generar_informe_volley.guess_fecha_from_filename(nombre_archivo_txt)
              or f"{datetime.now():%Y-%m-%d}")
     salida = (carpeta_lista(CARPETA_INFORMES) /

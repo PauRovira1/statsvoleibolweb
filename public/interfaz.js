@@ -1647,11 +1647,17 @@ async function traerPlantel(){
 // guarda. Si ese numero tiene nombre anotado se muestra al lado: el numero
 // manda igual, porque es por lo que se lo busca.
 function nombresDe(equipo, volcado){
-  // los del equipo valen para todos sus partidos; los del partido los pisan,
-  // que es lo que hace falta cuando el 13 del año pasado no es el de este
-  const base = ((PLANTEL || {}).plantel || {})[equipo] || {};
-  const propios = (((PLANTEL || {}).partidos || {})[volcado] || {})[equipo] || {};
-  return Object.assign({}, base, propios);
+  // La base es el ultimo nombre conocido de cada dorsal: el del equipo, y si
+  // no tiene, el del partido mas nuevo donde se le haya puesto uno (el nombre
+  // del archivo lleva la fecha, asi que ordenarlos alcanza). Encima van los
+  // propios de este partido, que son los que mandan cuando el 13 del año
+  // pasado no es el de este. Misma regla que en el servidor.
+  const porPartido = (PLANTEL || {}).partidos || {};
+  const base = {};
+  Object.keys(porPartido).sort().forEach(v =>
+    Object.assign(base, porPartido[v][equipo] || {}));
+  Object.assign(base, ((PLANTEL || {}).plantel || {})[equipo] || {});
+  return Object.assign(base, porPartido[volcado] && porPartido[volcado][equipo] || {});
 }
 
 function conNombre(equipo, clave, volcado){

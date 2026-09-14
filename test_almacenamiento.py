@@ -536,3 +536,62 @@ class TestNombresPorPartido(unittest.TestCase):
         alm.guardar_nombres_de_partido("p.txt", "Palestino", {"13": "Martina"})
         with mock.patch.object(alm, "_plantel", None):
             self.assertEqual(alm.nombres_de("p.txt", "Palestino")["13"], "Martina")
+
+
+class TestNombreQueVale(unittest.TestCase):
+    """La pestana Jugadores suma varios partidos, asi que no hay uno del que
+    sacar el nombre: manda el del equipo y, si no lo tiene, el ultimo que se le
+    haya puesto en algun partido."""
+
+    def setUp(self):
+        carpeta = tempfile.TemporaryDirectory()
+        self.addCleanup(carpeta.cleanup)
+        parches = [
+            mock.patch.object(alm, "hay_blob", lambda: False),
+            mock.patch.object(alm, "CARPETA_ESCRITURA", Path(carpeta.name)),
+            mock.patch.object(alm, "_plantel", None),
+            mock.patch.object(alm, "_momento_plantel", 0.0),
+        ]
+        for parche in parches:
+            parche.start()
+            self.addCleanup(parche.stop)
+
+    def test_manda_el_del_equipo(self):
+        alm.guardar_plantel("Palestino", {"13": "Sofia"})
+        alm.guardar_nombres_de_partido("partido_20260101_120000.txt",
+                                       "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.nombres_del_equipo("Palestino")["13"], "Sofia")
+
+    def test_sin_el_del_equipo_vale_el_del_partido(self):
+        alm.guardar_nombres_de_partido("partido_20260101_120000.txt",
+                                       "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.nombres_del_equipo("Palestino")["13"], "Martina")
+
+    def test_entre_varios_partidos_gana_el_mas_nuevo(self):
+        # el nombre del archivo lleva la fecha, asi que ordenarlos alcanza
+        alm.guardar_nombres_de_partido("partido_20250101_120000.txt",
+                                       "Palestino", {"13": "Martina"})
+        alm.guardar_nombres_de_partido("partido_20260101_120000.txt",
+                                       "Palestino", {"13": "Renata"})
+        self.assertEqual(alm.nombres_del_equipo("Palestino")["13"], "Renata")
+
+    def test_sin_nada_anotado_no_hay_nombres(self):
+        self.assertEqual(alm.nombres_del_equipo("Palestino"), {})
+
+    def test_el_informe_usa_el_ultimo_nombre_conocido(self):
+        # generar el informe guarda un .txt NUEVO, asi que el nombre puesto
+        # sobre el volcado viejo tiene que seguir valiendo igual
+        alm.guardar_nombres_de_partido("partido_20260908_141454.txt",
+                                       "Palestino", {"13": "Martina"})
+        self.assertEqual(alm.nombres_de("partido_20260914_020000.txt",
+                                        "Palestino")["13"], "Martina")
+
+    def test_pero_el_partido_con_nombre_propio_manda(self):
+        alm.guardar_nombres_de_partido("partido_20250101_120000.txt",
+                                       "Palestino", {"13": "Martina"})
+        alm.guardar_nombres_de_partido("partido_20260101_120000.txt",
+                                       "Palestino", {"13": "Renata"})
+        self.assertEqual(alm.nombres_de("partido_20250101_120000.txt",
+                                        "Palestino")["13"], "Martina")
+        self.assertEqual(alm.nombres_de("partido_20260101_120000.txt",
+                                        "Palestino")["13"], "Renata")
