@@ -115,7 +115,11 @@ const campo = $("#linea"), mensaje = $("#mensaje");
 // media pantalla en la pestana equivocada.
 function foco(){
   if(vistaActual !== "cargar") return;
-  (token ? campo : campoClave).focus();
+  if(!token) return campoClave.focus();
+  // en el modo visual no se toca el campo: el teclado del celular taparia
+  // media cancha justo cuando hay que apretarla
+  if(modo === "tocando") return;
+  campo.focus();
 }
 
 // ======================================================================
@@ -244,17 +248,23 @@ function pintar(e){
   $("#eqA").classList.toggle("saca", e.etapa === "jugadas" && e.equipo_saca === "A");
   $("#eqB").classList.toggle("saca", e.etapa === "jugadas" && e.equipo_saca === "B");
 
-  // el turno es lo que se mira entre rally y rally: sacador bien destacado
-  $("#turno").innerHTML = e.jugador_saca != null
+  // El turno es lo que se mira entre rally y rally: sacador bien destacado.
+  // En medio de un punto el sacador ya no viene al caso (el prompt dice quien
+  // juega), asi que solo se agrega cuando el motor esta esperando un saque.
+  const tocaSacar = e.pendiente && e.pendiente.espera === "saque";
+  $("#turno").innerHTML = (tocaSacar && e.jugador_saca != null)
     ? `${esc(e.prompt.replace(/, jugador \d+$/, ""))} · <span class="sacador">saca el ${esc(e.jugador_saca)}</span>`
     : esc(e.prompt);
 
+  // La etapa la dice el motor, asi que puede traer una que esta lista no
+  // conozca: sin el "|| """ el campo queda con un "undefined" escrito.
   campo.placeholder = ({
     nombres:"Escribi el nombre y Enter (vacio = A/B)",
     rotacion:"28_S 5 13 88 3 40   (vacio = sin rotacion)",
+    mantener_rotacion:"s  o  n",
     saque_inicial:"A  o  B",
     jugadas:"1_5_X/3_3/2_4/4_1_P"
-  })[e.etapa];
+  })[e.etapa] || "";
   $("#atajos").style.opacity = e.etapa === "jugadas" ? "1" : ".45";
 
   // el contador de la pestana: hay algo cargado que todavia no se guardo
@@ -290,6 +300,8 @@ function pintar(e){
       resaltada la zona 1, que es la que saca.</p>`
     : `<p class="nota" style="margin:0">Sin rotacion cargada: el numero del sacador es obligatorio.</p>`;
 
+  pintarVisual(e);
+
   $("#cambios").innerHTML = e.cambios.length
     ? `<div class="tabla"><table><tr><th>Set</th><th>Equipo</th><th>Entra</th><th>Sale</th><th>Zona</th></tr>` +
       e.cambios.map(c => `<tr><td>${esc(c.set)}</td><td>${esc(e.nombres[c.equipo])}</td>
@@ -313,6 +325,14 @@ $$("[data-enviar]").forEach(b =>
   b.addEventListener("click", () => enviar(b.dataset.enviar)));
 
 $("#btnCambio").addEventListener("click", () => {
+  // tocando, el cambio tiene su propia pantalla; escribiendo, se deja el
+  // prefijo puesto como hasta ahora
+  if(modo === "tocando" && estadoActual && estadoActual.etapa === "jugadas"){
+    cambioVisual = {sale: null, entra: null, armador: false};
+    tecleando = null;
+    mostrarMensaje("Los cambios entran entre puntos.", true);
+    return pintarVisual(estadoActual);
+  }
   campo.value = "C_";
   foco();
   mostrarMensaje("C_entra_sale  (agrega _S sobre el que entra si es cambio de armador)", true);
@@ -357,7 +377,9 @@ $("#btnBloquear").addEventListener("click", () => {
 });
 
 $("#btnReiniciar").addEventListener("click", () => {
-  if(confirm("Se pierde todo lo cargado. Seguro?")) accion("/api/reiniciar");
+  if(!confirm("Se pierde todo lo cargado. Seguro?")) return;
+  campo.value = "";        // reiniciar tambien borra lo que quedo a medio tipear
+  accion("/api/reiniciar");
 });
 $("#btnPegar").addEventListener("click", () => accion("/api/cargar", {texto: $("#pegar").value}));
 $("#btnStats").addEventListener("click", async () => {
@@ -385,6 +407,474 @@ document.addEventListener("click", async ev => {
   boton.disabled = false;
   if(vistaActual === "cargar") mostrarMensaje(r.mensaje, r.ok);
   else avisoDetalle(r.mensaje, r.ok);
+});
+
+// ======================================================================
+// 2c) LA CANCHA: cargar tocando
+// ======================================================================
+// Arma exactamente la misma linea que se escribiria a mano y la manda por el
+// mismo POST /api/enviar. No valida nada ni decide quien gano el punto: lo
+// unico que sabe es que se puede tocar en cada paso, y eso se lo dice la
+// tabla de /api/notacion (ver notacion.py). De quien es la pelota se lo dice
+// el motor en estado.pendiente.
+//
+// Los dos equipos van siempre en el mismo lugar, A arriba y B abajo. Dar
+// vuelta la cancha segun quien tiene la pelota se lee mal justo cuando no hay
+// tiempo de leerla; encender la mitad que juega se lee de un vistazo.
+
+// Las zonas de cada mitad, en el orden en que se dibujan (3 columnas). La de
+// abajo se ve desde atras (4-3-2 contra la red); la de arriba es la misma
+// cancha girada media vuelta.
+const ZONAS_MITAD = {
+  A: [1, 6, 5, 9, 8, 7, 2, 3, 4],
+  B: [4, 3, 2, 7, 8, 9, 5, 6, 1]
+};
+
+const MODO_GUARDADO = "voley.modo";
+let modo = "tocando";
+try{ modo = localStorage.getItem(MODO_GUARDADO) || "tocando"; }catch(_){ /* sin storage */ }
+
+let notacionLista = false;
+let armador = null;          // la jugada que se esta armando
+let claveVisual = "";        // con que estado del motor se armaron los borradores
+let tecleando = null;        // {destino, digitos, ranura} mientras se usa el teclado
+let cambioVisual = null;     // {sale, entra, armador} mientras se arma un cambio
+let rotacionBorrador = null; // la rotacion que se esta cargando
+let estadoActual = null;
+
+async function traerNotacion(){
+  if(notacionLista) return;
+  const r = await api("/api/notacion");
+  if(r && r.ok){ cargarNotacion(r); notacionLista = true; }
+}
+
+function guardarModo(nuevo){
+  modo = nuevo;
+  try{ localStorage.setItem(MODO_GUARDADO, nuevo); }catch(_){ /* sin storage */ }
+  if(estadoActual) pintarVisual(estadoActual);
+  foco();
+}
+
+$$(".modos button").forEach(b =>
+  b.addEventListener("click", () => guardarModo(b.dataset.modo)));
+
+// ----------------------------------------------------------------------
+function plantelesDe(e){
+  const salida = {};
+  ["A", "B"].forEach(l => {
+    salida[l] = (e.rotaciones[l] && e.rotaciones[l].jugadores) || [];
+  });
+  return salida;
+}
+
+// En que estado esta el motor. Todo lo que se arma a mano (la jugada, el
+// dorsal a medio teclear, la rotacion, el cambio) vale solo mientras esto no
+// se mueva.
+function claveDelMotor(e){
+  const pendiente = e.pendiente || {}, esperando = e.esperando || {};
+  return [e.lineas.length, e.etapa, esperando.que, esperando.equipo, esperando.set,
+          pendiente.espera, pendiente.equipo_con_la_pelota,
+          e.equipo_saca, e.jugador_saca].join("|");
+}
+
+// Tirar TODOS los borradores cuando el motor se movio, no solo el armador.
+// Antes cada uno se invalidaba por su cuenta y los que no miraban el conteo
+// de lineas sobrevivian a un Reiniciar: la rotacion a medio cargar volvia a
+// aparecer en el partido nuevo, y un cambio abierto dejaba la pantalla
+// trabada sin forma de salir. Vale igual para deshacer y para pegar un
+// partido entero.
+function sincronizarConElMotor(e){
+  const clave = claveDelMotor(e);
+  if(clave === claveVisual) return;
+  claveVisual = clave;
+  armador = null;
+  tecleando = null;
+  cambioVisual = null;
+  rotacionBorrador = null;
+}
+
+function asegurarArmador(e){
+  if(armador) return;
+  const p = e.pendiente;
+  armador = new Armador({
+    espera: p.espera,
+    equipoSaca: e.equipo_saca,
+    equipoConLaPelota: p.equipo_con_la_pelota,
+    planteles: plantelesDe(e),
+    sacadorConocido: e.jugador_saca != null
+  });
+}
+
+function vivosPorEquipo(){
+  const mapa = {A: {jugadores: new Set(), zonas: new Set()},
+                B: {jugadores: new Set(), zonas: new Set()}};
+  armador.opciones().forEach(o => {
+    if(o.tipo === "jugador") mapa[armador.equipoDe(o.lado)].jugadores.add(o.valor);
+    else if(o.tipo === "zona") mapa[armador.equipoDe(o.lado)].zonas.add(o.valor);
+  });
+  return mapa;
+}
+
+// ----------------------------------------------------------------------
+function canchaHTML(e, vivos, opciones){
+  return mitadHTML(e, "A", vivos, opciones) +
+         `<div class="red"></div>` +
+         mitadHTML(e, "B", vivos, opciones);
+}
+
+function mitadHTML(e, letra, vivos, opciones){
+  opciones = opciones || {};
+  const rotacion = e.rotaciones[letra];
+  const jugadores = (rotacion && rotacion.jugadores) || [];
+  const elArmador = rotacion ? rotacion.armador : null;
+  const vivo = vivos[letra] || {jugadores: new Set(), zonas: new Set()};
+  // "equipoActivo" es de quien es el paso segun el armador. Hace falta
+  // ademas de los circulos vivos porque un equipo sin rotacion no tiene
+  // ninguno, y si no su mitad quedaria apagada justo cuando le toca.
+  const encendida = letra === opciones.equipoActivo ||
+                    vivo.jugadores.size > 0 || vivo.zonas.size > 0;
+
+  const celdas = ZONAS_MITAD[letra].map(zona => {
+    const dorsal = (zona <= 6 && jugadores.length) ? jugadores[zona - 1] : null;
+    const zonaViva = vivo.zonas.has(zona);
+    const jugadorVivo = dorsal != null && vivo.jugadores.has(dorsal);
+    const marca = opciones.accion
+      ? `data-accion="${esc(opciones.accion)}" data-valor="${esc(dorsal)}"`
+      : `data-opcion="j${esc(dorsal)}"`;
+    const circulo = dorsal == null ? "" : `
+      <button class="jugador ${jugadorVivo ? "viva" : ""}
+        ${dorsal === elArmador ? "armador" : ""}
+        ${(zona === 1 && e.equipo_saca === letra && e.jugador_saca === dorsal) ? "saca" : ""}"
+        ${jugadorVivo ? marca : "disabled"}>${esc(dorsal)}</button>`;
+    return `<div class="celda ${zonaViva ? "zonaViva" : ""}"
+                 ${zonaViva ? `data-opcion="z${zona}"` : ""}>
+              <span class="numeroZona">${zona}</span>${circulo}</div>`;
+  }).join("");
+
+  return `<div class="etiquetaMitad ${encendida ? "encendida" : ""}">
+            <span>${esc(e.nombres[letra])}</span>
+            ${jugadores.length ? "" : `<span class="sinRotacion">sin rotacion</span>`}
+          </div>
+          <div class="mitad ${encendida ? "" : "dormida"}">${celdas}</div>`;
+}
+
+function tecladoHTML(conVolver){
+  const escrito = tecleando.digitos;
+  const teclas = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    .map(n => `<button data-tecla="${n}">${n}</button>`).join("");
+  return `<div class="teclado">
+    <div class="tecleado">${escrito ? esc(escrito) : `<span class="vacio">dorsal…</span>`}</div>
+    ${teclas}
+    <button data-tecla="borrar" class="tenue">←</button>
+    <button data-tecla="0">0</button>
+    <button data-tecla="ok" class="primario" ${escrito ? "" : "disabled"}>OK</button>
+    ${conVolver ? `<button data-tecla="volver" class="tenue todo">Volver a la cancha</button>` : ""}
+  </div>`;
+}
+
+function lineaHTML(){
+  const linea = armador.linea;
+  const sangria = " ".repeat(Math.max(0, linea.length - 1));
+  return esc(linea) + (armador.paso ? `\n<span class="falta">${sangria}^</span>` : "");
+}
+
+// ----------------------------------------------------------------------
+function pintarVisual(e){
+  estadoActual = e;
+  sincronizarConElMotor(e);
+  const visible = (modo === "tocando");
+  $("#visual").hidden = !visible;
+  $$(".modos button").forEach(b => b.classList.toggle("activa", b.dataset.modo === modo));
+  if(!visible) return;
+  if(!notacionLista){
+    $("#quePide").textContent = "Bajando la notacion…";
+    return;
+  }
+  if(cambioVisual) return pintarCambio(e);
+  if(e.etapa !== "jugadas") return pintarPreparacion(e);
+  pintarJugada(e);
+}
+
+function pintarJugada(e){
+  asegurarArmador(e);
+  const paso = armador.paso;
+  // un equipo sin rotacion no tiene 6 circulos que tocar: se va derecho al
+  // teclado, sin obligar a pasar por un boton "otro" que seria el unico
+  const sinCirculos = paso && paso.pide === "jugador" &&
+                      armador.plantelDe(paso.lado).length === 0;
+  if(sinCirculos && !tecleando) tecleando = {destino: "jugada", digitos: ""};
+
+  $("#secuencia").hidden = !e.pendiente.secuencia;
+  $("#secuencia").textContent = e.pendiente.secuencia;
+
+  // de quien es el paso: se usa para encender su mitad y para decirlo en el
+  // titulo, que es lo unico que queda cuando ese equipo no tiene circulos
+  const equipoActivo = armador.equipoDe(
+    (paso && (paso.pide === "jugador" || paso.pide === "zona")) ? paso.lado : "pelota");
+
+  $("#cancha").hidden = false;
+  $("#cancha").innerHTML = canchaHTML(e, vivosPorEquipo(), {equipoActivo});
+
+  $("#quePide").textContent = paso
+    ? `${paso.titulo}${paso.pide === "jugador" ? ` · ${e.nombres[equipoActivo]}` : ""}`
+    : "";
+  $("#opciones").innerHTML = (tecleando && tecleando.destino === "jugada")
+    ? tecladoHTML(!sinCirculos)
+    : armador.opciones()
+        .filter(o => o.tipo === "boton" || o.tipo === "numero")
+        .map(o => `<button data-opcion="${esc(o.id)}"
+                    class="${o.tipo === "numero" ? "secundaria" : esc(o.tono || "")}"
+                    >${esc(o.etiqueta)}</button>`).join("");
+
+  $("#enCurso").hidden = armador.pasos.length === 0;
+  $("#lineaArmada").innerHTML = lineaHTML();
+  $("#falta").textContent = paso ? `falta ${paso.titulo.toLowerCase()}` : "";
+}
+
+function tocarOpcion(id){
+  if(!armador) return;
+  const opcion = armador.opciones().find(o => o.id === id);
+  if(!opcion) return;
+  if(opcion.tipo === "numero"){
+    tecleando = {destino: "jugada", digitos: ""};
+    return pintarVisual(estadoActual);
+  }
+  armador.tocar(id);
+  if(armador.cerrada) return mandarJugada();
+  pintarVisual(estadoActual);
+}
+
+async function mandarJugada(){
+  const linea = armador.linea;
+  // el estado nuevo llega en la respuesta y rehace el armador solo; si el
+  // motor la rechaza tambien, arrancando de cero con su mensaje a la vista
+  armador = null;
+  await enviar(linea);
+}
+
+function usarTecla(tecla){
+  if(!tecleando) return;
+  if(tecla === "volver"){ tecleando = null; return pintarVisual(estadoActual); }
+  if(tecla === "borrar"){
+    tecleando.digitos = tecleando.digitos.slice(0, -1);
+    return pintarVisual(estadoActual);
+  }
+  if(tecla === "ok"){
+    if(!tecleando.digitos) return;
+    const numero = parseInt(tecleando.digitos, 10);
+    const destino = tecleando.destino, ranura = tecleando.ranura;
+    tecleando = null;
+    if(destino === "jugada"){
+      armador.tocar("otro", numero);
+      if(armador.cerrada) return mandarJugada();
+    } else if(destino === "rotacion"){
+      rotacionBorrador.jugadores[ranura] = numero;
+    } else if(destino === "cambio"){
+      cambioVisual.entra = numero;
+    }
+    return pintarVisual(estadoActual);
+  }
+  if(tecleando.digitos.length < 3) tecleando.digitos += tecla;
+  pintarVisual(estadoActual);
+}
+
+// ----------------------------------------------------------------------
+// Preparacion: hoy son cinco lineas escritas a ciegas.
+function pintarPreparacion(e){
+  $("#secuencia").hidden = true;
+  $("#enCurso").hidden = true;
+  const espera = e.esperando || {};
+  if(espera.que === "rotacion") return pintarRotacion(e, espera);
+
+  $("#cancha").hidden = true;
+  $("#quePide").textContent = e.prompt;
+
+  if(espera.que === "nombre_equipo"){
+    $("#opciones").innerHTML = `<div class="preparacion" style="width:100%">
+      <input id="campoPrep" autocomplete="off" autocapitalize="words"
+             placeholder="Nombre del equipo ${esc(espera.equipo)} (vacio = ${esc(espera.equipo)})">
+      <button class="primario grande" data-accion="nombre">Siguiente</button></div>`;
+    return;
+  }
+  if(espera.que === "saque_inicial"){
+    $("#opciones").innerHTML = ["A", "B"].map(letra =>
+      `<button class="grande" data-accion="saca" data-valor="${letra}">
+         Saca ${esc(e.nombres[letra])}</button>`).join("");
+    return;
+  }
+  if(espera.que === "mantener_rotacion"){
+    $("#opciones").innerHTML =
+      `<button class="grande" data-accion="mantener" data-valor="s">Si, la misma</button>
+       <button class="grande" data-accion="mantener" data-valor="n">No, cargar otra</button>`;
+    return;
+  }
+  $("#opciones").innerHTML = "";
+}
+
+function pintarRotacion(e, espera){
+  if(!rotacionBorrador || rotacionBorrador.equipo !== espera.equipo){
+    rotacionBorrador = {equipo: espera.equipo, armador: null,
+                        jugadores: [null, null, null, null, null, null]};
+  }
+  const puestos = rotacionBorrador.jugadores;
+  const celdas = ZONAS_MITAD.B.map(zona => {
+    const dorsal = zona <= 6 ? puestos[zona - 1] : null;
+    const slot = zona > 6 ? "" : `
+      <button class="jugador ${dorsal == null ? "" : "viva"}
+              ${rotacionBorrador.armador === zona ? "armador" : ""}"
+              data-accion="ranura" data-valor="${zona}">${dorsal == null ? "+" : esc(dorsal)}</button>`;
+    return `<div class="celda"><span class="numeroZona">${zona}</span>${slot}</div>`;
+  }).join("");
+
+  $("#cancha").hidden = false;
+  $("#cancha").innerHTML =
+    `<div class="etiquetaMitad encendida"><span>${esc(e.nombres[espera.equipo])}</span>
+       <span class="sinRotacion">la zona 1 es la que saca</span></div>
+     <div class="mitad">${celdas}</div>`;
+
+  $("#quePide").textContent =
+    `Rotacion de ${e.nombres[espera.equipo]}: tocá cada zona y poné el dorsal`;
+
+  if(tecleando && tecleando.destino === "rotacion"){
+    $("#opciones").innerHTML = tecladoHTML(true);
+    return;
+  }
+  const completa = puestos.every(d => d != null) && rotacionBorrador.armador != null;
+  const elegirArmador = puestos.map((dorsal, i) => dorsal == null ? "" :
+    `<button class="secundaria ${rotacionBorrador.armador === i + 1 ? "bien" : ""}"
+             data-accion="armador" data-valor="${i + 1}">${esc(dorsal)}</button>`).join("");
+  $("#opciones").innerHTML = `<div class="preparacion" style="width:100%">
+    <div class="quePide" style="margin:0">Cual es el armador</div>
+    <div class="opciones">${elegirArmador || `<span class="nota">Poné los dorsales primero.</span>`}</div>
+    <div class="fila">
+      <button class="primario grande" data-accion="rotacionListo" ${completa ? "" : "disabled"}>
+        Listo</button>
+      <button class="tenue" data-accion="sinRotacion">Sin rotacion</button>
+    </div></div>`;
+}
+
+// ----------------------------------------------------------------------
+// Cambios: se toca al que sale (un circulo de la cancha) y se teclea el que
+// entra. El motor deduce el equipo del que sale, asi que aca no se elige.
+function pintarCambio(e){
+  $("#secuencia").hidden = true;
+  $("#enCurso").hidden = true;
+  const todos = {A: {jugadores: new Set(), zonas: new Set()},
+                 B: {jugadores: new Set(), zonas: new Set()}};
+  if(cambioVisual.sale == null){
+    ["A", "B"].forEach(letra =>
+      ((e.rotaciones[letra] && e.rotaciones[letra].jugadores) || [])
+        .forEach(d => todos[letra].jugadores.add(d)));
+  }
+  $("#cancha").hidden = false;
+  $("#cancha").innerHTML = canchaHTML(e, todos, {accion: "cambioSale"});
+
+  if(cambioVisual.sale == null){
+    $("#quePide").textContent = "Cambio: tocá al que sale";
+    $("#opciones").innerHTML =
+      `<button class="tenue" data-accion="cambioCancelar">Cancelar el cambio</button>`;
+    return;
+  }
+  if(tecleando && tecleando.destino === "cambio"){
+    $("#quePide").textContent = `Sale el ${cambioVisual.sale}. Quien entra?`;
+    // con la salida a la vista: si se toco al jugador equivocado, el teclado
+    // solo dejaba seguir para adelante
+    $("#opciones").innerHTML = tecladoHTML(false) +
+      `<div class="fila" style="margin-top:9px">
+         <button class="tenue" data-accion="cambioCancelar">Cancelar el cambio</button></div>`;
+    return;
+  }
+  $("#quePide").textContent = `Sale el ${cambioVisual.sale}, entra el ${cambioVisual.entra}`;
+  $("#opciones").innerHTML = `<div class="preparacion" style="width:100%">
+    <div class="fila">
+      <button class="${cambioVisual.armador ? "bien" : ""}" data-accion="cambioArmador">
+        ${cambioVisual.armador ? "✓ " : ""}queda como armador</button>
+    </div>
+    <div class="fila">
+      <button class="primario grande" data-accion="cambioListo">Hacer el cambio</button>
+      <button class="tenue" data-accion="cambioCancelar">Cancelar</button>
+    </div></div>`;
+}
+
+function accionVisual(accion, boton){
+  const valor = boton.dataset.valor;
+  if(accion === "nombre"){
+    const campoPrep = $("#campoPrep");
+    return enviar(campoPrep ? campoPrep.value.trim() : "");
+  }
+  if(accion === "saca") return enviar(valor);
+  if(accion === "mantener") return enviar(valor);
+
+  if(accion === "ranura"){
+    tecleando = {destino: "rotacion", digitos: "", ranura: Number(valor) - 1};
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "armador"){
+    rotacionBorrador.armador = Number(valor);
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "rotacionListo"){
+    const texto = rotacionBorrador.jugadores.map((dorsal, i) =>
+      dorsal + (rotacionBorrador.armador === i + 1 ? "_S" : "")).join(" ");
+    rotacionBorrador = null;
+    return enviar(texto);
+  }
+  if(accion === "sinRotacion"){ rotacionBorrador = null; return enviar(""); }
+
+  if(accion === "cambioSale"){
+    cambioVisual.sale = Number(valor);
+    tecleando = {destino: "cambio", digitos: ""};
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "cambioArmador"){
+    cambioVisual.armador = !cambioVisual.armador;
+    return pintarVisual(estadoActual);
+  }
+  if(accion === "cambioListo"){
+    const marca = cambioVisual.armador ? "_S" : "";
+    const linea = `C_${cambioVisual.entra}${marca}_${cambioVisual.sale}`;
+    cambioVisual = null;
+    return enviar(linea);
+  }
+  if(accion === "cambioCancelar"){
+    cambioVisual = null; tecleando = null;
+    return pintarVisual(estadoActual);
+  }
+}
+
+// Un solo oyente para toda la cancha: los botones se redibujan en cada toque
+// y enganchar uno por uno seria volver a engancharlos todo el tiempo.
+$("#visual").addEventListener("click", ev => {
+  const tocado = ev.target.closest("[data-tecla],[data-opcion],[data-accion]");
+  if(!tocado || tocado.disabled) return;
+  if(tocado.dataset.tecla !== undefined) return usarTecla(tocado.dataset.tecla);
+  if(tocado.dataset.opcion !== undefined) return tocarOpcion(tocado.dataset.opcion);
+  accionVisual(tocado.dataset.accion, tocado);
+});
+
+$("#visual").addEventListener("keydown", ev => {
+  if(ev.key === "Enter" && ev.target.id === "campoPrep"){
+    ev.preventDefault();
+    enviar(ev.target.value.trim());
+  }
+});
+
+// Deshacer el paso saca una ficha de la linea que se esta armando. No tiene
+// nada que ver con la "x" del motor, que deshace un punto entero: por eso
+// vive aca abajo y no entre los atajos.
+$("#btnDeshacerPaso").addEventListener("click", () => {
+  if(!armador) return;
+  if(tecleando && tecleando.digitos){ tecleando.digitos = ""; return pintarVisual(estadoActual); }
+  tecleando = null;
+  armador.deshacer();
+  pintarVisual(estadoActual);
+});
+
+$("#btnCancelarJugada").addEventListener("click", () => {
+  if(!armador) return;
+  tecleando = null;
+  while(armador.deshacer()){ /* hasta vaciar la pila */ }
+  pintarVisual(estadoActual);
 });
 
 // ======================================================================
@@ -1117,11 +1607,14 @@ function notaAlPie(j){
 // ======================================================================
 // La pestana por defecto es Cargar; el hash solo se respeta si esta puesto,
 // que es el caso de recargar la pagina sin querer perder donde se estaba.
-revisarCandado().then(() => api("/api/estado")).then(r => {
-  avisarDelServidor(r.almacenamiento);
-  pintar(r.estado);
-  irA(location.hash.replace("#", "") || "cargar", false);
-});
+// La tabla de la notacion se baja antes de pintar: sin ella el modo visual no
+// sabe que ofrecer. Es un archivo fijo, asi que se pide una sola vez.
+Promise.all([revisarCandado(), traerNotacion()])
+  .then(() => api("/api/estado")).then(r => {
+    avisarDelServidor(r.almacenamiento);
+    pintar(r.estado);
+    irA(location.hash.replace("#", "") || "cargar", false);
+  });
 
 // Alojado, la carpeta del proyecto es de solo lectura y lo unico escribible es
 // un /tmp que se borra solo: si no hay un almacenamiento de verdad detras, lo

@@ -104,6 +104,39 @@
 
     <div class="turno" id="turno">Cargando…</div>
 
+    <!-- Las dos formas de cargar la misma jugada. Tocando se arma la linea
+         apretando la cancha; escribiendo se tipea. Las dos terminan en el
+         mismo POST /api/enviar, asi que se puede alternar punto a punto. -->
+    <div class="modos" id="modos">
+      <button id="btnTocando" data-modo="tocando">Tocando</button>
+      <button id="btnEscribiendo" data-modo="escribiendo">Escribiendo</button>
+    </div>
+
+    <section class="visual" id="visual" hidden>
+      <!-- como viene el punto hasta ahora, descrito por el motor -->
+      <div class="secuencia" id="secuencia" hidden></div>
+
+      <div class="cancha" id="cancha"></div>
+
+      <div class="pedido">
+        <div class="quePide" id="quePide"></div>
+        <div class="opciones" id="opciones"></div>
+      </div>
+
+      <!-- La linea que se esta armando, siempre a la vista. El acento marca
+           que falta; si no entra, la caja se corre sola. -->
+      <div class="enCurso" id="enCurso" hidden>
+        <pre id="lineaArmada"></pre>
+        <!-- que falta va afuera del <pre>: adentro no puede cortar de linea y
+             en un celular angosto se perdia por el costado -->
+        <div class="falta" id="falta"></div>
+        <div class="fila">
+          <button id="btnDeshacerPaso">◀ Deshacer el paso</button>
+          <button id="btnCancelarJugada" class="tenue">Cancelar la jugada</button>
+        </div>
+      </div>
+    </section>
+
     <form class="carga" id="form" autocomplete="off">
       <input id="linea" placeholder="…" autocomplete="off" autocapitalize="off"
              autocorrect="off" spellcheck="false">
@@ -202,6 +235,7 @@
   </section>
 
 </div>
+<script src="armador.js"></script>
 <script src="interfaz.js"></script>
 </body>
 </html>

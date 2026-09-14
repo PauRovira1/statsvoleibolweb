@@ -11,6 +11,11 @@ Reproducir todo de nuevo en cada jugada suena caro pero no lo es: un partido
 completo de 95 puntos se rehace en centesimas de segundo, y a cambio deshacer
 sale gratis (se saca la ultima linea) y no hay un segundo estado que mantener
 sincronizado.
+
+La instantanea no dice solo como va el partido: dice tambien que pregunta
+quedo sin contestar ("esperando") y como viene el punto a medias
+("pendiente"). Las dos salen del motor, que es el unico que sabe de quien es
+la pelota; la pantalla solo las pinta.
 """
 import io
 import contextlib
@@ -37,6 +42,18 @@ MARCAS_DE_RECHAZO = (
     "no es un numero de jugador valido",
     "Marca exactamente un armador",
 )
+
+# Cada pregunta del motor (analisis_voley._esperando) contra la etapa que la
+# pantalla ya conocia. Son los mismos cuatro nombres de siempre mas
+# "mantener_rotacion", que antes no tenia como aparecer.
+ETAPA_POR_PREGUNTA = {
+    "nombre_equipo": "nombres",
+    "rotacion": "rotacion",
+    "saque_inicial": "saque_inicial",
+    "mantener_rotacion": "mantener_rotacion",
+    "saque": "jugadas",
+    "continuacion": "jugadas",
+}
 
 
 def _reproducir(lineas: list[str]) -> tuple[dict, str]:
@@ -128,9 +145,12 @@ class SesionPartido:
         puntos = estado["puntos"]
         numero_set = len(estado["historial_sets"]) + 1
         equipo_saca = estado["equipo_saca"]
+        # vacio solo si la carga termino sola (se escribio "salir"): ahi no
+        # quedo ninguna pregunta sin contestar
+        esperando = estado.get("esperando") or {}
 
         return {
-            "etapa": self._etapa(),
+            "etapa": self._etapa(esperando),
             "nombres": nombres,
             "marcador": estado["marcador"],
             "set": numero_set,
@@ -157,42 +177,63 @@ class SesionPartido:
             "puntos_cargados": len(puntos),
             "lineas": self.lineas,
             "ultimos_puntos": self._ultimos_puntos(),
-            "prompt": self._prompt(),
+            "prompt": self._prompt(esperando),
+            # que esta preguntando el motor, sin el punto a medias (va aparte)
+            "esperando": {clave: valor for clave, valor in esperando.items()
+                          if clave not in ("jugadas", "entradas")},
+            "pendiente": self._pendiente(esperando),
         }
 
-    def _etapa(self) -> str:
+    def _etapa(self, esperando: dict) -> str:
         """En que paso de la carga esta: sirve para que la pantalla sepa que
-        pedir (nombres, rotacion, quien saca, o ya las jugadas)."""
-        faltan = len(self.lineas)
-        if faltan < 2:
-            return "nombres"
-        if faltan < 4:
-            return "rotacion"
-        if faltan < 5:
-            return "saque_inicial"
-        return "jugadas"
+        pedir (nombres, rotacion, quien saca, o ya las jugadas).
 
-    def _prompt(self) -> str:
-        etapa = self._etapa()
+        Sale de lo que el motor dice que esta esperando y no de contar lineas,
+        que era lo de antes: contando, las cuatro respuestas que pide un cambio
+        de set (mantener la rotacion, las dos rotaciones nuevas y quien saca)
+        caian todas en "jugadas" y la pantalla ofrecia la cancha mientras el
+        motor esperaba una "n"."""
+        return ETAPA_POR_PREGUNTA.get(esperando.get("que"), "jugadas")
+
+    def _pendiente(self, esperando: dict) -> dict:
+        """El punto a medias, para la carga visual.
+
+        Una jugada que deja el punto abierto (_D, _R_6, un libre, un toque, un
+        overpass) hace que el motor pida otra linea. Esto dice que bloque toca
+        y, sobre todo, de que lado quedo la pelota: es el equipo que hay que
+        encender en la cancha."""
+        que = esperando.get("que")
+        jugadas = esperando.get("jugadas") or []
+        return {
+            "hay": bool(jugadas),
+            "espera": que if que in ("saque", "continuacion") else None,
+            "equipo_con_la_pelota": esperando.get("equipo_con_la_pelota"),
+            "jugadas": jugadas,
+            "lineas": list(esperando.get("entradas") or []),
+            # lo mismo que se ve en la consola, para mostrarlo mientras se arma
+            "secuencia": " | ".join(_describir(bloque) for bloque in jugadas),
+        }
+
+    def _prompt(self, esperando: dict) -> str:
+        que = esperando.get("que")
         nombres = self.estado["nombres"]
-        if etapa == "nombres":
-            return f"Nombre del equipo {'A' if not self.lineas else 'B'} (vacio = usar la letra)"
-        if etapa == "rotacion":
-            letra = "A" if len(self.lineas) == 2 else "B"
-            return (f"Rotacion de {nombres[letra]}: 6 jugadores en zonas 1 a 6, "
+        if que == "nombre_equipo":
+            return f"Nombre del equipo {esperando['equipo']} (vacio = usar la letra)"
+        if que == "rotacion":
+            return (f"Rotacion de {nombres[esperando['equipo']]}: 6 jugadores en zonas 1 a 6, "
                     f"armador con _S (vacio = sin rotacion)")
-        if etapa == "saque_inicial":
-            return f"Que equipo saca primero? A) {nombres['A']}  B) {nombres['B']}"
-        jugador = self.instantanea_jugador_saca()
-        equipo = nombres[self.estado["equipo_saca"]]
+        if que == "mantener_rotacion":
+            return f"Mantener la misma rotacion para el set {esperando['set']}? (s/n)"
+        if que == "saque_inicial":
+            enunciado = "Que equipo saca primero"
+            if esperando.get("set", 1) > 1:
+                enunciado += f" en el set {esperando['set']}"
+            return f"{enunciado}? A) {nombres['A']}  B) {nombres['B']}"
+        if que == "continuacion":
+            return f"Juega {nombres[esperando['equipo']]}"
+        jugador = esperando.get("jugador")
+        equipo = nombres[esperando.get("equipo") or self.estado["equipo_saca"]]
         return f"Saca {equipo}" + (f", jugador {jugador}" if jugador is not None else "")
-
-    def instantanea_jugador_saca(self):
-        estado = self.estado
-        return av.jugador_que_saca(
-            estado["rotaciones"], estado["puntos"],
-            len(estado["historial_sets"]) + 1, estado["equipo_saca"],
-        )
 
     def _ultimos_puntos(self, cuantos: int = 12) -> list[dict]:
         nombres = self.estado["nombres"]

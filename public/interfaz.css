@@ -296,3 +296,119 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .pie .falta{color:var(--aviso)}
 .sub-titulo{margin:16px 0 6px;font-size:14px;font-weight:600}
 .sub-titulo .aclara{color:var(--suave);font-weight:400;font-size:12px}
+
+
+/* ======================================================================
+   LA CANCHA: el modo visual de carga
+   ======================================================================
+   Se usa con una mano, parado al costado de la cancha, asi que todo lo que
+   se toca mide 44px o mas y no hay ningun menu ni dialogo en el camino.
+   Los dos equipos se dibujan siempre en el mismo lugar (A arriba, B abajo):
+   una cancha que se da vuelta segun quien tiene la pelota se lee mal justo
+   cuando no hay tiempo de leerla. De quien es la pelota se marca encendiendo
+   su mitad, no moviendola. */
+.modos{margin-top:12px;display:flex;gap:6px}
+.modos button{flex:1;padding:10px 8px;font-size:14px;font-weight:600}
+.modos button.activa{background:var(--panel2);border-color:var(--acento);color:#fff}
+
+.visual{margin-top:10px}
+.visual[hidden]{display:none}
+
+.secuencia{background:var(--panel);border:1px solid var(--borde);
+           border-left:4px solid var(--suave);border-radius:10px;
+           padding:9px 13px;margin-bottom:10px;font-size:12px;
+           font-family:var(--mono);color:var(--suave);
+           max-height:64px;overflow:auto}
+.secuencia[hidden]{display:none}
+
+/* Las dos mitades pegadas; la linea punteada del medio es la red. */
+.cancha{background:var(--panel);border:1px solid var(--borde);
+        border-radius:12px;padding:8px}
+.cancha[hidden]{display:none}
+.mitad{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;
+       transition:opacity .12s}
+.mitad.dormida{opacity:.42}
+.red{border-top:2px dashed var(--borde);margin:8px 2px}
+.etiquetaMitad{font-size:11px;color:var(--suave);text-transform:uppercase;
+               letter-spacing:.06em;padding:2px 2px 5px;
+               display:flex;justify-content:space-between;gap:8px}
+.etiquetaMitad.encendida{color:var(--acento)}
+.etiquetaMitad .sinRotacion{text-transform:none;letter-spacing:0;color:var(--aviso)}
+
+/* Una celda es una zona. Sirve para dos cosas segun el paso: mostrar al
+   jugador que esta parado ahi, o ser el destino que se toca. */
+.celda{position:relative;min-height:52px;border-radius:8px;
+       border:1px solid transparent;background:#141a23;
+       display:flex;align-items:center;justify-content:center}
+.celda .numeroZona{position:absolute;top:3px;left:5px;font-size:10px;
+                   color:#48566a;font-variant-numeric:tabular-nums}
+.celda.zonaViva{border-color:var(--acento);background:#16283c;cursor:pointer}
+.celda.zonaViva:hover{background:#1c334c}
+.celda.zonaViva .numeroZona{color:var(--acento)}
+
+/* El jugador: un circulo con el dorsal. 44px es el minimo para el pulgar. */
+.jugador{width:44px;height:44px;border-radius:50%;display:flex;
+         align-items:center;justify-content:center;font-weight:700;
+         font-size:15px;font-variant-numeric:tabular-nums;
+         background:var(--panel2);border:2px solid var(--borde);
+         color:var(--suave);padding:0;line-height:1}
+.jugador.viva{border-color:var(--acento);color:#fff;background:#1b2f47;
+              cursor:pointer}
+.jugador.viva:hover{background:#24405e}
+.jugador[disabled]{opacity:.45;cursor:default}
+.jugador[disabled]:hover{background:var(--panel2);border-color:var(--borde)}
+/* el armador lleva el mismo amarillo que el _S de la tabla de rotacion */
+.jugador.armador{box-shadow:0 0 0 2px var(--aviso)}
+.jugador.saca{background:var(--acento);border-color:var(--acento);color:#08121f}
+
+/* ---------- lo que se pregunta en cada paso ---------- */
+.pedido{margin-top:10px}
+.quePide{font-size:13px;color:var(--suave);text-transform:uppercase;
+         letter-spacing:.06em;margin-bottom:7px}
+.opciones{display:flex;flex-wrap:wrap;gap:7px}
+.opciones button{min-height:44px;padding:10px 16px;font-size:15px;font-weight:600}
+.opciones button.bien{border-color:#2f6b52;color:#bff0da}
+.opciones button.mal{border-color:#7a3030;color:#ff9d9d}
+.opciones button.secundaria{font-weight:400;font-size:13px;color:var(--suave);
+                            min-height:38px;padding:8px 12px}
+
+/* El teclado del dorsal. Hace falta mas seguido de lo que parece: en los
+   partidos guardados el 15% de los dorsales no esta entre los 6 en cancha,
+   porque los liberos no rotan. Tambien es la unica entrada de un equipo sin
+   rotacion cargada. */
+.teclado{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;max-width:280px}
+.teclado button{min-height:48px;font-size:18px;font-weight:600;
+                font-family:var(--mono)}
+.teclado .ancho{grid-column:span 2}
+.tecleado{grid-column:span 3;background:var(--panel2);
+          border:1px solid var(--acento);border-radius:10px;padding:10px 14px;
+          font:20px/1.2 var(--mono);text-align:center;min-height:44px;
+          color:var(--texto)}
+.tecleado .vacio{color:var(--suave)}
+
+/* ---------- la linea que se esta armando ---------- */
+.enCurso{margin-top:12px;background:var(--panel);border:1px solid var(--borde);
+         border-radius:10px;padding:10px 13px}
+.enCurso[hidden]{display:none}
+.enCurso pre{margin:0 0 8px;font:15px/1.35 var(--mono);white-space:pre;
+             overflow-x:auto;color:var(--texto)}
+.enCurso pre .falta{color:var(--acento)}
+.enCurso .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}
+.enCurso .fila button{min-height:42px}
+
+/* ---------- preparacion (nombres, rotacion, quien saca) ---------- */
+.preparacion{display:flex;flex-direction:column;gap:9px}
+.preparacion input{background:var(--panel2);border:1px solid var(--borde);
+                   border-radius:10px;color:var(--texto);padding:14px 16px;
+                   font:17px/1.2 system-ui,sans-serif}
+.preparacion input:focus{outline:none;border-color:var(--acento);
+                         box-shadow:0 0 0 3px #4aa3ff33}
+.preparacion .grande{min-height:52px;font-size:16px;font-weight:600}
+.preparacion .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}
+
+/* Cuando el paso pide una zona, el circulo del jugador no puede comerse el
+   toque: la zona es la que se esta eligiendo. */
+.celda.zonaViva .jugador{pointer-events:none}
+.teclado .todo{grid-column:1/-1}
+.enCurso .falta{font:12px/1.3 var(--mono);color:var(--acento);
+                margin-top:-4px;word-break:break-word}

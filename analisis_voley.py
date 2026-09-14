@@ -218,6 +218,7 @@ import getpass
 import os
 import re
 import secrets
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -733,6 +734,33 @@ def describir_bloque_defensa(bloque: dict) -> str:
     )
 
 
+class SinMasEntradas(Exception):
+    """Se agotaron las lineas cargadas. La consola nunca la levanta (input()
+    siempre espera); la interfaz web si, para cortar el loop donde va la
+    partida y quedarse con el estado."""
+
+
+@contextmanager
+def _esperando(descripcion: dict):
+    """Le pega a SinMasEntradas la pregunta que el motor estaba haciendo.
+
+    El corte de la web es mudo: se levanta desde adentro de un input(), el
+    frame se destruye y el estado vuelve sin decir en que prompt quedo parado.
+    Al que tipea le da igual porque se acuerda, pero una pantalla que arma la
+    jugada tocando no puede adivinarlo, y deducirlo mirando la ultima linea
+    seria reimplementar el reglamento afuera del motor.
+
+    La descripcion se puede seguir mutando despues de entrar: jugar_punto la
+    usa para ir contando de quien es la pelota mientras avanza el punto."""
+    try:
+        yield descripcion
+    except SinMasEntradas as corte:
+        # gana la descripcion mas adentro, que es la mas precisa
+        if getattr(corte, "esperando", None) is None:
+            corte.esperando = descripcion
+        raise
+
+
 def preguntar_nombres_equipos() -> tuple[dict, list[str]]:
     """Pregunta el nombre de cada equipo (vacio = usar la letra A/B).
     Devuelve (nombres, entradas_crudas): entradas_crudas guarda lo tipeado tal
@@ -741,7 +769,8 @@ def preguntar_nombres_equipos() -> tuple[dict, list[str]]:
     nombres = {}
     entradas_crudas = []
     for letra in sorted(EQUIPOS):
-        respuesta = input(f"  Nombre del equipo {letra}: ").strip()
+        with _esperando({"que": "nombre_equipo", "equipo": letra}):
+            respuesta = input(f"  Nombre del equipo {letra}: ").strip()
         nombres[letra] = respuesta if respuesta else letra
         entradas_crudas.append(respuesta)
     return nombres, entradas_crudas
@@ -808,7 +837,8 @@ def preguntar_rotaciones(nombres: dict) -> tuple[dict, list[str]]:
     rotaciones = {}
     entradas_crudas = []
     for letra in sorted(EQUIPOS):
-        rotacion, entrada = preguntar_rotacion(nombres[letra])
+        with _esperando({"que": "rotacion", "equipo": letra}):
+            rotacion, entrada = preguntar_rotacion(nombres[letra])
         if rotacion is not None:
             rotaciones[letra] = rotacion
         entradas_crudas.append(entrada)
@@ -1014,13 +1044,23 @@ def jugar_punto(
     while True:  # permite reiniciar el punto si se deshace hasta el saque
         secuencia = []
         entradas_crudas = []
+        # De quien es la pelota vive solo aca adentro: es el resultado de ir
+        # repasando los bloques ya cargados, no un dato guardado. Si la carga
+        # se corta este dict es lo unico que sobrevive (ver _esperando), y sin
+        # el la pantalla no sabria si pedir un saque o una continuacion.
+        espera = {
+            "que": "saque", "equipo": equipo_saca, "jugador": jugador_saca,
+            "equipo_con_la_pelota": equipo_saca,
+            "jugadas": secuencia, "entradas": entradas_crudas,
+        }
 
         etiqueta_saque = nombres[equipo_saca]
         if jugador_saca is not None:
             etiqueta_saque += f", saca el {jugador_saca}"
 
         while True:
-            entrada = input(f"\n[Saca {etiqueta_saque}] Jugada: ").strip()
+            with _esperando(espera):
+                entrada = input(f"\n[Saca {etiqueta_saque}] Jugada: ").strip()
             if entrada.lower() in COMANDOS_SALIDA:
                 return None
             if entrada.lower() == COMANDO_CAMBIO_SET:
@@ -1075,9 +1115,12 @@ def jugar_punto(
                 equipo_atacante, equipo_defensor = equipo_defensor, equipo_atacante
             # si es "R" (bloqueo rejugable) el equipo atacante no cambia: recupera
             # el control y tiene que volver a recibir/armar/atacar
+            espera.update(que="continuacion", equipo=equipo_atacante, jugador=None,
+                          equipo_con_la_pelota=equipo_atacante)
 
             while True:
-                entrada = input(f"[Juega {nombres[equipo_atacante]}] Jugada: ").strip()
+                with _esperando(espera):
+                    entrada = input(f"[Juega {nombres[equipo_atacante]}] Jugada: ").strip()
                 if entrada.lower() in COMANDOS_SALIDA:
                     return None
                 if entrada.lower() == COMANDO_ERROR_JUEGO:
@@ -2049,12 +2092,6 @@ def generar_informe_excel(nombre_archivo_txt: str, nombres: dict) -> str | None:
     return salida
 
 
-class SinMasEntradas(Exception):
-    """Se agotaron las lineas cargadas. La consola nunca la levanta (input()
-    siempre espera); la interfaz web si, para cortar el loop donde va la
-    partida y quedarse con el estado."""
-
-
 def ejecutar_partido() -> dict:
     """El loop de carga de un partido, sin imprimir el cierre ni guardar nada.
 
@@ -2072,6 +2109,7 @@ def ejecutar_partido() -> dict:
     rotaciones, rotaciones_por_set, cambios, armadores = {}, {}, [], {}
     marcador = {"A": 0, "B": 0}
     equipo_saca = "A"
+    esperando = None   # que pregunta quedo sin contestar, si la carga se corto
 
     print("=== Carga de jugadas ===")
     print(f"Escribi {'/'.join(COMANDOS_SALIDA)} en cualquier momento para terminar.")
@@ -2093,7 +2131,8 @@ def ejecutar_partido() -> dict:
         armadores = {letra: {rotacion["armador"]} for letra, rotacion in rotaciones.items()}
 
         mensaje_saque = f"\nQue equipo saca primero? A) {nombres['A']}  B) {nombres['B']}: "
-        equipo_saca = preguntar_equipo(mensaje_saque, nombres)
+        with _esperando({"que": "saque_inicial", "set": 1}):
+            equipo_saca = preguntar_equipo(mensaje_saque, nombres)
         entradas_totales.append(equipo_saca)
         marcador = {"A": 0, "B": 0}
 
@@ -2123,9 +2162,11 @@ def ejecutar_partido() -> dict:
                 # cada set arranca con formacion nueva; el indice de rotacion se
                 # reinicia solo porque se cuenta sobre los puntos de este set
                 if rotaciones:
-                    mantiene = preguntar_si_no(
-                        f"Mantener la misma rotacion para el set {len(historial_sets) + 1}? (s/n): "
-                    )
+                    with _esperando({"que": "mantener_rotacion",
+                                     "set": len(historial_sets) + 1}):
+                        mantiene = preguntar_si_no(
+                            f"Mantener la misma rotacion para el set {len(historial_sets) + 1}? (s/n): "
+                        )
                     entradas_totales.append("s" if mantiene else "n")
                     if not mantiene:
                         rotaciones, entradas_rotaciones = preguntar_rotaciones(nombres)
@@ -2139,7 +2180,8 @@ def ejecutar_partido() -> dict:
                     f"Que equipo saca primero en el set {len(historial_sets) + 1}? "
                     f"A) {nombres['A']}  B) {nombres['B']}: "
                 )
-                equipo_saca = preguntar_equipo(mensaje_saque, nombres)
+                with _esperando({"que": "saque_inicial", "set": len(historial_sets) + 1}):
+                    equipo_saca = preguntar_equipo(mensaje_saque, nombres)
                 entradas_totales.append(equipo_saca)
                 continue
 
@@ -2199,9 +2241,12 @@ def ejecutar_partido() -> dict:
             )
 
             equipo_saca = equipo_ganador
-    except SinMasEntradas:
-        # la web corta aca: se devuelve el estado hasta donde llego
-        pass
+    except SinMasEntradas as corte:
+        # la web corta aca: se devuelve el estado hasta donde llego, y con el
+        # la pregunta que quedo sin contestar. El punto a medias viaja adentro
+        # de "esperando" y no entra en "puntos": sigue sin contar para el
+        # marcador ni para las estadisticas, igual que antes.
+        esperando = getattr(corte, "esperando", None)
 
     return {
         "nombres": nombres, "puntos": puntos, "marcador": marcador,
@@ -2210,6 +2255,7 @@ def ejecutar_partido() -> dict:
         "cambios": cambios, "armadores": armadores,
         "entradas_totales": entradas_totales, "equipo_saca": equipo_saca,
         "puntos_al_iniciar_set": puntos_al_iniciar_set,
+        "esperando": esperando,
     }
 
 

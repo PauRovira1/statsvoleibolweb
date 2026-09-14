@@ -67,6 +67,7 @@ from urllib.parse import quote, parse_qs, urlsplit
 import almacenamiento as alm
 import analisis_voley as av
 import archivo_partidos as arch
+import notacion
 from sesion_web import SesionPartido
 
 CARPETA = Path(__file__).resolve().parent
@@ -87,6 +88,7 @@ ESTATICOS = {
     "/index.html": (PAGINA, "text/html"),
     "/interfaz.css": (PUBLICO / "interfaz.css", "text/css"),
     "/interfaz.js": (PUBLICO / "interfaz.js", "application/javascript"),
+    "/armador.js": (PUBLICO / "armador.js", "application/javascript"),
 }
 
 # Una sola partida a la vez: es una herramienta de escritorio, no un servicio.
@@ -363,6 +365,11 @@ class Manejador(BaseHTTPRequestHandler):
         if ruta == "/api/sesion":
             return self._responder({"ok": True,
                                     "autorizado": token_valido(self.headers.get("X-Clave"))})
+
+        if ruta == "/api/notacion":
+            # la tabla de la notacion: fija, de solo lectura y sin sesion
+            # atras, asi que ni toma el candado ni se pone al dia
+            return self._responder({"ok": True, **notacion.tabla()})
 
         if ruta == "/api/estado":
             with candado:

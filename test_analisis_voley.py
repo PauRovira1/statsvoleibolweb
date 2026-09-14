@@ -2261,6 +2261,178 @@ class TestSesionWeb(unittest.TestCase):
         self.assertEqual(sesion.instantanea()["puntos_cargados"], 0)
 
 
+class TestPuntoPendiente(unittest.TestCase):
+    """Una jugada que deja el punto abierto obliga a cargar otra linea, y hasta
+    que llegue el punto queda a medias. El que tipea se acuerda de que estaba
+    haciendo; una pantalla que arma la jugada tocando, no. Estos tests son la
+    garantia de que el motor lo cuenta en vez de que el navegador lo adivine."""
+
+    SETUP = ["Local", "Rival", "28_S 5 13 88 3 40", "", "B"]
+    # Saca Rival (B, sin rotacion), asi que ataca Local (A). El 13 remata.
+    SAQUE = "9_1_5_X/3_3/28_4/13_1_"
+
+    def _pendiente(self, *jugadas):
+        sesion = sesion_web.SesionPartido()
+        for linea in list(self.SETUP) + list(jugadas):
+            sesion.enviar(linea)
+        return sesion.instantanea()["pendiente"]
+
+    def test_sin_nada_cargado_espera_un_saque(self):
+        pendiente = self._pendiente()
+        self.assertFalse(pendiente["hay"])
+        self.assertEqual(pendiente["espera"], "saque")
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+        self.assertEqual(pendiente["jugadas"], [])
+
+    def test_un_punto_cerrado_no_deja_nada_pendiente(self):
+        pendiente = self._pendiente(self.SAQUE + "P")
+        self.assertFalse(pendiente["hay"])
+        self.assertEqual(pendiente["espera"], "saque")
+
+    def test_el_as_y_el_error_de_saque_cierran_el_punto(self):
+        for linea in ("9_1_5_A", "9_1_5_E"):
+            with self.subTest(linea=linea):
+                self.assertEqual(self._pendiente(linea)["espera"], "saque")
+
+    def test_defendido_sigue_del_lado_del_que_defendio(self):
+        pendiente = self._pendiente(self.SAQUE + "D")
+        self.assertTrue(pendiente["hay"])
+        self.assertEqual(pendiente["espera"], "continuacion")
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+
+    def test_el_bloqueo_rejugable_sigue_del_mismo_lado_que_ataco(self):
+        # el unico resultado que NO cambia de lado: por eso va aparte
+        pendiente = self._pendiente(self.SAQUE + "R_5")
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "A")
+
+    def test_el_bloqueo_punto_y_el_toque_de_bloqueo_cierran(self):
+        for linea in (self.SAQUE + "B_5_P", self.SAQUE + "U_5"):
+            with self.subTest(linea=linea):
+                self.assertEqual(self._pendiente(linea)["espera"], "saque")
+
+    def test_afuera_y_malla_cierran(self):
+        for linea in (self.SAQUE + "O", self.SAQUE + "M"):
+            with self.subTest(linea=linea):
+                self.assertEqual(self._pendiente(linea)["espera"], "saque")
+
+    def test_el_overpass_de_recepcion_pasa_la_pelota_al_otro_lado(self):
+        pendiente = self._pendiente("9_1_5_X/3_-1")
+        self.assertEqual(pendiente["espera"], "continuacion")
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+
+    def test_el_overpass_de_armado_pasa_la_pelota_al_otro_lado(self):
+        pendiente = self._pendiente("9_1_5_X/3_3/28_-1")
+        self.assertEqual(pendiente["espera"], "continuacion")
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+
+    def test_la_armada_mala_cierra_el_punto(self):
+        self.assertEqual(self._pendiente("9_1_5_X/3_3/28_-2")["espera"], "saque")
+
+    def test_el_libre_y_el_toque_siguen_del_otro_lado(self):
+        for linea in ("9_1_5_X/3_3/28_4/13_F_8", "9_1_5_X/3_3/28_4/13_T_8"):
+            with self.subTest(linea=linea):
+                pendiente = self._pendiente(linea)
+                self.assertEqual(pendiente["espera"], "continuacion")
+                self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+
+    def test_la_defensa_perdida_cierra_el_punto(self):
+        pendiente = self._pendiente(self.SAQUE + "D", "5_-2")
+        self.assertEqual(pendiente["espera"], "saque")
+
+    def test_cinco_intercambios_van_alternando_el_lado(self):
+        jugadas = [self.SAQUE + "D"]
+        lados = ["B"]
+        for _ in range(4):
+            jugadas.append("5_2/88_4/13_1_D" if lados[-1] == "B" else "3_2/28_4/13_1_D")
+            lados.append("A" if lados[-1] == "B" else "B")
+        pendiente = self._pendiente(*jugadas)
+        self.assertEqual(pendiente["equipo_con_la_pelota"], lados[-1])
+        self.assertEqual(len(pendiente["jugadas"]), 5)
+
+    def test_la_f_en_medio_de_un_punto_lo_cierra_y_no_deja_nada_colgando(self):
+        pendiente = self._pendiente(self.SAQUE + "D", "f")
+        self.assertFalse(pendiente["hay"])
+        self.assertEqual(pendiente["espera"], "saque")
+        self.assertEqual(pendiente["jugadas"], [])
+
+    def test_la_x_del_motor_borra_la_jugada_y_devuelve_la_pelota(self):
+        # el punto queda abierto del lado de B; "x" saca esa continuacion y la
+        # pelota vuelve a donde estaba antes de cargarla
+        pendiente = self._pendiente(self.SAQUE + "D", "5_2/88_4/13_1_D", "x")
+        self.assertEqual(len(pendiente["jugadas"]), 1)
+        self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
+
+    def test_el_punto_a_medias_no_cuenta_para_el_marcador(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in self.SETUP + [self.SAQUE + "D"]:
+            sesion.enviar(linea)
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["marcador"], {"A": 0, "B": 0})
+        self.assertEqual(instantanea["puntos_cargados"], 0)
+        self.assertTrue(instantanea["pendiente"]["hay"])
+
+    def test_la_secuencia_del_punto_en_curso_viene_descrita(self):
+        pendiente = self._pendiente(self.SAQUE + "D")
+        self.assertIn("Saque: jugador 9", pendiente["secuencia"])
+        self.assertIn("defendido", pendiente["secuencia"])
+        self.assertEqual(pendiente["lineas"], [self.SAQUE + "D"])
+
+
+class TestQuePreguntaElMotor(unittest.TestCase):
+    """La etapa sale de lo que el motor esta esperando, no de contar lineas.
+    Contando, las cuatro respuestas de un cambio de set caian en "jugadas" y la
+    pantalla ofrecia la cancha mientras el motor pedia una "n"."""
+
+    SETUP = ["Local", "Rival", "28_S 5 13 88 3 40", "5_S 9 12 2 7 4", "B"]
+
+    def _etapas(self, lineas):
+        sesion = sesion_web.SesionPartido()
+        etapas = [sesion.instantanea()["etapa"]]
+        for linea in lineas:
+            etapas.append(sesion.enviar(linea)["estado"]["etapa"])
+        return etapas
+
+    def test_la_preparacion_va_pidiendo_una_cosa_por_vez(self):
+        self.assertEqual(
+            self._etapas(self.SETUP),
+            ["nombres", "nombres", "rotacion", "rotacion", "saque_inicial", "jugadas"],
+        )
+
+    def test_el_cambio_de_set_ya_no_finge_que_toca_una_jugada(self):
+        etapas = self._etapas(self.SETUP + ["1_5_A", "w", "n", "", "", "A"])
+        self.assertEqual(
+            etapas[-6:],
+            # despues del "w": mantener?, rotacion A, rotacion B, quien saca, y recien ahi jugadas
+            ["jugadas", "mantener_rotacion", "rotacion", "rotacion", "saque_inicial", "jugadas"],
+        )
+
+    def test_el_prompt_dice_a_quien_le_toca_en_medio_de_un_punto(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in self.SETUP + ["1_5_X/3_3/28_4/13_1_D"]:
+            sesion.enviar(linea)
+        # saco Rival, ataco Local y Rival defendio: ahora juega Rival
+        self.assertEqual(sesion.instantanea()["prompt"], "Juega Rival")
+
+    def test_la_instantanea_dice_que_equipo_le_toca_contestar(self):
+        sesion = sesion_web.SesionPartido()
+        self.assertEqual(sesion.instantanea()["esperando"],
+                         {"que": "nombre_equipo", "equipo": "A"})
+        sesion.enviar("Local")
+        self.assertEqual(sesion.instantanea()["esperando"],
+                         {"que": "nombre_equipo", "equipo": "B"})
+
+    def test_el_punto_a_medias_no_viaja_dos_veces(self):
+        # "esperando" es el resumen y "pendiente" el detalle: los bloques van
+        # en uno solo, que es lo que se manda en cada jugada
+        sesion = sesion_web.SesionPartido()
+        for linea in self.SETUP + ["1_5_X/3_3/28_4/13_1_D"]:
+            sesion.enviar(linea)
+        esperando = sesion.instantanea()["esperando"]
+        self.assertNotIn("jugadas", esperando)
+        self.assertNotIn("entradas", esperando)
+        self.assertEqual(esperando["que"], "continuacion")
+
+
 try:
     import openpyxl
     import valores_excel
@@ -2323,6 +2495,30 @@ class TestValoresExcel(unittest.TestCase):
         self.assertEqual(
             self._valor("=SUMIF(Datos_Base!$A$2:$A$3,2,Datos_Base!$B$2:$B$3)", datos=datos), 8
         )
+
+    def test_el_criterio_puede_ser_una_celda_de_texto(self):
+        # La tabla de ataques por zona filtra por jugador con SUMIFS(...,$A26),
+        # y esa celda dice "Jugador 13". Leyendola solo como numero el criterio
+        # quedaba en 0 y la tabla entera salia en cero.
+        datos = {"A2": "Jugador 13", "A3": "Jugador 8", "B2": 7, "B3": 1}
+        formula = '=SUMIF(Datos_Base!$A$2:$A$3,$A$5,Datos_Base!$B$2:$B$3)'
+        self.assertEqual(self._valor(formula, {"A5": "Jugador 13"}, datos=datos), 7)
+
+    def test_el_criterio_de_celda_tambien_sirve_con_dos_condiciones(self):
+        datos = {"U2": "Jugador 13", "U3": "Jugador 13", "U4": "Jugador 8",
+                 "V2": "4", "V3": "2", "V4": "4",
+                 "X2": 8, "X3": 11, "X4": 1}
+        formula = ('=SUMIFS(Datos_Base!$X$2:$X$4,Datos_Base!$U$2:$U$4,$A$5,'
+                   'Datos_Base!$V$2:$V$4,"4")')
+        self.assertEqual(self._valor(formula, {"A5": "Jugador 13"}, datos=datos), 8)
+
+    def test_una_celda_de_texto_sigue_sumando_como_cero(self):
+        # envolver la celda no puede romper la aritmetica: un texto en una
+        # suma vale 0, como en Excel
+        self.assertEqual(self._valor("=A1+A2", {"A1": "Jugador 13", "A2": 5}), 5)
+
+    def test_una_formula_que_es_solo_una_referencia_conserva_el_texto(self):
+        self.assertEqual(self._valor("=A1", {"A1": "Jugador 13"}), "Jugador 13")
 
     def test_division_y_porcentaje(self):
         self.assertAlmostEqual(

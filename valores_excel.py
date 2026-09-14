@@ -57,8 +57,28 @@ def _numero(valor):
         return 0
 
 
+class Valor(float):
+    """El numero de una celda, sin perder lo que la celda decia.
+
+    Una celda puede aparecer en una formula como numero (para sumarla) o como
+    criterio de SUMIF/SUMIFS, y ahi lo que importa es su texto: el informe
+    filtra por jugador con SUMIFS(...,$A26) y $A26 dice "Jugador 13".
+    Convirtiendola solo a numero el criterio quedaba en 0 y la tabla de
+    ataques por zona salia entera en cero."""
+
+    def __new__(cls, crudo):
+        propio = super().__new__(cls, _numero(crudo))
+        propio.crudo = crudo
+        return propio
+
+
+def _sin_envolver(valor):
+    return valor.crudo if isinstance(valor, Valor) else valor
+
+
 def _coincide(valor, criterio) -> bool:
     """Comparacion laxa como la de Excel: "4" y 4 son lo mismo."""
+    valor, criterio = _sin_envolver(valor), _sin_envolver(criterio)
     try:
         return float(valor) == float(criterio)
     except (TypeError, ValueError):
@@ -113,7 +133,7 @@ class Evaluador:
             "SUMPRODUCT": lambda *args: sum(_numero(v) for v in args[0]),
             "IFERROR": None,      # se resuelve aparte, necesita evaluacion perezosa
             "_r": lambda h, a, b: self.rango(h, a, b),
-            "_c": lambda h, c: _numero(self.valor(h, c)),
+            "_c": lambda h, c: Valor(self.valor(h, c)),
         }
         if expresion.startswith("IFERROR("):
             return self._iferror(expresion, entorno)
@@ -177,6 +197,8 @@ def convertir_a_valores(libro) -> tuple[int, list[str]]:
 
     # se escribe al final para no alterar lo que otras formulas van leyendo
     for (hoja, coord), valor in calculados.items():
-        libro[hoja][coord].value = valor
+        # una formula que es solo una referencia devuelve el Valor envuelto:
+        # en la celda va lo que decia la celda original, no su lectura numerica
+        libro[hoja][coord].value = _sin_envolver(valor)
         convertidas += 1
     return convertidas, fallidas
