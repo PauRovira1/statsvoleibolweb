@@ -1691,19 +1691,31 @@ function tablasAtaque(j){
   const filas = [Object.assign(filaAtaque("Partido", t), {total:true})]
     .concat(j.ataque.por_zona.map(z => filaAtaque("Zona " + z.zona, z)));
 
+  // Cada celda de la matriz lleva los ataques y que porcentaje fue punto: 27
+  // ataques hacia la 6 no dicen nada hasta saber cuantos entraron. Sin
+  // ataques no se muestra un porcentaje, que seria dividir por cero.
+  const celdaMatriz = (ataques, puntos) =>
+    ataques ? `${ataques} · ${pct(puntos, ataques)}` : "0";
+
   const dirs = j.ataque.direcciones;
+  const suma = lista => lista.reduce((a, b) => a + num(b), 0);
   const filasMatriz = j.ataque.matriz_direccion.map(f => ({
-    celdas: ["Zona " + f.zona].concat(f.valores,
-      [f.valores.reduce((a, b) => a + b, 0)])}));
+    celdas: ["Zona " + f.zona]
+      .concat(f.valores.map((v, i) => celdaMatriz(num(v), num((f.puntos || [])[i]))),
+              [celdaMatriz(suma(f.valores), suma(f.puntos || []))])}));
+
   const totales = dirs.map((_, i) =>
-    j.ataque.matriz_direccion.reduce((a, f) => a + num(f.valores[i]), 0));
-  filasMatriz.push({total:true, celdas: ["TOTAL"].concat(totales,
-    [totales.reduce((a, b) => a + b, 0)])});
+    suma(j.ataque.matriz_direccion.map(f => f.valores[i])));
+  const totalesPunto = dirs.map((_, i) =>
+    suma(j.ataque.matriz_direccion.map(f => (f.puntos || [])[i])));
+  filasMatriz.push({total:true, celdas: ["TOTAL"]
+    .concat(totales.map((v, i) => celdaMatriz(v, totalesPunto[i])),
+            [celdaMatriz(suma(totales), suma(totalesPunto))])});
 
   return `<div class="sub-titulo">Ataque <span class="aclara">totales y por zona de origen</span></div>` +
     tabla(["", "Ataques", "Punto", "Defendido", "Fuera", "% Punto", "% Defendido", "% Fuera"], filas) +
     `<div class="sub-titulo">Ataque por zona de origen y direccion
-      <span class="aclara">ataques, no puntos</span></div>` +
+      <span class="aclara">ataques · % que fueron punto</span></div>` +
     tabla(["Zona"].concat(dirs.map(d => "Hacia " + d), ["Total"]), filasMatriz);
 }
 

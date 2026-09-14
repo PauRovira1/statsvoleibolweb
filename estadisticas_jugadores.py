@@ -385,10 +385,15 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
                       "eficacia": _porcentaje(atk["puntos"] - atk["fuera"], atk["totales"])},
             "por_zona": por_zona,
             "direcciones": list(DIRECCIONES),
+            # "valores" son los ataques hacia cada direccion y "puntos" cuantos
+            # de esos fueron punto: van juntos porque 27 ataques hacia la 6 no
+            # dicen nada hasta saber cuantos entraron
             "matriz_direccion": [
                 {"zona": zona,
                  "valores": [crudo["detalle"].get((zona, d), _cero_ataque())["totales"]
-                             for d in DIRECCIONES]}
+                             for d in DIRECCIONES],
+                 "puntos": [crudo["detalle"].get((zona, d), _cero_ataque())["puntos"]
+                            for d in DIRECCIONES]}
                 for zona in zonas_atacadas
             ],
         },
