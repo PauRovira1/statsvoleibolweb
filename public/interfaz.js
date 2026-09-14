@@ -262,6 +262,7 @@ function pintar(e){
     nombres:"Escribi el nombre y Enter (vacio = A/B)",
     rotacion:"28_S 5 13 88 3 40   (vacio = sin rotacion)",
     mantener_rotacion:"s  o  n",
+    equipo_del_cambio:"A  o  B",
     saque_inicial:"A  o  B",
     jugadas:"1_5_X/3_3/2_4/4_1_P"
   })[e.etapa] || "";
@@ -728,6 +729,14 @@ function pintarPreparacion(e){
     $("#opciones").innerHTML =
       `<button class="grande" data-accion="mantener" data-valor="s">Si, la misma</button>
        <button class="grande" data-accion="mantener" data-valor="n">No, cargar otra</button>`;
+    return;
+  }
+  // el dorsal del que sale existe en los dos equipos: el motor no puede
+  // adivinar de cual es y lo pregunta en medio de la carga
+  if(espera.que === "equipo_del_cambio"){
+    $("#opciones").innerHTML = ["A", "B"].map(letra =>
+      `<button class="grande" data-accion="saca" data-valor="${letra}">
+         Sale de ${esc(e.nombres[letra])}</button>`).join("");
     return;
   }
   $("#opciones").innerHTML = "";

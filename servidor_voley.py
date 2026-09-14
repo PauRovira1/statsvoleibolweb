@@ -152,16 +152,22 @@ def token_valido(token) -> bool:
     return time.time() < int(vence)
 
 
-def sesion_al_dia() -> SesionPartido:
+def sesion_al_dia(*, escribiendo: bool = True) -> SesionPartido:
     """La sesion con las ultimas lineas, vengan de donde vengan.
 
     Sin persistencia devuelve la de siempre. Con persistencia se compara la
     version guardada contra la que tiene esta instancia y solo se rehace el
-    partido si cambio, que es lo caro."""
+    partido si cambio, que es lo caro.
+
+    Las rutas que solo leen (el marcador, las estadisticas) se conforman con
+    una respuesta de hace unos segundos: mirar el partido desde la tribuna no
+    tiene por que costar una consulta al blob cada vez. Las que escriben
+    preguntan siempre, porque cargar una jugada sobre una sesion vieja
+    perderia las que entraron en el medio."""
     global version_de_la_sesion
     if not PERSISTIR_SESION:
         return sesion
-    version = alm.version_de_sesion()
+    version = alm.version_de_sesion(refrescar=escribiendo)
     if version and version != version_de_la_sesion:
         guardada = alm.leer_sesion()
         if guardada is not None:
@@ -175,8 +181,9 @@ def anotar_sesion() -> None:
     global version_de_la_sesion
     if not PERSISTIR_SESION:
         return
-    alm.guardar_sesion(sesion.lineas)
-    version_de_la_sesion = alm.version_de_sesion()
+    # la version la trae la propia subida; solo se pregunta si no vino, que es
+    # lo que hacia siempre y costaba una operacion advanced por jugada
+    version_de_la_sesion = alm.guardar_sesion(sesion.lineas) or alm.version_de_sesion()
 
 
 def aviso_de_blob(logica: str, nombre: str) -> str:
@@ -374,12 +381,12 @@ class Manejador(BaseHTTPRequestHandler):
         if ruta == "/api/estado":
             with candado:
                 return self._responder({"ok": True,
-                                        "estado": sesion_al_dia().instantanea(),
+                                        "estado": sesion_al_dia(escribiendo=False).instantanea(),
                                         "almacenamiento": alm.estado()})
 
         if ruta == "/api/estadisticas":
             with candado:
-                return self._responder({"ok": True, "texto": sesion_al_dia().estadisticas()})
+                return self._responder({"ok": True, "texto": sesion_al_dia(escribiendo=False).estadisticas()})
 
         if ruta == "/api/descargar":
             return self._descargar(consulta)

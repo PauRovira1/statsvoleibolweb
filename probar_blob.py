@@ -183,7 +183,28 @@ def main() -> int:
     else:
         print("  RARO: subio pero no aparece al listar de nuevo")
 
-    titulo("5) Bajarlo y comparar")
+    titulo("5) Pedir la cabeza (la operacion barata)")
+    # Es la que decide si el proyecto entra en el plan gratis: preguntar por la
+    # cabeza cuenta como operacion SIMPLE (10.000 al mes en Hobby) y listar
+    # como ADVANCED (2.000). El servidor la usa una vez por pedido para saber
+    # si la sesion cambio, y si el servicio no la contesta se cae al listado.
+    try:
+        cabeza = alm.cabeza_blob(PRUEBA)
+    except alm.FALLAS_DE_RED as error:
+        print(f"  NO ANDA: {error}")
+        print("\n  No es grave: el servidor se da cuenta solo y vuelve a listar,")
+        print("  que es lo que hacia antes. Pero vas a gastar el triple de")
+        print("  operaciones advanced, asi que conviene avisar de esto.")
+        cabeza = None
+    else:
+        if cabeza and cabeza.get("etag"):
+            print(f"  OK: etag {cabeza['etag']}")
+            print("  El servidor va a usar esto en vez de listar: una operacion")
+            print("  advanced menos por cada jugada que cargues.")
+        else:
+            print(f"  RARO: contesto pero sin etag -> {cabeza}")
+
+    titulo("6) Bajarlo y comparar")
     try:
         # con el token, igual que bajar_blob: en un store privado la URL sola
         # devuelve 403 aunque el archivo exista
@@ -196,7 +217,7 @@ def main() -> int:
     print("  OK: el contenido coincide" if bajado == CONTENIDO
           else f"  FALLO: bajo otra cosa ({bajado!r})")
 
-    titulo("6) Limpiar")
+    titulo("7) Limpiar")
     borrar(url)
 
     print("\nTodo bien. El Blob funciona y el proyecto lo esta usando como debe.")

@@ -983,12 +983,16 @@ def aplicar_cambio(
         print(f"  El jugador {sale} no esta en cancha en ninguno de los dos equipos.")
         return None
     if len(equipos) > 1:
-        # el mismo numero en los dos equipos: hay que desempatar
-        equipo = preguntar_equipo(
-            f"  Los dos equipos tienen al jugador {sale}. De cual sale? "
-            f"A) {nombres['A']}  B) {nombres['B']}: ",
-            nombres,
-        )
+        # El mismo numero en los dos equipos: hay que desempatar. Es el unico
+        # prompt del motor que aparece en medio de la carga, asi que tiene que
+        # avisar igual que los demas: sin esto la web se comia la jugada
+        # siguiente como respuesta y quedaba trabada.
+        with _esperando({"que": "equipo_del_cambio", "jugador": sale, "entra": entra}):
+            equipo = preguntar_equipo(
+                f"  Los dos equipos tienen al jugador {sale}. De cual sale? "
+                f"A) {nombres['A']}  B) {nombres['B']}: ",
+                nombres,
+            )
     else:
         equipo = equipos[0]
 

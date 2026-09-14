@@ -2550,6 +2550,40 @@ class TestQuePreguntaElMotor(unittest.TestCase):
         self.assertEqual(sesion.instantanea()["esperando"],
                          {"que": "nombre_equipo", "equipo": "B"})
 
+    def test_un_cambio_ambiguo_pregunta_de_que_equipo_sale(self):
+        # el 13 esta en los dos equipos: el motor no puede adivinar de cual
+        # sale y pregunta. Sin avisarlo, la web se comia la jugada siguiente
+        # como respuesta y la sesion quedaba trabada.
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", "1_S 2 3 13 5 6", "7_S 8 9 13 11 12", "A"]:
+            sesion.enviar(linea)
+        resultado = sesion.enviar("C_77_13")
+        self.assertTrue(resultado["ok"])
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["etapa"], "equipo_del_cambio")
+        self.assertEqual(instantanea["esperando"],
+                         {"que": "equipo_del_cambio", "jugador": 13, "entra": 77})
+        self.assertIn("los dos equipos", instantanea["prompt"])
+
+    def test_contestado_el_cambio_ambiguo_la_carga_sigue(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", "1_S 2 3 13 5 6", "7_S 8 9 13 11 12", "A"]:
+            sesion.enviar(linea)
+        sesion.enviar("C_77_13")
+        sesion.enviar("B")                       # sale el 13 de Rival
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["etapa"], "jugadas")
+        self.assertEqual(instantanea["rotaciones"]["B"]["jugadores"][3], 77)
+        self.assertEqual(instantanea["rotaciones"]["A"]["jugadores"][3], 13)
+        self.assertTrue(sesion.enviar("1_5_A")["ok"])
+
+    def test_un_cambio_sin_ambiguedad_no_pregunta_nada(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", "13_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A"]:
+            sesion.enviar(linea)
+        sesion.enviar("C_77_2")
+        self.assertEqual(sesion.instantanea()["etapa"], "jugadas")
+
     def test_el_punto_a_medias_no_viaja_dos_veces(self):
         # "esperando" es el resumen y "pendiente" el detalle: los bloques van
         # en uno solo, que es lo que se manda en cada jugada

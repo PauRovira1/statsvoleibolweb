@@ -170,7 +170,14 @@ class ErrorDeBlob(RuntimeError):
     Existe para no perder el cuerpo de la respuesta: urllib deja el detalle
     del error adentro del HTTPError y hay que leerlo antes de que se cierre.
     Ese detalle es lo unico que dice si fallo la credencial, la version de la
-    API o el nombre del archivo, y es lo que se termina mostrando en pantalla."""
+    API o el nombre del archivo, y es lo que se termina mostrando en pantalla.
+
+    "codigo" es el HTTP que contesto, cuando hubo uno: sirve para distinguir
+    un 404 ("no esta ese archivo", que puede ser normal) de todo lo demas."""
+
+    def __init__(self, mensaje: str, codigo: int | None = None):
+        super().__init__(mensaje)
+        self.codigo = codigo
 
 
 # Por que fallo la ultima llamada al blob. Se guarda para poder decirlo en el
@@ -207,7 +214,7 @@ def _pedir(url: str, *, metodo="GET", cuerpo=None, cabeceras=None, timeout=10):
             detalle = error.read().decode("utf-8", "replace").strip()[:300]
         except OSError:
             detalle = ""
-        raise ErrorDeBlob(f"{donde} -> HTTP {error.code} {detalle}") from None
+        raise ErrorDeBlob(f"{donde} -> HTTP {error.code} {detalle}", error.code) from None
     except urllib.error.URLError as error:
         raise ErrorDeBlob(f"{donde} -> no se pudo contactar al blob: {error.reason}") from None
 
@@ -296,8 +303,35 @@ def bajar_blob(blob: dict, destino: Path) -> bool:
     return True
 
 
-def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
-    """Sube (o pisa) un archivo del blob. Devuelve su URL publica."""
+def _version_de(blob: dict) -> str:
+    """Con que se decide si lo guardado cambio.
+
+    El etag es lo unico que devuelven las TRES operaciones (subir, cabeza y
+    listar), y por eso se prefiere: permite enterarse de la version en la
+    misma subida, sin una segunda llamada. Si la API no lo manda se cae a la
+    fecha de subida, que es lo que se usaba antes."""
+    return str(blob.get("etag") or blob.get("uploadedAt") or "")
+
+
+def cabeza_blob(pathname: str) -> dict | None:
+    """Los datos de un archivo del blob sin listar el store ni bajarlo.
+
+    Es la diferencia entre entrar o no en el plan gratis: listar cuenta como
+    operacion ADVANCED y pedir la cabeza como SIMPLE, y en el plan Hobby son
+    2.000 contra 10.000 por mes. Esto se pregunta en CADA pedido (para saber
+    si la sesion que hay en memoria sigue siendo la ultima), asi que es la
+    llamada que mas se repite de todo el proyecto.
+
+    Devuelve None si el archivo no esta. Si el servicio contesta cualquier
+    otra cosa levanta, y el que llama se cae al listado de siempre."""
+    crudo = _pedir(f"{API_BLOB}?{urllib.parse.urlencode({'url': pathname})}")
+    datos = json.loads(crudo.decode("utf-8"))
+    return datos or None
+
+
+def subir_blob_detalle(pathname: str, contenido: bytes, tipo: str) -> dict:
+    """Sube (o pisa) un archivo del blob. Devuelve lo que contesto el servicio
+    (url, pathname y etag), que es de donde sale la version sin preguntarla."""
     crudo = _pedir(
         f"{API_BLOB}/{urllib.parse.quote(pathname)}",
         metodo="PUT",
@@ -313,7 +347,12 @@ def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
         },
         timeout=30,
     )
-    return (json.loads(crudo.decode("utf-8")) or {}).get("url", "")
+    return json.loads(crudo.decode("utf-8")) or {}
+
+
+def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
+    """Sube (o pisa) un archivo del blob. Devuelve su URL publica."""
+    return subir_blob_detalle(pathname, contenido, tipo).get("url", "")
 
 
 def borrar_blob(url: str) -> None:
@@ -514,16 +553,34 @@ def publicado(logica: str, nombre: str) -> bool:
     si avisarle al usuario que su partido puede perderse, y un listado viejo
     (donde figura un informe del mismo nombre que se regenero) contestaria que
     si cuando la subida acaba de fallar. Si no se puede confirmar, se avisa."""
+    global _hay_cabeza
     if not hay_blob():
         return False
+    ruta = f"{logica}/{nombre}"
+
+    # Preguntar por un archivo puntual es justo para lo que sirve la cabeza, y
+    # cuesta una operacion simple en vez de una advanced. Listar el store
+    # entero para ver si uno esta era lo caro.
+    if _hay_cabeza:
+        try:
+            return bool(cabeza_blob(ruta))
+        except ErrorDeBlob as error:
+            if error.codigo == 404:
+                return False
+            _hay_cabeza = False
+            _anotar_error(f"no se pudo confirmar {ruta}: {error}")
+        except FALLAS_DE_RED as error:
+            _hay_cabeza = False
+            _anotar_error(f"no se pudo confirmar {ruta}: {error}")
+
     prefijo = f"{logica}/"
     try:
         blobs = _listar_blobs_crudo(prefijo)
     except FALLAS_DE_RED as error:
-        _anotar_error(f"no se pudo confirmar {logica}/{nombre}: {error}")
+        _anotar_error(f"no se pudo confirmar {ruta}: {error}")
         return False
     _guardar_listado(prefijo, blobs)
-    return any(b.get("pathname") == f"{prefijo}{nombre}" for b in blobs)
+    return any(b.get("pathname") == ruta for b in blobs)
 
 
 # ----------------------------------------------------------------------
@@ -539,7 +596,14 @@ def publicado(logica: str, nombre: str) -> bool:
 RUTA_SESION = "sesion/actual.json"
 
 
-def guardar_sesion(lineas: list[str]) -> bool:
+def guardar_sesion(lineas: list[str]) -> str:
+    """Guarda la sesion y devuelve con que version quedo.
+
+    Devolverla es lo que evita una segunda llamada: antes, el que guardaba
+    tenia que volver a preguntarle al blob que version le habia tocado, y esa
+    pregunta costaba una operacion advanced por cada jugada cargada. La subida
+    ya trae el etag. Si no lo trajera, se devuelve "" y el que llama pregunta
+    como siempre."""
     datos = json.dumps({"lineas": lineas, "guardado": time.time()},
                        ensure_ascii=False).encode("utf-8")
     local = CARPETA_ESCRITURA / "sesion" / "actual.json"
@@ -549,23 +613,69 @@ def guardar_sesion(lineas: list[str]) -> bool:
     except OSError:
         pass
     if not hay_blob():
-        return False
+        try:
+            return str(local.stat().st_mtime)
+        except OSError:
+            return ""
     try:
-        subir_blob(RUTA_SESION, datos, TIPO_POR_EXTENSION[".json"])
+        subido = subir_blob_detalle(RUTA_SESION, datos, TIPO_POR_EXTENSION[".json"])
     except FALLAS_DE_RED as error:
         # que no se pueda guardar la sesion afuera no puede voltear la jugada
         # que se acaba de cargar: ya esta en memoria y contestada
         _anotar_error(f"no se pudo guardar la sesion: {error}")
-        return False
+        return ""
+    version = _version_de(subido)
     with _candado_blob:
         _ultimo_listado.pop("sesion/", None)
-    return True
+        _ultima_version[RUTA_SESION] = (time.monotonic(), version)
+    return version
+
+
+# Si pedir la cabeza no funciona contra este store, se apaga para el resto del
+# proceso y se vuelve al listado de siempre.
+_hay_cabeza = True
+
+# La ultima version que se supo de la sesion, con cuando se supo. Es para las
+# rutas que solo leen: varias personas mirando el marcador no tienen por que
+# preguntarle al blob una vez cada una.
+_ultima_version: dict[str, tuple[float, str]] = {}
+
+
+def _blob_de_la_sesion(*, refrescar: bool = True) -> dict | None:
+    """Los datos del archivo de la sesion, sin bajarlo.
+
+    Por la cabeza si el servicio la contesta, y si no listando el store como
+    se hacia antes. La diferencia importa: listar cuenta como operacion
+    ADVANCED (2.000 al mes en el plan Hobby) y la cabeza como SIMPLE (10.000).
+    Esto se pregunta una vez por pedido, asi que es la llamada mas repetida de
+    todo el proyecto.
+
+    Si la cabeza falla por algo que no sea "no esta", se apaga para el resto
+    del proceso: mejor gastar de mas que quedarse sin saber si la sesion
+    cambio."""
+    global _hay_cabeza
+    if _hay_cabeza:
+        try:
+            return cabeza_blob(RUTA_SESION)
+        except ErrorDeBlob as error:
+            if error.codigo == 404:
+                return None            # todavia no se guardo ninguna sesion
+            _hay_cabeza = False
+            _anotar_error(f"no se pudo pedir la cabeza de la sesion: {error}")
+        except FALLAS_DE_RED as error:
+            _hay_cabeza = False
+            _anotar_error(f"no se pudo pedir la cabeza de la sesion: {error}")
+
+    for blob in listar_blobs("sesion/", refrescar=refrescar):
+        if blob.get("pathname") == RUTA_SESION:
+            return blob
+    return None
 
 
 def leer_sesion() -> tuple[list[str], str] | None:
     """(lineas, version) de la sesion guardada, o None si no hay ninguna.
 
-    La version es la fecha de subida: con eso la instancia que atiende el
+    La version identifica la subida: con eso la instancia que atiende el
     pedido sabe si lo que tiene en memoria sigue siendo lo ultimo, sin
     bajarse el archivo en cada pedido."""
     if not hay_blob():
@@ -576,31 +686,41 @@ def leer_sesion() -> tuple[list[str], str] | None:
             return None
         return list(datos.get("lineas") or []), str(local.stat().st_mtime)
 
-    blobs = [b for b in listar_blobs("sesion/", refrescar=True)
-             if b.get("pathname") == RUTA_SESION]
-    if not blobs:
+    blob = _blob_de_la_sesion()
+    if blob is None:
         return None
-    blob = blobs[0]
     try:
         datos = json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer la sesion guardada: {error}")
         return None
-    return list(datos.get("lineas") or []), str(blob.get("uploadedAt") or "")
+    return list(datos.get("lineas") or []), _version_de(blob)
 
 
-def version_de_sesion() -> str:
-    """La fecha de subida de la sesion guardada, sin bajar el contenido."""
+def version_de_sesion(*, refrescar: bool = True) -> str:
+    """Con que version esta guardada la sesion, sin bajar el contenido.
+
+    Con refrescar=False vale la respuesta de hace unos segundos. Solo lo pueden
+    usar las rutas de lectura: si una escritura trabajara sobre una sesion
+    vieja, la jugada se cargaria sobre el partido equivocado."""
     if not hay_blob():
         local = CARPETA_ESCRITURA / "sesion" / "actual.json"
         try:
             return str(local.stat().st_mtime)
         except OSError:
             return ""
-    for blob in listar_blobs("sesion/", refrescar=True):
-        if blob.get("pathname") == RUTA_SESION:
-            return str(blob.get("uploadedAt") or "")
-    return ""
+
+    if not refrescar:
+        with _candado_blob:
+            guardado = _ultima_version.get(RUTA_SESION)
+        if guardado and time.monotonic() - guardado[0] < SEGUNDOS_DE_CACHE:
+            return guardado[1]
+
+    blob = _blob_de_la_sesion(refrescar=refrescar)
+    version = _version_de(blob) if blob else ""
+    with _candado_blob:
+        _ultima_version[RUTA_SESION] = (time.monotonic(), version)
+    return version
 
 
 # ----------------------------------------------------------------------

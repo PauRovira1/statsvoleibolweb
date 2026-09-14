@@ -51,6 +51,7 @@ ETAPA_POR_PREGUNTA = {
     "rotacion": "rotacion",
     "saque_inicial": "saque_inicial",
     "mantener_rotacion": "mantener_rotacion",
+    "equipo_del_cambio": "equipo_del_cambio",
     "saque": "jugadas",
     "continuacion": "jugadas",
 }
@@ -230,6 +231,9 @@ class SesionPartido:
                     f"armador con _S (vacio = sin rotacion)")
         if que == "mantener_rotacion":
             return f"Mantener la misma rotacion para el set {esperando['set']}? (s/n)"
+        if que == "equipo_del_cambio":
+            return (f"El {esperando['jugador']} esta en los dos equipos. "
+                    f"De cual sale? A) {nombres['A']}  B) {nombres['B']}")
         if que == "saque_inicial":
             enunciado = "Que equipo saca primero"
             if esperando.get("set", 1) > 1:
