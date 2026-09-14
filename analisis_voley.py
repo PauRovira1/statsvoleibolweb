@@ -948,6 +948,29 @@ def _cambiar_libero(rotaciones: dict, entra: int, sale: int, nombres: dict) -> d
     return None
 
 
+def _mover_cobertura_de_liberos(rotacion: dict, entra: int, sale: int) -> list[int]:
+    """Le pasa al que entra la cobertura que el libero tenia sobre el que sale.
+
+    El libero cubre un puesto de la rotacion, no a una persona: si al cubierto
+    lo sustituyen, el libero sigue entrando en esa misma zona de atras, ahora
+    por el que llego. Sin esto se quedaba cubriendo a alguien que ya no esta en
+    cancha, o sea afuera del partido hasta el final del set.
+
+    Devuelve los liberos que a partir de ahora juegan por el que entra."""
+    movidos = []
+    for libero in rotacion.get("liberos") or []:
+        if sale not in libero["cubre"]:
+            continue
+        libero["cubre"] = [entra if cubierto == sale else cubierto
+                           for cubierto in libero["cubre"]]
+        movidos.append(libero["jugador"])
+    # el que entro puede ser el libero mismo; adentro de la cancha como uno de
+    # los seis deja de serlo, si no formacion_en_cancha lo pone en dos zonas
+    rotacion["liberos"] = [libero for libero in rotacion.get("liberos") or []
+                           if libero["jugador"] not in rotacion["jugadores"]]
+    return [numero for numero in movidos if numero != entra]
+
+
 def aplicar_cambio(
     rotaciones: dict, entrada: str, nombres: dict | None = None,
     puntos: list[dict] | None = None, numero_set: int = 1,
@@ -1010,6 +1033,7 @@ def aplicar_cambio(
     # parado ahora, que no es la inicial si el equipo ya roto.
     posicion = rotacion["jugadores"].index(sale)
     rotacion["jugadores"][posicion] = entra
+    liberos_movidos = _mover_cobertura_de_liberos(rotacion, entra, sale)
     giros = veces_que_roto(puntos or [], numero_set, equipo)
     zona = (posicion - giros) % len(rotacion["jugadores"]) + 1
 
@@ -1027,10 +1051,14 @@ def aplicar_cambio(
         detalle = " y pasa a ser el armador"
         if armador_desplazado is not None:
             detalle += f" (deja de serlo el {armador_desplazado})"
+    if liberos_movidos:
+        quienes = " y el ".join(str(numero) for numero in liberos_movidos)
+        detalle += f" (el libero {quienes} pasa a jugar por el {entra})"
     print(f"  Cambio en {nombres[equipo]}: entra el {entra} por el {sale} (zona {zona}){detalle}.")
     return {
         "equipo": equipo, "entra": entra, "sale": sale, "zona": zona,
         "armador": entra_de_armador, "armador_desplazado": armador_desplazado,
+        "liberos": liberos_movidos,
     }
 
 
@@ -2126,6 +2154,9 @@ def guardar_reporte_txt(
                 detalle = " (queda como armador)"
                 if cambio.get("armador_desplazado") is not None:
                     detalle = f" (cambio de armador: entra por el {cambio['armador_desplazado']})"
+            if cambio.get("liberos"):
+                quienes = " y el ".join(str(numero) for numero in cambio["liberos"])
+                detalle += f" (pasa a cubrirlo el libero {quienes})"
             lineas.append(
                 f"Set {cambio['set']} - {nombres[cambio['equipo']]}: "
                 f"entra {cambio['entra']}, sale {cambio['sale']} (zona {cambio['zona']}){detalle}"
@@ -2254,6 +2285,15 @@ def ejecutar_partido() -> dict:
     equipo_saca = "A"
     esperando = None   # que pregunta quedo sin contestar, si la carga se corto
     inicios_de_set = []   # una foto por set cerrado, para poder reabrirlo
+    fotos_de_cambio = []  # una foto por cambio aplicado, para poder sacarlo
+
+    def el_cambio_es_lo_ultimo() -> bool:
+        """Si lo ultimo que se cargo fue un cambio, la "x" lo saca a el.
+
+        Se mira contra la ultima linea y no contra los puntos porque un punto
+        o un cierre de set dejan lineas despues del cambio."""
+        return bool(fotos_de_cambio
+                    and fotos_de_cambio[-1]["entradas"] == len(entradas_totales) - 1)
 
     print("=== Carga de jugadas ===")
     print(f"Escribi {'/'.join(COMANDOS_SALIDA)} en cualquier momento para terminar.")
@@ -2306,6 +2346,10 @@ def ejecutar_partido() -> dict:
                                            for n, r in rotaciones_por_set.items()},
                     "entradas": len(entradas_totales),
                     "historial": len(historial_sets),
+                    "cambios": len(cambios),
+                    "fotos_de_cambio": len(fotos_de_cambio),
+                    "armadores": {letra: set(quienes)
+                                  for letra, quienes in armadores.items()},
                 })
                 entradas_totales.append(resultado[1])
 
@@ -2347,17 +2391,45 @@ def ejecutar_partido() -> dict:
                 continue
 
             if resultado[0] == "CAMBIO":
+                # la foto se saca antes porque aplicar_cambio pisa la rotacion
+                antes = {
+                    "rotaciones": copiar_rotaciones(rotaciones),
+                    "armadores": {letra: set(quienes)
+                                  for letra, quienes in armadores.items()},
+                    "entradas": len(entradas_totales),
+                    "cambios": len(cambios),
+                }
                 cambio = aplicar_cambio(
                     rotaciones, resultado[1], nombres, puntos, len(historial_sets) + 1
                 )
                 if cambio is not None:
                     entradas_totales.append(resultado[1])
                     cambios.append({"set": len(historial_sets) + 1, **cambio})
+                    fotos_de_cambio.append(antes)
                     if cambio["armador"]:
                         armadores.setdefault(cambio["equipo"], set()).add(cambio["entra"])
                 continue
 
             if resultado[0] == "DESHACER":
+                # Un cambio no es un punto. Antes la "x" se lo saltaba y
+                # deshacia el punto anterior, pero igual se comia la ultima
+                # linea cargada (la del cambio): el estado y el .txt quedaban
+                # contando partidos distintos. Se compara contra la ultima
+                # linea porque eso es justo "el cambio es lo ultimo que hice":
+                # un punto o un cierre de set dejan lineas despues.
+                if el_cambio_es_lo_ultimo():
+                    foto = fotos_de_cambio.pop()
+                    deshecho = cambios.pop()
+                    rotaciones = copiar_rotaciones(foto["rotaciones"])
+                    armadores = {letra: set(quienes)
+                                 for letra, quienes in foto["armadores"].items()}
+                    del entradas_totales[foto["entradas"]:]
+                    print(
+                        f"  Deshecho: se saco el cambio en {nombres[deshecho['equipo']]} "
+                        f"(entraba el {deshecho['entra']} por el {deshecho['sale']}).\n"
+                    )
+                    continue
+
                 if len(puntos) <= puntos_al_iniciar_set:
                     # No hay puntos de este set, pero si hay un set anterior se
                     # vuelve a abrir. Es la unica forma de arreglar un set que
@@ -2379,6 +2451,12 @@ def ejecutar_partido() -> dict:
                                           for n, r in foto["rotaciones_por_set"].items()}
                     del historial_sets[foto["historial"]:]
                     del entradas_totales[foto["entradas"]:]
+                    # los cambios del set que se cierra se van con el, si no
+                    # seguian saliendo en el informe de un set que ya no existe
+                    del cambios[foto["cambios"]:]
+                    del fotos_de_cambio[foto["fotos_de_cambio"]:]
+                    armadores = {letra: set(quienes)
+                                 for letra, quienes in foto["armadores"].items()}
                     print(
                         f"  Deshecho: se reabrio el set {len(historial_sets) + 1}. "
                         f"Marcador {nombres['A']} {marcador['A']} - "
@@ -2441,6 +2519,7 @@ def ejecutar_partido() -> dict:
         "entradas_totales": entradas_totales, "equipo_saca": equipo_saca,
         "puntos_al_iniciar_set": puntos_al_iniciar_set,
         "esperando": esperando,
+        "deshace_cambio": el_cambio_es_lo_ultimo(),
     }
 
 

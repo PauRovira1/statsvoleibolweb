@@ -1555,7 +1555,8 @@ class TestCambios(unittest.TestCase):
         cambio, _ = self._aplicar(rotaciones, "C_7_13")
         self.assertEqual(rotaciones["A"]["jugadores"], [28, 5, 7, 88, 3, 40])
         self.assertEqual(cambio, {"equipo": "A", "entra": 7, "sale": 13, "zona": 3,
-                                  "armador": False, "armador_desplazado": None})
+                                  "armador": False, "armador_desplazado": None,
+                                  "liberos": []})
 
     def test_deduce_el_equipo_del_jugador_que_sale(self):
         rotaciones = self._rotaciones()
@@ -2360,6 +2361,130 @@ class TestDeshacerUnSet(unittest.TestCase):
         self.assertEqual(instantanea["sets_ganados"], {"A": 0, "B": 0})
 
 
+class TestDeshacerUnCambio(unittest.TestCase):
+    """Un cambio no es un punto, asi que la "x" lo pasaba de largo: deshacia el
+    punto anterior pero igual se comia la linea del cambio, y el estado dejaba
+    de coincidir con el .txt. Ahora si lo ultimo cargado fue un cambio, la "x"
+    saca ese cambio."""
+
+    SETUP = ["Local", "Rival", "1_S 2 3 4 5 6", "7_S 8 9 10 11 12", "A"]
+
+    def _sesion(self, *lineas):
+        sesion = sesion_web.SesionPartido()
+        for linea in list(self.SETUP) + list(lineas):
+            sesion.enviar(linea)
+        return sesion
+
+    def _jugadores(self, sesion, equipo="A"):
+        return sesion.instantanea()["rotaciones"][equipo]["jugadores"]
+
+    def _rejugado(self, sesion):
+        """El estado al que llega otra sesion cargando las mismas lineas.
+
+        Es el contrato que importa: el .txt que se guarda son estas lineas, asi
+        que si no llevan al mismo partido lo guardado es otro partido."""
+        otra = sesion_web.SesionPartido()
+        for linea in sesion.estado["entradas_totales"]:
+            otra.enviar(linea)
+        return otra
+
+    def test_la_x_saca_el_cambio(self):
+        sesion = self._sesion("C_20_3")
+        self.assertEqual(self._jugadores(sesion), [1, 2, 20, 4, 5, 6])
+        resultado = sesion.enviar("x")
+        self.assertIn("se saco el cambio", resultado["mensaje"])
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+
+    def test_el_cambio_deshecho_no_queda_en_las_lineas(self):
+        sesion = self._sesion("C_20_3", "x")
+        self.assertNotIn("C_20_3", sesion.estado["entradas_totales"])
+        self.assertEqual(sesion.estado["cambios"], [])
+
+    def test_el_punto_anterior_no_se_toca(self):
+        # este era el bug: la x deshacia el punto y encima borraba la linea del
+        # cambio, asi que el marcador y el .txt contaban partidos distintos
+        sesion = self._sesion("1_5_A", "C_20_3", "x")
+        instantanea = sesion.instantanea()
+        self.assertEqual(instantanea["marcador"], {"A": 1, "B": 0})
+        self.assertEqual(instantanea["puntos_cargados"], 1)
+        self.assertEqual(sesion.estado["entradas_totales"][-1], "1_5_A")
+
+    def test_lo_que_queda_cargado_es_lo_que_se_va_a_guardar(self):
+        sesion = self._sesion("1_5_A", "C_20_3", "x")
+        rejugado = self._rejugado(sesion)
+        self.assertEqual(rejugado.instantanea()["marcador"],
+                         sesion.instantanea()["marcador"])
+        self.assertEqual(self._jugadores(rejugado), self._jugadores(sesion))
+
+    def test_despues_de_un_punto_la_x_vuelve_a_deshacer_el_punto(self):
+        # el cambio quedo tapado por el punto: primero sale el punto
+        sesion = self._sesion("C_20_3", "1_5_A", "x")
+        self.assertEqual(sesion.instantanea()["puntos_cargados"], 0)
+        self.assertEqual(self._jugadores(sesion), [1, 2, 20, 4, 5, 6])
+        sesion.enviar("x")
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+
+    def test_se_sacan_dos_cambios_seguidos(self):
+        sesion = self._sesion("C_20_3", "C_21_4", "x", "x")
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+        self.assertEqual(sesion.estado["cambios"], [])
+
+    def test_vuelve_el_armador_de_antes(self):
+        sesion = self._sesion("C_20_S_3")
+        self.assertEqual(sesion.instantanea()["rotaciones"]["A"]["armador"], 20)
+        sesion.enviar("x")
+        self.assertEqual(sesion.instantanea()["rotaciones"]["A"]["armador"], 1)
+        # los armadores se acumulan para las estadisticas: el que nunca armo no
+        # tiene que quedar contado
+        self.assertEqual(sesion.estado["armadores"]["A"], {1})
+
+    def test_el_boton_dice_que_va_a_sacar_un_cambio(self):
+        sesion = self._sesion("1_5_A", "C_20_3")
+        self.assertEqual(sesion.instantanea()["deshacer"], "cambio")
+        sesion.enviar("x")
+        self.assertEqual(sesion.instantanea()["deshacer"], "punto")
+
+    def test_reabrir_un_set_se_lleva_los_cambios_de_ese_set(self):
+        # antes quedaban en el informe, atados a un set que ya no existia
+        sesion = self._sesion("1_5_A", "w", "s", "A", "C_20_3", "1_5_A")
+        self.assertEqual(len(sesion.estado["cambios"]), 1)
+        sesion.enviar("x")                      # el punto del set 2
+        sesion.enviar("x")                      # el cambio del set 2
+        self.assertEqual(sesion.estado["cambios"], [])
+        sesion.enviar("x")                      # y ahora si se reabre el set 1
+        self.assertEqual(sesion.instantanea()["set"], 1)
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+
+    def test_reabrir_el_set_sin_deshacer_el_cambio_a_mano(self):
+        sesion = self._sesion("1_5_A", "w", "s", "A", "C_20_3")
+        sesion.enviar("x")                      # saca el cambio
+        sesion.enviar("x")                      # reabre el set 1
+        self.assertEqual(sesion.instantanea()["set"], 1)
+        self.assertEqual(sesion.estado["cambios"], [])
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+
+    def test_tambien_se_saca_un_cambio_de_libero(self):
+        sesion = self._sesion("C_9_3")           # el 9 entra por el 3, de campo
+        sesion.enviar("x")
+        self.assertEqual(self._jugadores(sesion), [1, 2, 3, 4, 5, 6])
+
+    def test_vuelve_la_cobertura_del_libero(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", "1_S 2 3 4 5 6  9_L_3_5",
+                      "7_S 8 9 10 11 12", "A", "C_20_3"]:
+            sesion.enviar(linea)
+        self.assertEqual(sesion.instantanea()["rotaciones"]["A"]["liberos"],
+                         [{"jugador": 9, "cubre": [20, 5]}])
+        sesion.enviar("x")
+        self.assertEqual(sesion.instantanea()["rotaciones"]["A"]["liberos"],
+                         [{"jugador": 9, "cubre": [3, 5]}])
+
+    def test_sin_nada_cargado_la_x_no_inventa_un_cambio(self):
+        sesion = self._sesion()
+        resultado = sesion.enviar("x")
+        self.assertIn("recien empieza", resultado["mensaje"])
+
+
 class TestLiberos(unittest.TestCase):
     """El libero no rota: entra por el jugador al que cubre mientras ese esta
     atras, y sale cuando pasa adelante. La excepcion es el saque, porque el
@@ -2477,6 +2602,70 @@ class TestLiberos(unittest.TestCase):
         cambio = av.aplicar_cambio(rotaciones, "C_7_88", {"A": "Local", "B": "Rival"})
         self.assertEqual((cambio["entra"], cambio["sale"]), (7, 88))
         self.assertNotIn("libero", cambio)
+
+    # ---------------- cambian al jugador que el libero cubre ----------------
+    def test_la_cobertura_pasa_al_que_entra(self):
+        # el libero cubre un puesto, no a una persona: si al 15 lo cambian por
+        # el 21, el libero sigue entrando en esa zona, ahora por el 21
+        rotaciones = self._rotaciones()
+        cambio = av.aplicar_cambio(rotaciones, "C_21_15", {"A": "Local", "B": "Rival"})
+        self.assertEqual(rotaciones["A"]["liberos"], [{"jugador": 9, "cubre": [21, 10]}])
+        self.assertEqual(cambio["liberos"], [9])
+
+    def test_el_libero_sigue_en_la_cancha_despues_del_cambio(self):
+        # antes de esto el libero se quedaba cubriendo a alguien que ya no
+        # estaba, o sea afuera del partido hasta el final del set
+        rotaciones = self._rotaciones()
+        av.aplicar_cambio(rotaciones, "C_21_10", {"A": "Local", "B": "Rival"})
+        formacion = self._formacion(rotaciones, equipo_saca="B")
+        self.assertEqual(formacion, [3, 88, 15, 13, 16, 9])
+        self.assertNotIn(21, formacion)
+
+    def test_el_cubierto_nuevo_tambien_entra_a_sacar(self):
+        # la excepcion del saque vale para el que entro igual que para el otro
+        rotaciones = self._rotaciones()
+        av.aplicar_cambio(rotaciones, "C_21_15", {"A": "Local", "B": "Rival"})
+        sacando = self._formacion(rotaciones, giros=2, equipo_saca="A")
+        self.assertEqual(sacando[0], 21)
+        self.assertNotIn(9, sacando)
+
+    def test_cambiar_al_que_no_cubre_nadie_no_toca_al_libero(self):
+        rotaciones = self._rotaciones()
+        cambio = av.aplicar_cambio(rotaciones, "C_21_13", {"A": "Local", "B": "Rival"})
+        self.assertEqual(rotaciones["A"]["liberos"], [{"jugador": 9, "cubre": [15, 10]}])
+        self.assertEqual(cambio["liberos"], [])
+
+    def test_la_foto_del_set_no_se_ensucia_con_el_cambio(self):
+        # rotaciones_por_set guarda como arranco el set; si compartiera la
+        # lista de cubiertos, un cambio de mitad de set la reescribiria
+        rotaciones = self._rotaciones()
+        foto = av.copiar_rotaciones(rotaciones)
+        av.aplicar_cambio(rotaciones, "C_21_15", {"A": "Local", "B": "Rival"})
+        self.assertEqual(foto["A"]["liberos"], [{"jugador": 9, "cubre": [15, 10]}])
+
+    def test_el_libero_que_entra_a_la_cancha_deja_de_ser_libero(self):
+        # si no, formacion_en_cancha lo pondria en dos zonas a la vez
+        rotaciones = self._rotaciones()
+        cambio = av.aplicar_cambio(rotaciones, "C_9_15", {"A": "Local", "B": "Rival"})
+        self.assertEqual(rotaciones["A"]["liberos"], [])
+        self.assertEqual(cambio["liberos"], [])
+        self.assertEqual(self._formacion(rotaciones, equipo_saca="B").count(9), 1)
+
+    def test_el_cambio_del_otro_equipo_no_toca_a_este_libero(self):
+        rotaciones = self._rotaciones()
+        rotaciones["B"] = {"jugadores": [1, 2, 20, 4, 5, 6], "armador": 1, "liberos": []}
+        av.aplicar_cambio(rotaciones, "C_21_20", {"A": "Local", "B": "Rival"})
+        self.assertEqual(rotaciones["A"]["liberos"], [{"jugador": 9, "cubre": [15, 10]}])
+
+    def test_la_sesion_web_muestra_al_libero_cubriendo_al_que_entro(self):
+        # la cancha de la web se dibuja con "formacion", asi que el arrastre
+        # tiene que llegar hasta ahi para que el libero se siga viendo
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", self.CON_LIBERO, "", "B", "C_21_10"]:
+            sesion.enviar(linea)
+        rotacion = sesion.instantanea()["rotaciones"]["A"]
+        self.assertEqual(rotacion["liberos"], [{"jugador": 9, "cubre": [15, 21]}])
+        self.assertEqual(rotacion["formacion"], [3, 88, 15, 13, 16, 9])
 
     def test_la_sesion_web_publica_la_formacion_y_los_liberos(self):
         sesion = sesion_web.SesionPartido()

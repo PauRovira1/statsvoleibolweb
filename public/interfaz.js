@@ -279,12 +279,13 @@ function pintar(e){
   })[e.etapa] || "";
   $("#atajos").style.opacity = e.etapa === "jugadas" ? "1" : ".45";
 
-  // La "x" hace tres cosas distintas segun donde se este, y desde afuera se
+  // La "x" hace cuatro cosas distintas segun donde se este, y desde afuera se
   // ven iguales. Reabrir un set es la unica forma de arreglar una rotacion mal
   // cargada al empezarlo, asi que tiene que decirlo.
   const btnX = $("[data-enviar='x']");
   if(btnX) btnX.textContent = ({
     jugada: "x · deshacer jugada",
+    cambio: "x · sacar el cambio",
     punto:  "x · deshacer punto",
     set:    `x · reabrir el set ${e.historial_sets.length}`,
     nada:   "x · deshacer"
