@@ -46,6 +46,7 @@ informe (o borrar un partido viejo) no interrumpa la carga en la cancha:
     GET  /api/partido?archivo=      un volcado entero, ya parseado
     GET  /api/informe?archivo=      un .xlsx como hojas y filas de texto
     GET  /api/descargar?archivo=&tipo=txt|xlsx
+    GET  /api/equipo                resumen del equipo entero
     POST /api/borrar                borra el volcado y/o el informe (pide clave)
     POST /api/abrir                 lo abre con Excel en esta maquina (solo
                                     tiene sentido corriendo en una PC propia)
@@ -366,6 +367,16 @@ def responder_jugador(equipo: str, dorsal: str) -> dict:
     return {"ok": True, "jugador": ficha}
 
 
+def responder_equipo(equipo: str) -> dict:
+    """El resumen del equipo entero: las mismas metricas que una ficha, pero
+    del juego y no de una persona."""
+    import estadisticas_jugadores as ej
+    resumen = ej.resumen_equipo(equipo)
+    if resumen is None:
+        return {"ok": False, "mensaje": f"No hay partidos cargados de {equipo}."}
+    return {"ok": True, "equipo": resumen}
+
+
 def responder_partidos() -> dict:
     # el estado del almacenamiento viaja tambien aca: si el Blob esta fallando,
     # esta lista es justo la que se ve incompleta
@@ -530,6 +541,7 @@ class Manejador(BaseHTTPRequestHandler):
                                      "opciones_posicion": list(alm.POSICIONES)},
             "/api/jugador": lambda: responder_jugador(consulta.get("equipo", ""),
                                                       consulta.get("dorsal", "")),
+            "/api/equipo": lambda: responder_equipo(consulta.get("equipo", "")),
         }
         if ruta in lecturas:
             datos, codigo = self._leer_de_disco(lecturas[ruta])

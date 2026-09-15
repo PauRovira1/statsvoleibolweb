@@ -12,9 +12,10 @@
   <!-- La barra de pestanas es lo unico que se comparte entre las tres vistas.
        Se queda pegada arriba porque en el celular se navega con el pulgar. -->
   <nav class="pestanas" id="pestanas">
-    <button class="pestana" data-vista="partidos">Partidos</button>
+    <button class="pestana activa" data-vista="equipo">Equipo</button>
     <button class="pestana" data-vista="jugadores">Jugadores</button>
-    <button class="pestana activa" data-vista="cargar">Cargar<span class="chip" id="chipCargar" hidden></span></button>
+    <button class="pestana" data-vista="partidos">Partidos</button>
+    <button class="pestana" data-vista="cargar">Cargar<span class="chip" id="chipCargar" hidden></span></button>
   </nav>
 
   <!-- Aviso del servidor. Casi siempre esta vacio y no se ve. Aparece cuando
@@ -57,7 +58,16 @@
   </section>
 
   <!-- ============================================================ -->
-  <!-- 2) JUGADORES: se arma con los partidos guardados en Datos/.  -->
+  <!-- 2) EQUIPO: lo mismo que Jugadores pero del juego, no de una    -->
+  <!--    persona. Es la que se abre al entrar porque contesta las     -->
+  <!--    preguntas mas generales, y desde ahi se baja al detalle.     -->
+  <!-- ============================================================ -->
+  <section class="vista activa" id="vista-equipo">
+    <div id="equipo"></div>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- 3) JUGADORES: se arma con los partidos guardados en Datos/.  -->
   <!-- ============================================================ -->
   <section class="vista" id="vista-jugadores" hidden>
     <div id="avisoDuplicados" class="aviso" hidden></div>
@@ -65,10 +75,10 @@
   </section>
 
   <!-- ============================================================ -->
-  <!-- 3) CARGAR: la pantalla de la cancha. No se le agrega nada que -->
+  <!-- 4) CARGAR: la pantalla de la cancha. No se le agrega nada que -->
   <!--    se meta en el camino de tipear una jugada.                 -->
   <!-- ============================================================ -->
-  <section class="vista activa bloqueada" id="vista-cargar">
+  <section class="vista bloqueada" id="vista-cargar" hidden>
 
     <!-- Candado. Cargar es lo unico que escribe sobre el partido, asi que es
          lo unico que pide la contraseña; mientras esta puesto tapa la

@@ -56,6 +56,26 @@ def _sumar(destino: dict, origen: dict) -> None:
         destino[clave] = destino.get(clave, 0) + valor
 
 
+def _sumar_hondo(destino: dict, origen: dict) -> None:
+    """Suma diccionarios anidados: {"hechos": {"K1": {"total": 3}}}.
+
+    Las secciones de equipo del volcado tienen dos y tres niveles, y cada
+    partido trae solo las claves que ocurrieron. Sumar a mano nivel por nivel
+    seria repetir el mismo bucle cinco veces."""
+    for clave, valor in (origen or {}).items():
+        if isinstance(valor, dict):
+            _sumar_hondo(destino.setdefault(clave, {}), valor)
+        elif isinstance(valor, bool):
+            destino[clave] = destino.get(clave) or valor
+        elif isinstance(valor, (int, float)):
+            destino[clave] = destino.get(clave, 0) + valor
+        else:
+            # etiquetas, no numeros: "tipo": "Paralelo" dice de que saque
+            # vino esa recepcion y es la misma en todos los partidos. Sin
+            # esto la columna llegaba vacia a la pantalla.
+            destino.setdefault(clave, valor)
+
+
 def _dorsal(clave: str) -> str:
     return str(clave).replace("Jugador ", "").strip()
 
@@ -270,12 +290,80 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
         })
 
 
+SECCIONES_DE_EQUIPO = ("fases", "causas", "zona_armador", "armado_zona",
+                       "armado_calidad", "recepcion_tipo_saque")
+
+
+def _cero_equipo() -> dict:
+    return {seccion: {} for seccion in SECCIONES_DE_EQUIPO} | {
+        "recepcion": _cero_recepcion(),
+        "ataque": _cero_ataque(),
+        # (zona de origen, direccion) -> ataques, para la matriz de tendencia
+        "direccion": {},
+        "bloqueos": 0,
+        "sets": 0,
+        "partidos": [],
+    }
+
+
+def _acumular_equipo(destino: dict, datos: dict, etiqueta: str, sets: int) -> None:
+    """Suma un partido al acumulado del equipo, sin abrir por jugador.
+
+    Casi todo ya viene a nivel equipo en el volcado y solo hay que sumarlo. Lo
+    que no -- recepcion, ataque, bloqueos y la matriz de direcciones -- se arma
+    sumando a todos los jugadores, que es lo mismo que mirar al equipo."""
+    for seccion in SECCIONES_DE_EQUIPO:
+        _sumar_hondo(destino[seccion], datos.get(seccion) or {})
+
+    recepcion, ataque = _cero_recepcion(), _cero_ataque()
+    for valores in (datos.get("recepciones") or {}).values():
+        _sumar(recepcion, valores)
+    for valores in (datos.get("ataques_jugador") or {}).values():
+        _sumar(ataque, valores)
+    _sumar(destino["recepcion"], recepcion)
+    _sumar(destino["ataque"], ataque)
+
+    bloqueos = sum((datos.get("bloqueos_jugador") or {}).values())
+    destino["bloqueos"] += bloqueos
+    destino["sets"] += sets
+
+    for _, zona, direccion, puntos, defendidos, fuera in (datos.get("ataques_detalle") or []):
+        celda = destino["direccion"].setdefault((str(zona), str(direccion)), _cero_ataque())
+        celda["puntos"] += puntos
+        celda["defendidos"] += defendidos
+        celda["fuera"] += fuera
+        celda["totales"] += puntos + defendidos + fuera
+
+    # una fila por partido: un acumulado de varios encuentros esconde si el
+    # equipo viene mejorando o empeorando, que es media pregunta del entrenador
+    fases = datos.get("fases") or {}
+    destino["partidos"].append({
+        "etiqueta": etiqueta,
+        "hechos": sum(f.get("total", 0) for f in (fases.get("hechos") or {}).values()),
+        "recibidos": sum(f.get("total", 0) for f in (fases.get("recibidos") or {}).values()),
+        "recepciones": sum(recepcion.values()),
+        "positiva": _porcentaje(recepcion["cal3"] + recepcion["cal2"], sum(recepcion.values())),
+        "ataques": ataque["totales"],
+        "punto": _porcentaje(ataque["puntos"], ataque["totales"]),
+        "eficacia": _porcentaje(ataque["puntos"] - ataque["fuera"], ataque["totales"]),
+        "bloqueos": bloqueos,
+    })
+
+
 def agregar(carpeta=None) -> dict:
+
+
     """Junta todos los partidos. Devuelve {equipo: {dorsal: ficha cruda}}."""
     elegidos, descartados = partidos_unicos(carpeta)
     equipos: dict = {}
     partidos_por_equipo: dict = {}
     marcados_como_armador: dict = {}
+    # lo mismo que lo de arriba pero sin abrir por jugador: son las secciones
+    # que el volcado ya trae a nivel equipo (fases del rally, causas, armado
+    # por zona, recepcion por tipo de saque) mas las que se arman sumando a
+    # todos. Se acumula en la misma pasada porque releer los volcados es lo
+    # unico caro de todo esto.
+    por_equipo: dict = {}
     otros: set = set()
 
     for partido in elegidos:
@@ -290,6 +378,8 @@ def agregar(carpeta=None) -> dict:
             if partido["fecha"]:
                 etiqueta += f" ({partido['fecha']})"
             _acumular(equipos.setdefault(nombre, {}), datos, etiqueta, 0)
+            _acumular_equipo(por_equipo.setdefault(nombre, _cero_equipo()),
+                             datos, etiqueta, len(partido["parciales"]))
             for dorsal in partido["armadores"].get(nombre, ()):
                 marcados_como_armador.setdefault(nombre, set()).add(dorsal)
             partidos_por_equipo.setdefault(nombre, []).append({
@@ -298,6 +388,7 @@ def agregar(carpeta=None) -> dict:
             })
 
     return {"equipos": equipos, "partidos": partidos_por_equipo,
+            "por_equipo": por_equipo,
             "armadores": marcados_como_armador, "otros_equipos": sorted(otros),
             "descartados": descartados, "elegidos": elegidos}
 
@@ -439,7 +530,150 @@ def _promedio_equipo(agregado: dict, equipo: str) -> dict:
     }
 
 
+FASES = ("K1", "K2", "K3", "Saque", "Sin fase")
+GANADOS = ("Ataque punto", "Ataque usando el bloqueo", "Bloqueo punto", "As de saque")
+ERRORES = ("Ataque afuera", "Ataque a la malla", "Error de saque", "Armado malo",
+           "Defensa perdida", "Error en juego")
+
+
+def _orden_zonas(presentes) -> list:
+    """Las zonas en el orden de la cancha, con las raras al final."""
+    conocidas = [z for z in ZONAS_ATAQUE if z in presentes]
+    return conocidas + sorted(z for z in presentes if z not in ZONAS_ATAQUE)
+
+
+def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
+    """Las mismas metricas que la ficha de un jugador, pero del equipo entero.
+
+    No es la suma de las fichas: las preguntas que se responden aca -- en que
+    fase se ganan los puntos, hacia donde se ataca desde cada zona de armado,
+    que arma el armador segun como vino la recepcion -- no son de nadie en
+    particular, son del juego."""
+    agregado = agregado or agregar()
+    if not es_equipo_propio(equipo):
+        return None
+    crudo = agregado.get("por_equipo", {}).get(equipo)
+    if not crudo:
+        return None
+
+    rec, atk = crudo["recepcion"], crudo["ataque"]
+    recibidas = sum(rec.values())
+    fases, causas = crudo["fases"], crudo["causas"]
+    hechos = sum(f.get("total", 0) for f in (fases.get("hechos") or {}).values())
+    recibidos = sum(f.get("total", 0) for f in (fases.get("recibidos") or {}).values())
+
+    def lado(donde, fase):
+        return (fases.get(donde) or {}).get(fase) or {"total": 0, "ganados": 0, "error": 0}
+
+    armado_total = sum(crudo["armado_zona"].values())
+    zonas_armado = _orden_zonas(crudo["armado_zona"])
+
+    # armado segun como vino la recepcion: con pase perfecto el armador puede
+    # ir a cualquier lado, y con recepcion mala casi siempre termina en el
+    # mismo. La fila por calidad es lo que muestra cuanto se achica el juego.
+    zonas_calidad = _orden_zonas(
+        {str(z) for por_zona in crudo["armado_calidad"].values() for z in por_zona})
+    # parse_volcado devuelve la calidad como entero y la zona como texto; se
+    # normaliza aca y no alla para no tocar el formato que lee el Excel
+    por_calidad = {str(c): {str(z): n for z, n in v.items()}
+                   for c, v in crudo["armado_calidad"].items()}
+    distribucion = []
+    for calidad in ("3", "2", "1", "0"):
+        por_zona = por_calidad.get(calidad) or {}
+        total = sum(por_zona.values())
+        distribucion.append({
+            "calidad": calidad,
+            "total": total,
+            "valores": [por_zona.get(z, 0) for z in zonas_calidad],
+            "reparto": [_porcentaje(por_zona.get(z, 0), total) for z in zonas_calidad],
+        })
+
+    # hacia donde ataca el equipo desde cada zona de origen
+    zonas_ataque = _orden_zonas({z for z, _ in crudo["direccion"]})
+    direcciones = []
+    for zona in zonas_ataque:
+        celdas = [crudo["direccion"].get((zona, d), _cero_ataque()) for d in DIRECCIONES]
+        desde = sum(c["totales"] for c in celdas)
+        if not desde:
+            continue          # el volcado lista zonas que nadie ataco nunca
+        direcciones.append({
+            "zona": zona,
+            "ataques": desde,
+            "del_total": _porcentaje(desde, atk["totales"]),
+            "hacia": [{"direccion": d, "ataques": c["totales"],
+                       "puntos": c["puntos"],
+                       "reparto": _porcentaje(c["totales"], desde),
+                       "punto": _porcentaje(c["puntos"], c["totales"])}
+                      for d, c in zip(DIRECCIONES, celdas)],
+        })
+
+    def sin_tipo(v):
+        return sum(x for k, x in v.items() if k != "tipo")
+
+    return {
+        "equipo": equipo,
+        "partidos": len(crudo["partidos"]),
+        "sets": crudo["sets"],
+        "indicadores": {
+            "hechos": hechos,
+            "recibidos": recibidos,
+            "recepciones": recibidas,
+            "positiva": _porcentaje(rec["cal3"] + rec["cal2"], recibidas),
+            "perfecta": _porcentaje(rec["cal3"], recibidas),
+            "ataques": atk["totales"],
+            "punto": _porcentaje(atk["puntos"], atk["totales"]),
+            "eficacia": _porcentaje(atk["puntos"] - atk["fuera"], atk["totales"]),
+            "bloqueos_punto": crudo["bloqueos"],
+        },
+        "fases": [{
+            "fase": fase,
+            "hechos": lado("hechos", fase)["total"],
+            "hechos_reparto": _porcentaje(lado("hechos", fase)["total"], hechos),
+            "hechos_ganados": lado("hechos", fase)["ganados"],
+            "hechos_error": lado("hechos", fase)["error"],
+            "recibidos": lado("recibidos", fase)["total"],
+            "recibidos_reparto": _porcentaje(lado("recibidos", fase)["total"], recibidos),
+            # el saldo es lo que dice si esa fase da o quita puntos
+            "saldo": lado("hechos", fase)["total"] - lado("recibidos", fase)["total"],
+        } for fase in FASES],
+        "causas": {
+            "ganados": [{"causa": c, "hechos": (causas.get("hechos") or {}).get(c, 0),
+                         "recibidos": (causas.get("recibidos") or {}).get(c, 0)}
+                        for c in GANADOS],
+            "errores": [{"causa": c, "hechos": (causas.get("hechos") or {}).get(c, 0),
+                         "recibidos": (causas.get("recibidos") or {}).get(c, 0)}
+                        for c in ERRORES],
+        },
+        "armado_zona": [{"zona": z, "armados": crudo["armado_zona"][z],
+                         "reparto": _porcentaje(crudo["armado_zona"][z], armado_total)}
+                        for z in zonas_armado],
+        "armado_total": armado_total,
+        "distribucion": {"zonas": zonas_calidad, "filas": distribucion},
+        "direccion": {"direcciones": list(DIRECCIONES), "filas": direcciones},
+        "recepcion": {
+            "total": dict(rec, recepciones=recibidas),
+            "por_tipo": sorted(
+                ({"ruta": ruta, "tipo": v.get("tipo", ""),
+                  "recepciones": sin_tipo(v),
+                  "cal3": v.get("cal3", 0), "cal2": v.get("cal2", 0),
+                  "cal1": v.get("cal1", 0), "cal0": v.get("cal0", 0),
+                  "pase": v.get("pase", 0),
+                  "positiva": _porcentaje(v.get("cal3", 0) + v.get("cal2", 0), sin_tipo(v))}
+                 for ruta, v in crudo["recepcion_tipo_saque"].items()),
+                key=lambda f: (f["tipo"], f["ruta"])),
+        },
+        "zona_armador": [{
+            "zona": z,
+            "hechos": (crudo["zona_armador"].get(z) or {}).get("hechos", 0),
+            "recibidos": (crudo["zona_armador"].get(z) or {}).get("recibidos", 0),
+        } for z in sorted(crudo["zona_armador"], key=str)],
+        "por_partido": crudo["partidos"],
+    }
+
+
 def listado(carpeta=None) -> dict:
+
+
     """Los equipos con sus jugadores, para armar los selectores.
 
     Los equipos van ordenados por cantidad de partidos: el propio queda

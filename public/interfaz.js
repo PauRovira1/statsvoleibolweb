@@ -95,15 +95,19 @@ const urlDescarga = (archivo, tipo) =>
 // ======================================================================
 // 1) Pestanas
 // ======================================================================
-// El orden es el de las pestanas en pantalla. Cargar va ultima porque es la
-// que menos se toca: pide la contraseña y se usa una vez por partido, mientras
-// que mirar un informe o la ficha de un jugador se hace todo el tiempo. Igual
-// sigue siendo la que se abre al entrar, que es lo que hace falta en la cancha.
-const VISTAS = ["partidos", "jugadores", "cargar"];
-let vistaActual = "cargar";
+// El orden es el de las pestanas en pantalla, y va de lo general al detalle:
+// primero el equipo, despues el jugador, despues el partido suelto. Cargar va
+// ultima porque es la que menos se toca: pide la contraseña y se usa una vez
+// por partido, mientras que mirar las estadisticas se hace todo el tiempo.
+//
+// Equipo es la que se abre al entrar. Cargar era la de antes, pensando en la
+// cancha, pero ahi se llega igual con un toque y el resto del tiempo lo que
+// se quiere ver primero es como viene jugando el equipo.
+const VISTAS = ["equipo", "jugadores", "partidos", "cargar"];
+let vistaActual = "equipo";
 
 function irA(vista, tocarHash = true){
-  if(!VISTAS.includes(vista)) vista = "cargar";
+  if(!VISTAS.includes(vista)) vista = "equipo";
   vistaActual = vista;
   VISTAS.forEach(v => { $("#vista-" + v).hidden = (v !== vista); });
   $$(".pestana").forEach(b => b.classList.toggle("activa", b.dataset.vista === vista));
@@ -111,6 +115,7 @@ function irA(vista, tocarHash = true){
   if(vista === "cargar") foco();
   if(vista === "partidos") traerPlantel().then(entrarAPartidos);
   if(vista === "jugadores") traerPlantel().then(pintarJugadores);
+  if(vista === "equipo") pintarEquipo();
 }
 
 $$(".pestana").forEach(b => b.addEventListener("click", () => irA(b.dataset.vista)));
@@ -1674,6 +1679,8 @@ let equipoElegido = null;
 let dorsalElegido = null;
 let filtroJugadores = "";       // lo escrito en el buscador
 let filtroEtiqueta = "";        // "" = todas las etiquetas
+// El resumen del equipo se elige como si fuera un jugador mas: mismo selector,
+// mismo lugar. Asi no hace falta otra pestaña ni otro nivel de navegacion.
 let editandoNombres = false;    // si el panel de nombres esta abierto
 
 // Las cinco etiquetas. "Armador" va primero y no se elige a mano: sale del _S
@@ -1953,6 +1960,157 @@ function tablaPorPartido(j){
     armador ? null : "Eficacia = (puntos - errores) / ataques.");
 }
 
+// ----------------------------------------------------------------------
+// La pestaña Equipo. Comparte "equipoElegido" con Jugadores a proposito: si
+// se esta mirando a Palestino B, pasar de una pestaña a la otra sigue
+// hablando del mismo equipo.
+async function pintarEquipo(){
+  const caja = $("#equipo");
+  if(planteles === null){
+    caja.innerHTML = `<p class="nota">Leyendo los partidos guardados…</p>`;
+    const r = await api("/api/jugadores");
+    avisarDelServidor(r.almacenamiento);
+    planteles = r.ok ? r : {equipos: [], descartados: []};
+  }
+  if(!planteles.equipos.length){
+    caja.innerHTML = `<p class="nota">Todavia no hay partidos guardados.</p>`;
+    return;
+  }
+
+  let equipo = planteles.equipos.find(e => e.nombre === equipoElegido);
+  if(!equipo){ equipo = planteles.equipos[0]; equipoElegido = equipo.nombre; }
+
+  // con un solo equipo el selector es un boton que no hace nada: ocupa una
+  // fila entera en un celular y no ofrece ninguna eleccion
+  const selector = planteles.equipos.length < 2 ? "" :
+    `<div class="selector" id="selectorEquipoResumen">` + planteles.equipos.map(e =>
+      `<button data-equipo="${esc(e.nombre)}" class="${e.nombre === equipoElegido ? "activa" : ""}">
+        ${esc(e.nombre)}<span class="chip">${esc(e.partidos)}</span></button>`).join("") +
+    `</div>`;
+
+  const r = await api(`/api/equipo?equipo=${encodeURIComponent(equipoElegido)}`);
+  caja.innerHTML = selector + (r.ok ? resumenEquipoHTML(r.equipo)
+                                    : `<p class="nota">${esc(r.mensaje)}</p>`);
+
+  $$("#selectorEquipoResumen button").forEach(b => b.addEventListener("click", () => {
+    equipoElegido = b.dataset.equipo;
+    dorsalElegido = null;     // el jugador que estaba elegido era del otro
+    pintarEquipo();
+  }));
+}
+
+
+// ----------------------------------------------------------------------
+// Resumen del equipo. Las mismas metricas que una ficha, pero de preguntas
+// que no son de nadie en particular: en que fase se ganan los puntos, que
+// arma el armador segun como vino la recepcion, hacia donde se ataca desde
+// cada zona. Un jugador no las puede contestar solo.
+function resumenEquipoHTML(e){
+  const i = e.indicadores;
+  const casillas = [
+    ["Puntos hechos", i.hechos, ""],
+    ["Puntos recibidos", i.recibidos, ""],
+    ["Recepciones", i.recepciones, ""],
+    ["% Positiva", pctDe(i.positiva), "calidad 2+3"],
+    ["Ataques", i.ataques, ""],
+    ["% Punto", pctDe(i.punto), "de sus ataques"],
+    ["Eficacia", pctDe(i.eficacia), "(puntos - errores) / ataques"],
+    ["Bloqueos punto", i.bloqueos_punto, ""],
+  ];
+  return `
+    <div class="ficha" style="margin-top:12px">
+      <div class="dorsal equipoEntero">${esc(e.equipo.slice(0, 2).toUpperCase())}</div>
+      <div>
+        <div class="nombreFicha">${esc(e.equipo)}</div>
+        <div class="datos">${esc(e.partidos)} partido(s) · ${esc(e.sets)} set(s)</div>
+      </div>
+    </div>
+    <div class="indicadores">` + casillas.map(([titulo, valor, base]) =>
+      `<div class="indicador"><div class="valor">${esc(valor)}</div>
+       <div class="titulo">${esc(titulo)}</div>
+       ${base ? `<div class="base">${esc(base)}</div>` : ""}</div>`).join("") + `</div>` +
+    fasesHTML(e) + causasHTML(e) + distribucionHTML(e) + direccionHTML(e) +
+    recepcionEquipoHTML(e) + porPartidoEquipoHTML(e);
+}
+
+// En que fase del rally se ganan y se pierden los puntos. El saldo es lo que
+// dice de un vistazo que fase da puntos y cual los regala: un K1 con saldo
+// negativo significa que el equipo pierde mas de lo que gana recibiendo.
+function fasesHTML(e){
+  const filas = e.fases.filter(f => f.hechos || f.recibidos).map(f => ({
+    celdas: [f.fase, f.hechos, pctDe(f.hechos_reparto), f.hechos_ganados, f.hechos_error,
+             f.recibidos, pctDe(f.recibidos_reparto),
+             (f.saldo > 0 ? "+" : "") + f.saldo],
+  }));
+  return `<div class="sub-titulo">Puntos por fase del rally</div>` + tabla(
+    ["Fase", "Hechos", "% de los hechos", "Ganados", "Por error",
+     "Recibidos", "% de los recibidos", "Saldo"], filas,
+    "K1 = punto sobre la propia recepcion. K2 = sobre la defensa del contraataque. " +
+    "K3 = de ahi en adelante. Saldo = hechos menos recibidos en esa fase.");
+}
+
+function causasHTML(e){
+  const filas = c => c.filter(x => x.hechos || x.recibidos)
+    .map(x => ({celdas: [x.causa, x.hechos, x.recibidos]}));
+  return `<div class="sub-titulo">Como se ganan los puntos</div>` +
+    tabla(["Causa", "A favor", "En contra"], filas(e.causas.ganados)) +
+    `<div class="sub-titulo">Como se pierden</div>` +
+    tabla(["Error", "Propios", "Del rival"], filas(e.causas.errores),
+          "\"Propios\" son puntos que regalo el equipo; \"del rival\", los que le regalaron.");
+}
+
+// La pregunta del armador: cuanto se achica el juego cuando la recepcion no
+// viene bien. Con calidad 3 puede ir a cualquier lado; con calidad 0 casi
+// siempre termina en la misma zona, y el rival lo sabe.
+function distribucionHTML(e){
+  const z = e.distribucion.zonas;
+  if(!z.length) return "";
+  const filas = e.distribucion.filas.filter(f => f.total).map(f => ({
+    celdas: [`Calidad ${f.calidad}`, f.total].concat(
+      f.valores.map((v, k) => v ? `${v} · ${pctDe(f.reparto[k])}` : "—")),
+  }));
+  return `<div class="sub-titulo">Distribucion del armado segun la recepcion</div>` +
+    tabla(["Recepcion", "Armados"].concat(z.map(x => "Zona " + x)), filas,
+          "Cada fila reparte el 100% de los armados que salieron de esa calidad de pase.");
+}
+
+// Hacia donde ataca el equipo desde cada zona de origen, y con que resultado.
+function direccionHTML(e){
+  const d = e.direccion.direcciones;
+  if(!e.direccion.filas.length) return "";
+  const filas = e.direccion.filas.map(f => ({
+    celdas: [`Zona ${f.zona}`, f.ataques, pctDe(f.del_total)].concat(
+      f.hacia.map(h => h.ataques ? `${h.ataques} · ${pctDe(h.reparto)} · ${pctDe(h.punto)} pt`
+                                 : "—")),
+  }));
+  return `<div class="sub-titulo">Hacia donde se ataca, por zona de origen</div>` +
+    tabla(["Desde", "Ataques", "% del total"].concat(d.map(x => "Hacia " + x)), filas,
+          "En cada celda: ataques · que parte de los de esa zona · que parte fueron punto.");
+}
+
+function recepcionEquipoHTML(e){
+  const t = e.recepcion.total;
+  const cabeza = ["", "Recepciones", "Cal. 3", "Cal. 2", "Cal. 1", "Cal. 0",
+                  "Pase al otro lado", "% Positiva"];
+  const total = {total: true, celdas: ["Todas", t.recepciones, t.cal3, t.cal2, t.cal1,
+    t.cal0, t.pase, pct(t.cal3 + t.cal2, t.recepciones)]};
+  const filas = [total].concat(e.recepcion.por_tipo.filter(f => f.recepciones).map(f => ({
+    celdas: [`${f.tipo} (${f.ruta})`, f.recepciones, f.cal3, f.cal2, f.cal1, f.cal0,
+             f.pase, pctDe(f.positiva)],
+  })));
+  return `<div class="sub-titulo">Recepcion, y contra que saque</div>` +
+    tabla(cabeza, filas, "La ruta es de que zona salio el saque a cual cayo.");
+}
+
+function porPartidoEquipoHTML(e){
+  const filas = e.por_partido.map(p => ({celdas: [
+    p.etiqueta, `${p.hechos}-${p.recibidos}`, p.recepciones, pctDe(p.positiva),
+    p.ataques, pctDe(p.punto), pctDe(p.eficacia), p.bloqueos]}));
+  return `<div class="sub-titulo">Partido a partido</div>` + tabla(
+    ["Partido", "Puntos", "Recepciones", "% Positiva", "Ataques", "% Punto",
+     "Eficacia", "Bloqueos"], filas);
+}
+
 function indicadoresJugador(j){
   const i = j.indicadores;
   // El libero no ataca y el armador no recibe: mostrarles esas casillas en
@@ -2147,7 +2305,7 @@ Promise.all([revisarCandado(), traerNotacion()])
   .then(() => api("/api/estado")).then(r => {
     avisarDelServidor(r.almacenamiento);
     pintar(r.estado);
-    irA(location.hash.replace("#", "") || "cargar", false);
+    irA(location.hash.replace("#", "") || "equipo", false);
   });
 
 // Alojado, la carpeta del proyecto es de solo lectura y lo unico escribible es
