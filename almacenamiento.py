@@ -714,6 +714,59 @@ def guardar_plantel(equipo: str, nombres: dict) -> bool:
     return _guardar_todo_el_plantel({**datos, "plantel": plantel})
 
 
+# Las posiciones de cancha. Van en el mismo archivo que los nombres porque son
+# lo mismo: datos del jugador que el volcado no guarda. El volcado anota el
+# numero, que es lo que se grita, y quien es y de que juega se anota aparte.
+#
+# "Armador" no esta aca y no se pone a mano: sale del _S de las rotaciones, o
+# sea del propio partido. Anotarlo tambien seria tener el mismo dato en dos
+# lugares que pueden discrepar.
+POSICIONES = ("Libero", "Punta", "Opuesto", "Central")
+
+
+def _limpiar_posiciones(posiciones: dict) -> dict:
+    """Deja solo los dorsales con una posicion de la lista.
+
+    Se compara sin distinguir mayusculas ni acentos para que "libero" y
+    "Líbero" entren igual, pero se guarda siempre la forma canonica: si no,
+    filtrar por etiqueta dependeria de como se tipeo."""
+    canonica = {_sin_acentos(p): p for p in POSICIONES}
+    limpias = {}
+    for dorsal, posicion in (posiciones or {}).items():
+        elegida = canonica.get(_sin_acentos(posicion))
+        if elegida and str(dorsal).strip():
+            limpias[str(dorsal).strip()] = elegida
+    return limpias
+
+
+def _sin_acentos(texto) -> str:
+    import unicodedata
+    plano = unicodedata.normalize("NFD", str(texto or "").strip().lower())
+    return "".join(c for c in plano if unicodedata.category(c) != "Mn")
+
+
+def leer_posiciones(*, refrescar: bool = False) -> dict:
+    """De que juega cada dorsal, como {equipo: {dorsal: posicion}}."""
+    datos = _leer_todo_el_plantel(refrescar=refrescar).get("posiciones") or {}
+    return {equipo: dict(jugadores) for equipo, jugadores in datos.items()}
+
+
+def posiciones_del_equipo(equipo: str) -> dict:
+    return dict(leer_posiciones().get(equipo) or {})
+
+
+def guardar_posiciones(equipo: str, posiciones: dict) -> bool:
+    """Deja las posiciones de un equipo. Un dorsal sin posicion se saca."""
+    datos = _leer_todo_el_plantel(refrescar=True)
+    todas = {e: dict(p) for e, p in (datos.get("posiciones") or {}).items()}
+    limpias = _limpiar_posiciones(posiciones)
+    if limpias:
+        todas[equipo] = limpias
+    else:
+        todas.pop(equipo, None)
+    return _guardar_todo_el_plantel({**datos, "posiciones": todas})
+
+
 def guardar_nombres_de_partido(volcado: str, equipo: str, nombres: dict) -> bool:
     """Deja los nombres propios de un partido. Sin nombres vuelve a los del
     equipo, que es lo que corresponde cuando no cambio nadie."""

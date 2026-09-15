@@ -350,6 +350,9 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
         "equipo": equipo,
         "dorsal": dorsal,
         "armador": es_armador,
+        # De que juega, si se anoto. "Armador" no vive aca: sale del _S de las
+        # rotaciones, o sea del partido, y por eso va en su propio campo.
+        "posicion": alm.posiciones_del_equipo(equipo).get(str(dorsal), ""),
         "partidos": len(crudo["partidos"]),
         "sets": sum(p["sets"] for p in partidos_equipo),
         "indicadores": {
@@ -447,11 +450,13 @@ def listado(carpeta=None) -> dict:
     for nombre, jugadores in agregado["equipos"].items():
         filas = []
         marcados = agregado.get("armadores", {}).get(nombre, set())
+        posiciones = alm.posiciones_del_equipo(nombre)
         for dorsal, j in jugadores.items():
             armados = sum(j["armado"].values())
             filas.append({
                 "dorsal": dorsal,
                 "armador": dorsal in marcados,
+                "posicion": posiciones.get(str(dorsal), ""),
                 "partidos": len(j["partidos"]),
                 "recepciones": sum(j["recepcion"].values()),
                 "ataques": j["ataque"]["totales"],

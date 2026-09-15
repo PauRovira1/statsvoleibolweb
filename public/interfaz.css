@@ -445,3 +445,37 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .nombreJugador{font-size:11.5px;color:var(--suave);font-weight:400}
 #selectorDorsal button.activa .nombreJugador{color:#cfe4ff}
 .nombreFicha{font-size:17px;font-weight:700;margin-bottom:2px}
+
+/* ---------- etiquetas de posicion ----------
+   Cinco roles con cinco colores. El color hace el trabajo de un vistazo: en
+   una lista de catorce dorsales, buscar "los centrales" por el texto obliga a
+   leerlos todos.
+
+   "Armador" comparte el amarillo que ya usa la cancha para marcarlo, para que
+   sea la misma idea en las dos pantallas y no dos convenciones distintas. */
+.etiquetaPos{display:inline-block;font-size:10px;font-weight:700;
+             text-transform:uppercase;letter-spacing:.05em;
+             padding:2px 6px;border-radius:999px;border:1px solid currentColor;
+             background:#0003;color:var(--suave);white-space:nowrap}
+.etiquetaPos.armador{color:var(--aviso)}
+.etiquetaPos.libero {color:#c792ea}
+.etiquetaPos.punta  {color:var(--acento)}
+.etiquetaPos.opuesto{color:#ff9f6b}
+.etiquetaPos.central{color:var(--ok)}
+
+/* en el boton del dorsal van debajo del nombre, sin agrandar la fila */
+#selectorDorsal button{flex-wrap:wrap}
+#selectorDorsal .etiquetaPos{font-size:9px;padding:1px 5px;margin-top:1px}
+.rol .etiquetaPos{margin-right:4px;vertical-align:middle}
+
+/* ---------- filtro por etiqueta ---------- */
+.filtroEtiquetas{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.filtroEtiquetas button{background:var(--panel);border:1px solid var(--borde);
+        border-radius:999px;padding:5px 12px;cursor:pointer;
+        font:700 11px/1.2 system-ui,sans-serif;text-transform:uppercase;
+        letter-spacing:.05em;color:var(--suave)}
+.filtroEtiquetas button:hover{color:var(--texto);border-color:var(--suave)}
+/* el elegido se pinta con SU color, asi se ve cual esta puesto sin leerlo */
+.filtroEtiquetas button.activa{color:var(--texto);background:var(--panel2);
+        border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
+.filtroEtiquetas button.etiquetaPos.activa{background:#0004}

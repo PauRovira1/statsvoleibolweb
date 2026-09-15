@@ -187,7 +187,7 @@ def anotar_sesion() -> None:
     version_de_la_sesion = alm.guardar_sesion(sesion.lineas) or alm.version_de_sesion()
 
 
-def guardar_nombres(equipo, nombres, volcado=None) -> dict:
+def guardar_nombres(equipo, nombres, volcado=None, posiciones=None) -> dict:
     """Anota como se llama cada dorsal de un equipo.
 
     El volcado guarda numeros porque es lo que se grita en la cancha, pero el
@@ -205,6 +205,17 @@ def guardar_nombres(equipo, nombres, volcado=None) -> dict:
                for d, n in (nombres or {}).items() if str(d or "").strip()}
     puestos = sum(1 for n in limpios.values() if n)
 
+    # Las posiciones son del equipo, no de un partido: de que juega alguien no
+    # cambia de un encuentro al otro. Van en el mismo pedido que los nombres
+    # porque se editan en la misma pantalla y de a un jugador por fila.
+    marcadas = 0
+    if posiciones is not None:
+        alm.guardar_posiciones(equipo, posiciones)
+        marcadas = len(alm.posiciones_del_equipo(equipo))
+    if nombres is None:
+        return {"ok": True, "posiciones": alm.posiciones_del_equipo(equipo),
+                "mensaje": f"{equipo}: {marcadas} posicion(es) anotada(s)."}
+
     if volcado:
         # solo el nombre: es una clave, nunca una ruta
         partido = Path(str(volcado)).name
@@ -221,7 +232,14 @@ def guardar_nombres(equipo, nombres, volcado=None) -> dict:
     aviso = "" if guardado else "  [OJO: no se pudo guardar afuera, se pierde al reiniciar]"
     detalle = (f"{puestos} nombre(s) anotado(s)" if puestos
                else "vuelve a usar los nombres del equipo")
-    return {"ok": True, "plantel": propios, "mensaje": f"{donde}: {detalle}.{aviso}"}
+    if posiciones is not None:
+        # sin ningun nombre puesto, "vuelve a usar los nombres del equipo y 7
+        # posiciones" se lee como si hubiera borrado algo
+        detalle = (f"{detalle} y {marcadas} posicion(es)" if puestos
+                   else f"{marcadas} posicion(es) anotada(s)")
+    return {"ok": True, "plantel": propios,
+            "posiciones": alm.posiciones_del_equipo(equipo),
+            "mensaje": f"{donde}: {detalle}.{aviso}"}
 
 
 def corregir_partido(volcado, campos) -> dict:
@@ -507,7 +525,9 @@ class Manejador(BaseHTTPRequestHandler):
             # solo lectura y sin clave: los nombres se muestran en las tablas
             # de cualquier partido, no solo en la pestana Jugadores
             "/api/plantel": lambda: {"ok": True, "plantel": alm.leer_plantel(),
-                                     "partidos": alm.leer_nombres_de_partido()},
+                                     "partidos": alm.leer_nombres_de_partido(),
+                                     "posiciones": alm.leer_posiciones(),
+                                     "opciones_posicion": list(alm.POSICIONES)},
             "/api/jugador": lambda: responder_jugador(consulta.get("equipo", ""),
                                                       consulta.get("dorsal", "")),
         }
@@ -576,7 +596,8 @@ class Manejador(BaseHTTPRequestHandler):
             # no la sesion, asi que no toma el candado
             respuesta, codigo = self._leer_de_disco(
                 lambda: guardar_nombres(datos.get("equipo"), datos.get("nombres"),
-                                        datos.get("volcado")))
+                                        datos.get("volcado"),
+                                        datos.get("posiciones")))
             return self._responder(respuesta, codigo)
 
         if ruta == "/api/corregir":

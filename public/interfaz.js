@@ -1639,8 +1639,10 @@ let PLANTEL = null;
 async function traerPlantel(){
   if(PLANTEL) return PLANTEL;
   const r = await api("/api/plantel");
-  PLANTEL = (r && r.ok) ? {plantel: r.plantel || {}, partidos: r.partidos || {}}
-                        : {plantel: {}, partidos: {}};
+  PLANTEL = (r && r.ok)
+    ? {plantel: r.plantel || {}, partidos: r.partidos || {},
+       posiciones: r.posiciones || {}}
+    : {plantel: {}, partidos: {}, posiciones: {}};
   return PLANTEL;
 }
 
@@ -1671,7 +1673,27 @@ let planteles = null;
 let equipoElegido = null;
 let dorsalElegido = null;
 let filtroJugadores = "";       // lo escrito en el buscador
+let filtroEtiqueta = "";        // "" = todas las etiquetas
 let editandoNombres = false;    // si el panel de nombres esta abierto
+
+// Las cinco etiquetas. "Armador" va primero y no se elige a mano: sale del _S
+// de las rotaciones, o sea del propio partido. Las otras cuatro se anotan en
+// el panel de nombres, porque de que juega alguien no lo dice el volcado.
+const ETIQUETAS = ["Armador", "Libero", "Punta", "Opuesto", "Central"];
+
+// Un jugador puede tener dos: el armador titular tambien es alguien que juega
+// de algo. Por eso es una lista y no un campo.
+function etiquetasDe(j){
+  const lista = [];
+  if(j.armador) lista.push("Armador");
+  if(j.posicion && j.posicion !== "Armador") lista.push(j.posicion);
+  return lista;
+}
+
+const esLibero = j => j.posicion === "Libero";
+
+const etiquetaHTML = e =>
+  `<span class="etiquetaPos ${e.toLowerCase()}">${esc(e)}</span>`;
 
 // Para buscar "Sofia" y que aparezca "Sofía": sin sacar los acentos, el
 // buscador obliga a escribirlos igual que quien cargo el nombre.
@@ -1683,13 +1705,22 @@ const sinAcentos = texto => String(texto || "").toLowerCase()
 // de este año puede no ser el del anterior -- asi que los nombres se anotan
 // aparte. No tocan el volcado ni el Excel.
 function editorDeNombres(equipo, jugadores){
+  // El desplegable no ofrece "Armador": ese no se elige, sale del _S de las
+  // rotaciones. Ofrecerlo dejaria poner a mano algo que el partido ya sabe, y
+  // los dos valores podrian discrepar.
+  const opciones = j => [""].concat(ETIQUETAS.filter(e => e !== "Armador")).map(e =>
+    `<option value="${esc(e)}" ${e === (j.posicion || "") ? "selected" : ""}>${
+      e || "sin posicion"}</option>`).join("");
   const campos = jugadores.map(j =>
     `<label class="campoCorreccion"><span>${esc(j.dorsal)}${j.armador ? " ·S" : ""}</span>
        <input data-dorsal="${esc(j.dorsal)}" value="${esc(j.nombre || "")}"
-              placeholder="sin nombre" autocomplete="off"></label>`).join("");
+              placeholder="sin nombre" autocomplete="off">
+       <select class="posicionJugador" data-posicion="${esc(j.dorsal)}">${opciones(j)}</select>
+     </label>`).join("");
   return `<div class="correccion" id="panelNombres">
-    <p class="nota" style="margin-top:0">Nombres de ${esc(equipo.nombre)}. Se usan solo
-    para mirar: el volcado y el Excel siguen guardando el numero.</p>
+    <p class="nota" style="margin-top:0">Nombres y posiciones de ${esc(equipo.nombre)}. Se usan
+    solo para mirar: el volcado y el Excel siguen guardando el numero. "Armador" no se
+    elige aca -- lo marca el <code>_S</code> de la rotacion.</p>
     <div class="camposCorreccion">${campos}</div>
     <div class="fila">
       <button class="primario" id="btnGuardarNombres">Guardar</button>
@@ -1739,20 +1770,31 @@ async function pintarJugadores(){
   const selectorDorsales = `<div class="selector" id="selectorDorsal">` +
     jugadores.map(j =>
       `<button data-dorsal="${esc(j.dorsal)}" data-nombre="${esc(j.nombre || "")}"
+        data-etiquetas="${esc(etiquetasDe(j).join(" "))}"
         class="${j.dorsal === dorsalElegido ? "activa" : ""}"
-        title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${j.armador ? " ·S" : ""}${
-          j.nombre ? `<span class="nombreJugador">${esc(j.nombre)}</span>` : ""}</button>`).join("") +
+        title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${
+          j.nombre ? `<span class="nombreJugador">${esc(j.nombre)}</span>` : ""}${
+          etiquetasDe(j).map(etiquetaHTML).join("")}</button>`).join("") +
     `<span class="nota" id="sinCoincidencias" hidden>Ningun jugador con ese nombre o numero.</span>` +
     `</div>`;
 
   // El buscador filtra los botones en el DOM, sin volver a pintar: si
   // repintara, cada tecla pediria la ficha de vuelta y el campo perderia el
   // foco a la segunda letra.
+  // Solo se ofrecen las etiquetas que alguien tiene: un filtro que siempre
+  // deja la lista vacia no sirve de nada y ocupa lugar en un celular.
+  const usadas = ETIQUETAS.filter(e => jugadores.some(j => etiquetasDe(j).includes(e)));
+  const filtroPorEtiqueta = usadas.length ? `<div class="filtroEtiquetas" id="filtroEtiquetas">
+    <button data-etiqueta="" class="${filtroEtiqueta ? "" : "activa"}">Todos</button>` +
+    usadas.map(e => `<button data-etiqueta="${esc(e)}"
+      class="etiquetaPos ${e.toLowerCase()} ${filtroEtiqueta === e ? "activa" : ""}"
+      >${esc(e)}</button>`).join("") + `</div>` : "";
+
   const buscador = `<div class="buscadorJugadores">
     <input id="buscarJugador" placeholder="Buscar por nombre o numero"
            value="${esc(filtroJugadores)}" autocomplete="off" spellcheck="false">
     ${token ? `<button id="btnNombres">${editandoNombres ? "Cerrar" : "Nombres"}</button>` : ""}
-  </div>`;
+  </div>` + filtroPorEtiqueta;
 
   const cabecera = selectorEquipos + buscador +
     (editandoNombres ? editorDeNombres(equipo, jugadores) : "") + selectorDorsales;
@@ -1776,14 +1818,15 @@ async function pintarJugadores(){
       <div class="dorsal">${esc(j.dorsal)}</div>
       <div>
         ${j.nombre ? `<div class="nombreFicha">${esc(j.nombre)}</div>` : ""}
-        <div class="rol">${j.armador ? "Armador" : "No armador"} · ${esc(j.equipo)}</div>
+        <div class="rol">${etiquetasDe(j).map(etiquetaHTML).join("") ||
+          `<span class="etiquetaPos">sin posicion</span>`} · ${esc(j.equipo)}</div>
         <div class="datos">${esc(j.partidos)} partido(s) cargado(s)</div>
       </div>
     </div>
     ${indicadoresJugador(j)}
     ${tablaPorPartido(j)}
-    ${j.indicadores.recepciones ? tablasRecepcion(j) : ""}
-    ${j.indicadores.ataques ? tablasAtaque(j) : ""}
+    ${!j.armador && j.indicadores.recepciones ? tablasRecepcion(j) : ""}
+    ${!esLibero(j) && j.indicadores.ataques ? tablasAtaque(j) : ""}
     ${j.armador ? tablasArmado(j) : ""}
     ${j.evolucion.length > 1 ? `<div class="sub-titulo">Partido a partido</div>` +
                                graficoEvolucion(j) : ""}
@@ -1815,6 +1858,15 @@ function engancharSelectores(){
     });
   }
 
+  // El filtro por etiqueta esconde botones, igual que el buscador: repintar
+  // pediria la ficha de nuevo y perderia el foco del campo de busqueda.
+  $$("#filtroEtiquetas button").forEach(b => b.addEventListener("click", () => {
+    filtroEtiqueta = b.dataset.etiqueta === filtroEtiqueta ? "" : b.dataset.etiqueta;
+    $$("#filtroEtiquetas button").forEach(o =>
+      o.classList.toggle("activa", (o.dataset.etiqueta || "") === filtroEtiqueta));
+    aplicarFiltroJugadores();
+  }));
+
   const abrir = $("#btnNombres");
   if(abrir) abrir.addEventListener("click", () => {
     editandoNombres = !editandoNombres;
@@ -1827,10 +1879,11 @@ function engancharSelectores(){
   });
   const guardar = $("#btnGuardarNombres");
   if(guardar) guardar.addEventListener("click", async () => {
-    const nombres = {};
+    const nombres = {}, posiciones = {};
     $$("#panelNombres [data-dorsal]").forEach(c => { nombres[c.dataset.dorsal] = c.value.trim(); });
+    $$("#panelNombres [data-posicion]").forEach(c => { posiciones[c.dataset.posicion] = c.value; });
     guardar.disabled = true;
-    const r = await api("/api/plantel", {equipo: equipoElegido, nombres});
+    const r = await api("/api/plantel", {equipo: equipoElegido, nombres, posiciones});
     guardar.disabled = false;
     if(!r.ok) return avisoJugadores(r.mensaje, false);
     editandoNombres = false;
@@ -1848,14 +1901,23 @@ function aplicarFiltroJugadores(){
   const buscado = sinAcentos(filtroJugadores).trim();
   let visibles = 0;
   $$("#selectorDorsal button").forEach(b => {
-    const entra = !buscado ||
+    const porNombre = !buscado ||
       sinAcentos(b.dataset.dorsal).includes(buscado) ||
       sinAcentos(b.dataset.nombre).includes(buscado);
+    // los dos filtros se suman: buscar "Sofia" entre los punteros
+    const porEtiqueta = !filtroEtiqueta ||
+      (b.dataset.etiquetas || "").split(" ").includes(filtroEtiqueta);
+    const entra = porNombre && porEtiqueta;
     b.hidden = !entra;
     if(entra) visibles++;
   });
   const aviso = $("#sinCoincidencias");
-  if(aviso) aviso.hidden = visibles > 0;
+  if(aviso){
+    aviso.textContent = filtroEtiqueta && !buscado
+      ? `Ningun jugador marcado como ${filtroEtiqueta}.`
+      : "Ningun jugador con ese nombre o numero.";
+    aviso.hidden = visibles > 0;
+  }
 }
 
 function avisoJugadores(texto, ok){
@@ -1871,6 +1933,14 @@ function avisoJugadores(texto, ok){
 // acumulado de varios partidos se pierde.
 function tablaPorPartido(j){
   const armador = j.armador;
+  // el libero recibe y bloquea pero no ataca: sus columnas de ataque serian
+  // ceros en todas las filas
+  if(!armador && esLibero(j)){
+    return `<div class="sub-titulo">Resumen por partido</div>` + tabla(
+      ["Partido", "Recepciones", "% Positiva", "Bloqueos"],
+      j.por_partido.map(p => ({celdas: [p.etiqueta, p.recepciones,
+                                        pctDe(p.positiva), p.bloqueos]})));
+  }
   const cabeza = armador
     ? ["Partido", "Armados", "Del equipo", "% que armo el", "Ataques", "Bloqueos"]
     : ["Partido", "Recepciones", "% Positiva", "Ataques", "% Punto", "Eficacia", "Bloqueos"];
@@ -1885,14 +1955,18 @@ function tablaPorPartido(j){
 
 function indicadoresJugador(j){
   const i = j.indicadores;
+  // El libero no ataca y el armador no recibe: mostrarles esas casillas en
+  // cero no es informacion, es ruido que ademas hace dudar del dato. Si
+  // igual hay numeros ahi son de una jugada de emergencia, y se ven en el
+  // resumen por partido.
   const casillas = [
-    ["Recepciones", i.recepciones, ""],
-    ["% Positiva", pctDe(i.positiva), "calidad 2+3"],
-    ["% Perfecta", pctDe(i.perfecta), "calidad 3"],
-    ["Ataques", i.ataques, ""],
-    ["% Punto", pctDe(i.punto), "de sus ataques"],
-    ["Bloqueos punto", i.bloqueos_punto, ""]
-  ];
+    ["Recepciones", i.recepciones, "", !j.armador],
+    ["% Positiva", pctDe(i.positiva), "calidad 2+3", !j.armador],
+    ["% Perfecta", pctDe(i.perfecta), "calidad 3", !j.armador],
+    ["Ataques", i.ataques, "", !esLibero(j)],
+    ["% Punto", pctDe(i.punto), "de sus ataques", !esLibero(j)],
+    ["Bloqueos punto", i.bloqueos_punto, "", true]
+  ].filter(c => c[3]);
   return `<div class="indicadores">` + casillas.map(([titulo, valor, base]) =>
     `<div class="indicador"><div class="valor">${esc(valor)}</div>
      <div class="titulo">${esc(titulo)}</div>
