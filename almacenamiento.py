@@ -142,6 +142,8 @@ def carpeta_lista(carpeta: Path) -> Path:
 # Son tres llamadas (listar, subir, bajar) y con urllib alcanza: asi el
 # proyecto sigue sin dependencias fuera de openpyxl.
 
+import almacen_s3 as s3
+
 API_BLOB = "https://blob.vercel-storage.com"
 VERSION_API_BLOB = "7"          # va en x-api-version; la fija el servicio
 
@@ -177,7 +179,29 @@ def token_blob() -> str:
 
 
 def hay_blob() -> bool:
-    return bool(token_blob())
+    """Si hay un almacen remoto configurado, sea S3 o el Blob de Vercel.
+
+    Todo el archivo pregunta por esto para decidir si publica lo que escribe.
+    Que diga "blob" es historico: lo que importa es si hay algo afuera del
+    disco que siga estando manana."""
+    return bool(token_blob()) or s3.hay_s3()
+
+
+def en_s3() -> bool:
+    """Contra cual de los dos se habla. S3 gana si esta configurado."""
+    return s3.hay_s3()
+
+
+def _traducir(llamada):
+    """Corre una llamada a S3 contando sus errores como los del blob.
+
+    El resto del archivo caza ErrorDeBlob y mira su codigo (un 404 es normal,
+    el resto no). No tiene por que enterarse de cual de los dos almacenes
+    contesto, asi que el error se traduce aca y una sola vez."""
+    try:
+        return llamada()
+    except s3.ErrorDeS3 as error:
+        raise ErrorDeBlob(str(error), error.codigo) from None
 
 
 _candado_blob = threading.Lock()
@@ -245,6 +269,8 @@ FALLAS_DE_RED = (ErrorDeBlob, urllib.error.URLError, OSError,
 
 def _listar_blobs_crudo(prefijo: str) -> list[dict]:
     """Le pregunta al blob que hay bajo ese prefijo. Levanta si no se puede."""
+    if en_s3():
+        return _traducir(lambda: s3.listar(prefijo))
     blobs, cursor = [], None
     while True:
         consulta = {"prefix": prefijo, "limit": "1000"}
@@ -306,13 +332,28 @@ def _url_sin_cache(blob: dict) -> str:
     return f"{url}{separador}v={urllib.parse.quote(marca)}"
 
 
+def _bajar_json(blob: dict, *, timeout: int = 10) -> dict:
+    """El contenido de un archivo del almacen, ya parseado.
+
+    Son cuatro listas chicas -- borrados, correcciones, plantel y la sesion --
+    que se leen enteras en memoria y no se escriben en disco, asi que no pasan
+    por bajar_blob(), que guarda un archivo. Igual tienen que elegir almacen
+    en un solo lugar: cuando no lo hacian, la sesion se leia siempre del Blob
+    de Vercel aunque estuviera configurado S3."""
+    crudo = (_traducir(lambda: s3.bajar(blob.get("pathname") or "")) if en_s3()
+             else _pedir(_url_sin_cache(blob), timeout=timeout))
+    return json.loads(crudo.decode("utf-8"))
+
+
 def bajar_blob(blob: dict, destino: Path) -> bool:
     """Trae un archivo del blob a la carpeta de escritura.
 
     Va con el token igual que el resto: en un store privado la URL sola
     devuelve 403, y en uno publico la cabecera de mas no molesta."""
+    clave = blob.get("pathname") or ""
     try:
-        contenido = _pedir(_url_sin_cache(blob), timeout=20)
+        contenido = (_traducir(lambda: s3.bajar(clave)) if en_s3()
+                     else _pedir(_url_sin_cache(blob), timeout=20))
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo bajar {blob.get('pathname')}: {error}")
         return False
@@ -344,6 +385,8 @@ def cabeza_blob(pathname: str) -> dict | None:
 
     Devuelve None si el archivo no esta. Si el servicio contesta cualquier
     otra cosa levanta, y el que llama se cae al listado de siempre."""
+    if en_s3():
+        return _traducir(lambda: s3.cabeza(pathname))
     crudo = _pedir(f"{API_BLOB}?{urllib.parse.urlencode({'url': pathname})}")
     datos = json.loads(crudo.decode("utf-8"))
     return datos or None
@@ -352,6 +395,8 @@ def cabeza_blob(pathname: str) -> dict | None:
 def subir_blob_detalle(pathname: str, contenido: bytes, tipo: str) -> dict:
     """Sube (o pisa) un archivo del blob. Devuelve lo que contesto el servicio
     (url, pathname y etag), que es de donde sale la version sin preguntarla."""
+    if en_s3():
+        return _traducir(lambda: s3.subir(pathname, contenido, tipo))
     crudo = _pedir(
         f"{API_BLOB}/{urllib.parse.quote(pathname)}",
         metodo="PUT",
@@ -377,6 +422,10 @@ def subir_blob(pathname: str, contenido: bytes, tipo: str) -> str:
 
 def borrar_blob(url: str) -> None:
     """Saca un archivo del blob. Levanta si no se pudo."""
+    if en_s3():
+        # en S3 "url" es la clave: los archivos no se sirven por link suelto
+        _traducir(lambda: s3.borrar(url))
+        return
     _pedir(f"{API_BLOB}/delete", metodo="POST",
            cuerpo=json.dumps({"urls": [url]}).encode("utf-8"),
            cabeceras={"content-type": "application/json"}, timeout=20)
@@ -425,7 +474,7 @@ def _cargar_borrados(*, refrescar=False) -> set[str]:
         blobs = [b for b in _listar_blobs_crudo("borrados/")
                  if b.get("pathname") == RUTA_BORRADOS]
         if blobs:
-            datos = json.loads(_pedir(_url_sin_cache(blobs[0])).decode("utf-8"))
+            datos = _bajar_json(blobs[0])
             lista = {str(x) for x in (datos.get("borrados") or [])}
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer la lista de borrados: {error}")
@@ -485,8 +534,7 @@ def leer_correcciones(*, refrescar: bool = False) -> dict:
 
     try:
         blob = _blob_puntual(RUTA_CORRECCIONES)
-        datos = (json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
-                 if blob else {})
+        datos = _bajar_json(blob) if blob else {}
         lista = dict(datos.get("correcciones") or {})
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer las correcciones: {error}")
@@ -569,8 +617,7 @@ def _leer_todo_el_plantel(*, refrescar: bool = False) -> dict:
 
     try:
         blob = _blob_puntual(RUTA_PLANTEL)
-        datos = (json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
-                 if blob else {})
+        datos = _bajar_json(blob) if blob else {}
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer el plantel: {error}")
         if _plantel is not None:
@@ -976,7 +1023,7 @@ def leer_sesion() -> tuple[list[str], str] | None:
     if blob is None:
         return None
     try:
-        datos = json.loads(_pedir(_url_sin_cache(blob), timeout=10).decode("utf-8"))
+        datos = _bajar_json(blob)
     except FALLAS_DE_RED as error:
         _anotar_error(f"no se pudo leer la sesion guardada: {error}")
         return None

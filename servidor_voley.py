@@ -384,6 +384,19 @@ def abrir_en_el_escritorio(nombre: str, tipo: str | None = None) -> dict:
     return {"ok": True, "mensaje": f"Se abrio {ruta.name} en esta PC."}
 
 
+def donde_quedo(ruta) -> str:
+    """Como nombrar un archivo recien guardado, para el mensaje de pantalla.
+
+    Alojado la ruta real es /tmp/voley/..., que no le dice nada a nadie y
+    encima asusta: parece que el partido quedo en un lugar que se borra solo.
+    Ahi lo unico que importa es el nombre, porque el archivo ademas se publico
+    en el almacen -- y si NO se pudo publicar, eso ya lo dice aviso_de_blob().
+
+    En casa la ruta si sirve, que es para ir a buscar el archivo."""
+    ruta = Path(ruta)
+    return ruta.name if alm.hay_blob() else str(ruta)
+
+
 def borrar_partido(volcado, informe) -> dict:
     """Borra el volcado y/o el informe de un partido.
 
@@ -610,7 +623,8 @@ class Manejador(BaseHTTPRequestHandler):
         if ruta == "/api/guardar":
             nombre = sesion.guardar()
             return {"ok": True,
-                    "mensaje": f"Guardado: {nombre}" + aviso_de_blob(alm.DATOS, Path(nombre).name),
+                    "mensaje": f"Guardado: {donde_quedo(nombre)}"
+                               + aviso_de_blob(alm.DATOS, Path(nombre).name),
                     "archivo": Path(nombre).name, "tipo": "txt",
                     "estado": sesion.instantanea()}
         if ruta == "/api/excel":
@@ -641,7 +655,8 @@ class Manejador(BaseHTTPRequestHandler):
             aviso = (aviso_de_blob(alm.INFORMES, Path(excel).name)
                      or aviso_de_blob(alm.DATOS, Path(nombre_txt).name))
             return {"ok": True,
-                    "mensaje": f"Generado: {excel} (volcado: {nombre_txt}){aviso}",
+                    "mensaje": (f"Generado: {donde_quedo(excel)} "
+                                f"(volcado: {donde_quedo(nombre_txt)}){aviso}"),
                     "archivo": Path(excel).name, "tipo": "xlsx",
                     "volcado": Path(nombre_txt).name, "estado": sesion.instantanea()}
         return None
