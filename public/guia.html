@@ -386,10 +386,13 @@ pedir otra jugada.</p>
         <td>—</td></tr>
     <tr><td>Desde qué zona</td><td>Zona 1, 6 o 5 de su propia cancha</td><td>—</td></tr>
     <tr><td>Hacia qué zona</td><td>Cualquier zona de la cancha rival (1 a 9)</td><td>—</td></tr>
-    <tr class="cierra"><td rowspan="3">Cómo terminó</td>
+    <tr class="cierra"><td rowspan="4">Cómo terminó</td>
         <td><strong>As</strong></td><td><strong>Punto</strong> para el que saca</td></tr>
     <tr class="cierra"><td><strong>Error</strong></td><td><strong>Punto</strong> para el que recibe</td></tr>
     <tr><td><strong>Sigue</strong></td><td>La pelota pasa al equipo que recibe</td></tr>
+    <tr><td><strong>Potencia</strong> (antes de As / Error / Sigue)</td>
+        <td>Marca el saque como de potencia y te vuelve a pedir cómo terminó.
+            En el Excel los saques se separan en normales y de potencia</td></tr>
   </tbody>
 </table>
 
@@ -427,11 +430,17 @@ si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
     <tr><td rowspan="4">Hacia qué zona arma</td>
         <td>Zona 1 a 6</td><td>Sigue: hay que cargar el ataque</td></tr>
     <tr><td><strong>Se pasó al otro lado</strong></td><td>Sigue, del otro lado</td></tr>
-    <tr class="cierra"><td><strong>Armada mala</strong></td>
+    <tr class="cierra"><td><strong>AX · error de armado</strong> (armada mala)</td>
         <td><strong>Punto</strong> para el equipo contrario</td></tr>
     <tr><td><strong>No cuenta como armado</strong> (un segundo toque que no fue
             una asistencia de verdad)</td>
         <td>Sigue igual, pero esa pelota no se le cuenta al armador</td></tr>
+    <tr><td>Calidad del armado (opcional)</td>
+        <td>En <em>«Quién ataca»</em>, antes del atacante: <strong>A+</strong>
+            (atacante en situación favorable), <strong>A0</strong> (normal) o
+            <strong>A-</strong> (difícil, previsible o fuera de sistema)</td>
+        <td>Se elige una sola. Sirve para evaluar al armador y al atacante
+            según la pelota que hubo</td></tr>
     <tr><td>Atajo</td><td><strong>La manda de segunda</strong>: el que recibió la
             manda él mismo al otro lado</td>
         <td>Reemplaza armado y ataque juntos. Ver el punto 8</td></tr>
@@ -443,18 +452,25 @@ si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
   <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
   <tbody>
     <tr><td>Quién ataca</td><td>El jugador que remata</td><td>—</td></tr>
-    <tr><td rowspan="3">Qué hace con la pelota</td>
+    <tr><td rowspan="3">Qué hace con la pelota<br>
+            <span class="nota">el toque ahora se carga como ataque
+            colocado / finta</span></td>
         <td><strong>Ataque</strong> → zona 1, 6 o 5 del rival</td>
         <td>Sigue: falta el resultado</td></tr>
     <tr><td><strong>Libre</strong> → cualquier zona (1 a 9)</td>
-        <td>Sigue, del otro lado. No cuenta como ataque</td></tr>
-    <tr><td><strong>Toque</strong> → cualquier zona (1 a 9)</td>
-        <td>Sigue, del otro lado. No cuenta como ataque</td></tr>
-    <tr><td><strong>Libre</strong> o <strong>Toque</strong> →
+        <td>Falta cómo terminó: <strong>Sigue</strong> (del otro lado),
+            <strong>Punto</strong>, o <strong>Block Out</strong> + bloqueador
+            (punto del que hizo el libre). No cuenta como ataque</td></tr>
+    <tr><td><strong>Libre</strong> →
             <strong>salió mal</strong></td>
         <td><strong>Punto del rival</strong>. No cuenta como ataque fallado:
             el que hizo el libre no estaba rematando</td></tr>
-    <tr class="cierra"><td rowspan="7">Cómo terminó el ataque</td>
+    <tr><td>Cómo atacó</td>
+        <td><strong>Ataque potente</strong> · <strong>Colocado / finta</strong> ·
+            <strong>No se vio</strong></td>
+        <td>Recién después pregunta qué pasó. El block-out no va acá: es el
+            resultado <strong>Block Out</strong></td></tr>
+    <tr class="cierra"><td rowspan="8">Qué pasó con el ataque</td>
         <td><strong>Punto</strong></td><td><strong>Punto</strong> del que atacó</td></tr>
     <tr><td><strong>Defendido</strong></td>
         <td>Sigue, del lado del que defendió</td></tr>
@@ -464,9 +480,13 @@ si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
         <td><strong>Punto</strong> del que defendía</td></tr>
     <tr class="cierra"><td><strong>Bloqueo punto</strong> + tocás al bloqueador</td>
         <td><strong>Punto</strong> del que bloqueó</td></tr>
-    <tr class="cierra"><td><strong>Tocó el bloqueo</strong> + tocás al bloqueador
+    <tr class="cierra"><td><strong>Block Out</strong> + tocás al bloqueador
             (la usó y se fue afuera del bloqueo)</td>
         <td><strong>Punto</strong> del que atacó</td></tr>
+    <tr><td><strong>Toque de Bloqueo</strong> + tocás al bloqueador
+            (lo tocó en el bloqueo y la pelota quedó de su lado)</td>
+        <td>Sigue, del lado del que bloqueó. La pelota que se levanta después
+            <strong>no cuenta como defensa</strong></td></tr>
     <tr><td><strong>Bloqueo rejugable</strong> + tocás al bloqueador</td>
         <td>Sigue, <strong>del mismo lado que atacó</strong></td></tr>
   </tbody>
@@ -498,15 +518,16 @@ corresponden. No hay que buscarlos en ningún menú.</p>
         <td>En <em>«Quién la toca»</em> de una pelota de continuación:
             <strong>ataca de primera</strong></td>
         <td>Reemplaza defensa, armado y ataque. Después te pide el jugador, la
-            zona (1, 6 o 5) y si fue punto o lo defendieron.</td></tr>
-    <tr><td><strong>Libre o toque</strong><br>
+            zona (1, 6 o 5), cómo atacó (potente o colocado) y si fue punto o lo
+            defendieron.</td></tr>
+    <tr><td><strong>Libre</strong><br>
             <span class="nota">no la atacó: la devolvió</span></td>
-        <td>En <em>«Qué hace con la pelota»</em>: <strong>Libre</strong> o
-            <strong>Toque</strong></td>
-        <td>Elegís la zona y listo: el punto sigue del otro lado. Si el libre o
-            el toque se erró (se fue, quedó en la red, no pasó), en vez de una
-            zona tocás <strong>salió mal</strong> y el punto es del rival. En
-            ningún caso se le cuenta como ataque a nadie.</td></tr>
+        <td>En <em>«Qué hace con la pelota»</em>: <strong>Libre</strong></td>
+        <td>Elegís la zona y cómo terminó: <strong>Sigue</strong> (del otro
+            lado), <strong>Punto</strong> o <strong>Block Out</strong>. Si
+            el libre se erró (se fue, quedó en la red, no pasó), en
+            vez de una zona tocás <strong>salió mal</strong> y el punto es del
+            rival. En ningún caso se le cuenta como ataque a nadie.</td></tr>
     <tr><td><strong>Error en juego</strong><br>
             <span class="nota">dobles, cuatro toques, invasión, rotación mal,
             cualquier falta</span></td>
@@ -663,20 +684,29 @@ da error). Sin rotación, el dorsal va siempre adelante.</p>
   <tbody>
     <tr><td class="c" style="width:32%">5_1_6_A</td><td>as</td></tr>
     <tr><td class="c">5_1_6_E</td><td>error de saque</td></tr>
+    <tr><td class="c">5_1_6_P_A &nbsp; 1_6_P_X/…</td><td>saque de potencia (el
+        <code>_P</code> va antes del resultado)</td></tr>
     <tr><td class="c">5_1_6_X/3_3/2_4/4_1_P</td><td>saque · recepción · armado · ataque punto</td></tr>
     <tr><td class="c">…/4_1_D</td><td>lo defienden, sigue el punto</td></tr>
     <tr><td class="c">…/4_1_O &nbsp; …/4_1_M</td><td>afuera / a la malla</td></tr>
     <tr><td class="c">…/4_1_B_7_P</td><td>lo bloquea el 7: punto del bloqueo</td></tr>
     <tr><td class="c">…/4_1_U_7</td><td>usa el bloqueo del 7: punto del ataque</td></tr>
+    <tr><td class="c">…/4_1_BD_7</td><td>el 7 lo toca en el bloqueo y sigue de su
+        lado: la pelota siguiente no es defensa</td></tr>
     <tr><td class="c">…/4_1_R_7</td><td>bloqueo rejugable: sigue el mismo equipo</td></tr>
-    <tr><td class="c">…/9_F_3 &nbsp; …/9_T_3</td><td>libre / toque del 9 hacia la zona 3</td></tr>
-    <tr><td class="c">…/9_F_0 &nbsp; …/9_T_0</td><td>el libre / el toque del 9 se erró:
+    <tr><td class="c">…/9_F_3</td><td>libre del 9 hacia la zona 3</td></tr>
+    <tr><td class="c">…/9_F_3_P</td><td>el libre es punto</td></tr>
+    <tr><td class="c">…/9_F_3_U_7</td><td>el libre usa el bloqueo del 7 (Block Out): punto</td></tr>
+    <tr><td class="c">…/9_F_0</td><td>el libre del 9 se erró:
         el punto es del contrario (la zona 0 es «no llegó a ninguna»)</td></tr>
     <tr><td class="c">…/9_S_6_P</td><td>pasada de segunda del 9 a la zona 6, punto</td></tr>
     <tr><td class="c">…/3_-1</td><td>recepción que se va sola al otro lado</td></tr>
     <tr><td class="c">3_0</td><td>defensa de calidad 0 que no se pudo jugar:
         el punto es del contrario (la línea termina ahí)</td></tr>
-    <tr><td class="c">…/2_-1 &nbsp; …/2_-2</td><td>armada que se pasa / armada mala</td></tr>
+    <tr><td class="c">…/2_-1 &nbsp; …/2_-2</td><td>armada que se pasa / armada mala (AX)</td></tr>
+    <tr><td class="c">…/2_4_A+/… &nbsp; _A0 &nbsp; _A-</td><td>calidad del armado</td></tr>
+    <tr><td class="c">…/4_1_PO_P &nbsp; …/4_1_CO_D</td><td>ataque potente / colocado o finta
+        (va entre la dirección y el resultado)</td></tr>
     <tr><td class="c">…/2_4_X/…</td><td>ese segundo toque no cuenta como armado</td></tr>
     <tr><td class="c">7_2/1_4/9_5_D</td><td>continuación: defensa · armado · ataque</td></tr>
     <tr><td class="c">9_A_1_P</td><td>ataque de primera, sin armado</td></tr>
@@ -796,15 +826,16 @@ esto alcanza.</p>
     <table>
       <tbody>
         <tr><td><strong>Saque</strong></td>
-            <td>desde 1/6/5 → hacia 1 a 9 → <em>As · Error · Sigue</em></td></tr>
+            <td>desde 1/6/5 → hacia 1 a 9 → <em>(Potencia) · As · Error · Sigue</em></td></tr>
         <tr><td><strong>Recepción</strong></td>
             <td>quién → calidad 3/2/1/0<br>
                 <span class="nota">o «0 · no se pudo jugar» / «se fue al otro lado»</span></td></tr>
         <tr><td><strong>Armado</strong></td>
-            <td>quién → zona 1 a 6<br>
-                <span class="nota">o «la manda de segunda» / «se pasó» / «armada mala»</span></td></tr>
+            <td>quién → zona 1 a 6 → (A+ · A0 · A-)<br>
+                <span class="nota">o «la manda de segunda» / «se pasó» / «AX · error de armado»</span></td></tr>
         <tr><td><strong>Ataque</strong></td>
-            <td>quién → Ataque (1/6/5) · Libre · Toque → resultado</td></tr>
+            <td>quién → Ataque (1/6/5) → Potente · Colocado → qué pasó<br>
+                <span class="nota">o Libre · Toque → zona → cómo terminó</span></td></tr>
       </tbody>
     </table>
 
@@ -825,11 +856,13 @@ esto alcanza.</p>
         <tr><td style="width:48%"><strong>Punto</strong></td><td>cierra · del que atacó</td></tr>
         <tr><td><strong>Afuera</strong> / <strong>Malla</strong></td><td>cierra · del que defendía</td></tr>
         <tr><td><strong>Bloqueo punto</strong> + bloqueador</td><td>cierra · del que bloqueó</td></tr>
-        <tr><td><strong>Tocó el bloqueo</strong> + bloqueador</td><td>cierra · del que atacó</td></tr>
+        <tr><td><strong>Block Out</strong> + bloqueador</td><td>cierra · del que atacó</td></tr>
         <tr><td><strong>Defendido</strong></td><td>sigue · del que defendió</td></tr>
+        <tr><td><strong>Toque de Bloqueo</strong> + bloqueador</td><td>sigue · del que bloqueó (no es defensa)</td></tr>
         <tr><td><strong>Bloqueo rejugable</strong> + bloqueador</td><td>sigue · del mismo lado</td></tr>
-        <tr><td><strong>Libre</strong> / <strong>Toque</strong></td><td>sigue · del otro lado</td></tr>
-        <tr><td><strong>Libre</strong> / <strong>Toque</strong> → <strong>salió mal</strong></td>
+        <tr><td><strong>Libre</strong> → <strong>Sigue</strong></td><td>sigue · del otro lado</td></tr>
+        <tr><td><strong>Libre</strong> → <strong>Punto</strong> / <strong>Block Out</strong></td><td>cierra · del que lo hizo</td></tr>
+        <tr><td><strong>Libre</strong> → <strong>salió mal</strong></td>
             <td>cierra · del otro lado</td></tr>
       </tbody>
     </table>

@@ -84,6 +84,11 @@ PASOS = {
         "titulo": "Como termino el saque",
         "pide": "boton",
         "opciones": [
+            # La potencia se marca antes del resultado (5_1_6_P_A): por eso
+            # es un toque que deja en el mismo paso, como el "no cuenta como
+            # armado" del ataque.
+            {"id": "potencia", "etiqueta": "Potencia", "texto": "_P",
+             "siguiente": "SAQUE_RESULTADO", "una_vez": True},
             {"id": "as", "etiqueta": "As", "texto": "_A", "cierra": True, "tono": "bien"},
             {"id": "error", "etiqueta": "Error", "texto": "_E", "cierra": True, "tono": "mal"},
             {"id": "sigue", "etiqueta": "Sigue", "texto": "_X", "siguiente": "RECIBE_JUGADOR"},
@@ -149,7 +154,7 @@ PASOS = {
         "opciones": [
             {"id": "arma_pasa", "etiqueta": "se paso al otro lado", "texto": "_-1",
              "cierra": True},
-            {"id": "arma_mala", "etiqueta": "armada mala", "texto": "_-2",
+            {"id": "arma_mala", "etiqueta": "AX - error de armado", "texto": "_-2",
              "cierra": True, "tono": "mal"},
         ],
     },
@@ -164,23 +169,34 @@ PASOS = {
             # atacante: por eso se ofrece aca y no despues
             {"id": "sin_armado", "etiqueta": "no cuenta como armado", "texto": "_X",
              "siguiente": "ATACA_JUGADOR", "una_vez": True},
+            # La calidad del armado tambien va pegada a la zona de armado, por
+            # lo mismo. Es opcional, y de las tres se elige una sola: el
+            # "grupo" apaga las otras dos cuando se toca una.
+            {"id": "armado_mas", "etiqueta": "A+", "texto": "_A+",
+             "siguiente": "ATACA_JUGADOR", "grupo": "calidad_armado", "tono": "bien"},
+            {"id": "armado_cero", "etiqueta": "A0", "texto": "_A0",
+             "siguiente": "ATACA_JUGADOR", "grupo": "calidad_armado"},
+            {"id": "armado_menos", "etiqueta": "A-", "texto": "_A-",
+             "siguiente": "ATACA_JUGADOR", "grupo": "calidad_armado", "tono": "mal"},
         ],
     },
+    # El "Toque" ya no se ofrece: lo que antes se cargaba como toque ahora es
+    # un ataque colocado / finta (ver ATACA_FORMA). El motor sigue leyendo el
+    # "_T_" de los partidos ya guardados.
     "ATACA_TIPO": {
         "titulo": "Que hace con la pelota",
         "pide": "boton",
         "opciones": [
             {"id": "ataque", "etiqueta": "Ataque", "texto": "", "siguiente": "ATACA_ZONA"},
             {"id": "libre", "etiqueta": "Libre", "texto": "", "siguiente": "LIBRE_ZONA"},
-            {"id": "toque", "etiqueta": "Toque", "texto": "", "siguiente": "TOQUE_ZONA"},
         ],
     },
     "ATACA_ZONA": {
         "titulo": "Hacia que zona ataca",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_FONDO),
-        "prefijo": "_", "siguiente": "ATACA_RESULTADO",
+        "prefijo": "_", "siguiente": "ATACA_FORMA",
     },
-    # El libre y el toque tambien se pueden errar. Va como una opcion mas del
+    # El libre tambien se puede errar. Va como una opcion mas del
     # paso de la zona y no como un paso aparte porque es lo que pasa en la
     # cancha: la pelota se fue, no fue "a una zona y ademas mal". La zona que
     # se escribe es el 0, el mismo que ya quiere decir "salio mal" en la
@@ -188,23 +204,41 @@ PASOS = {
     "LIBRE_ZONA": {
         "titulo": "Hacia que zona va el libre",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_TODAS),
-        "prefijo": "_F_", "cierra": True,
+        "prefijo": "_F_", "siguiente": "LIBRE_RESULTADO",
         "opciones": [
             {"id": "libre_malo", "etiqueta": "salio mal - punto del rival",
              "texto": "_F_0", "cierra": True, "tono": "mal"},
         ],
     },
-    "TOQUE_ZONA": {
-        "titulo": "Hacia que zona toca",
-        "pide": "zona", "lado": "rival", "zonas": list(ZONAS_TODAS),
-        "prefijo": "_T_", "cierra": True,
+    # Como termino el libre: "_P", "_U_Y" o nada (sigue).
+    "LIBRE_RESULTADO": {
+        "titulo": "Como termino",
+        "pide": "boton",
         "opciones": [
-            {"id": "toque_malo", "etiqueta": "salio mal - punto del rival",
-             "texto": "_T_0", "cierra": True, "tono": "mal"},
+            {"id": "sigue", "etiqueta": "Sigue", "texto": "", "cierra": True},
+            {"id": "punto", "etiqueta": "Punto", "texto": "_P", "cierra": True, "tono": "bien"},
+            {"id": "bloqueo_usado", "etiqueta": "Block Out", "texto": "",
+             "siguiente": "BLOQUEO_USADO"},
+        ],
+    },
+    # Primero como fue el ataque y despues que paso. El texto va en ese mismo
+    # orden: 4_1_PO_P. "No se vio" no escribe nada: es para cuando no se pudo
+    # ver, y es lo que deja armar tocando los partidos cargados antes de que
+    # existiera esta pregunta. El block-out no es una forma: es un resultado.
+    "ATACA_FORMA": {
+        "titulo": "Como ataco",
+        "pide": "boton",
+        "opciones": [
+            {"id": "potente", "etiqueta": "Ataque potente", "texto": "_PO",
+             "siguiente": "ATACA_RESULTADO"},
+            {"id": "colocado", "etiqueta": "Colocado / finta", "texto": "_CO",
+             "siguiente": "ATACA_RESULTADO"},
+            {"id": "sin_forma", "etiqueta": "No se vio", "texto": "",
+             "siguiente": "ATACA_RESULTADO"},
         ],
     },
     "ATACA_RESULTADO": {
-        "titulo": "Como termino el ataque",
+        "titulo": "Que paso con el ataque",
         "pide": "boton",
         "opciones": [
             {"id": "punto", "etiqueta": "Punto", "texto": "_P", "cierra": True, "tono": "bien"},
@@ -213,8 +247,10 @@ PASOS = {
             {"id": "malla", "etiqueta": "Malla", "texto": "_M", "cierra": True, "tono": "mal"},
             {"id": "bloqueo_punto", "etiqueta": "Bloqueo punto", "texto": "",
              "siguiente": "BLOQUEO_PUNTO"},
-            {"id": "bloqueo_usado", "etiqueta": "Toco el bloqueo", "texto": "",
+            {"id": "bloqueo_usado", "etiqueta": "Block Out", "texto": "",
              "siguiente": "BLOQUEO_USADO"},
+            {"id": "bloqueo_toca", "etiqueta": "Toque de Bloqueo", "texto": "",
+             "siguiente": "BLOQUEO_TOCA"},
             {"id": "bloqueo_rejugable", "etiqueta": "Bloqueo rejugable", "texto": "",
              "siguiente": "BLOQUEO_REJUGABLE"},
         ],
@@ -225,9 +261,16 @@ PASOS = {
         "prefijo": "_B_", "sufijo": "_P", "cierra": True,
     },
     "BLOQUEO_USADO": {
-        "titulo": "En quien toco el bloqueo",
+        "titulo": "Block Out: en quien toco el bloqueo",
         "pide": "jugador", "lado": "rival",
         "prefijo": "_U_", "cierra": True,
+    },
+    # El bloqueador toca el ataque y la pelota sigue de su lado: la que se
+    # levanta despues no cuenta como defensa.
+    "BLOQUEO_TOCA": {
+        "titulo": "Toque de Bloqueo: quien lo toco",
+        "pide": "jugador", "lado": "rival",
+        "prefijo": "_BD_", "cierra": True,
     },
     "BLOQUEO_REJUGABLE": {
         "titulo": "Quien bloqueo",
@@ -263,10 +306,22 @@ PASOS = {
     "PRIMERA_ZONA": {
         "titulo": "Hacia que zona ataca",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_FONDO),
-        "prefijo": "_A_", "siguiente": "PRIMERA_RESULTADO",
+        "prefijo": "_A_", "siguiente": "PRIMERA_FORMA",
+    },
+    "PRIMERA_FORMA": {
+        "titulo": "Como ataco",
+        "pide": "boton",
+        "opciones": [
+            {"id": "potente", "etiqueta": "Ataque potente", "texto": "_PO",
+             "siguiente": "PRIMERA_RESULTADO"},
+            {"id": "colocado", "etiqueta": "Colocado / finta", "texto": "_CO",
+             "siguiente": "PRIMERA_RESULTADO"},
+            {"id": "sin_forma", "etiqueta": "No se vio", "texto": "",
+             "siguiente": "PRIMERA_RESULTADO"},
+        ],
     },
     "PRIMERA_RESULTADO": {
-        "titulo": "Como termino",
+        "titulo": "Que paso con el ataque",
         "pide": "boton",
         "opciones": [
             {"id": "punto", "etiqueta": "Punto", "texto": "_P", "cierra": True, "tono": "bien"},
@@ -353,6 +408,9 @@ class Armador:
             return []
         paso = PASOS[self.estado]
         usados = {p["id"] for p in self.pasos if p["estado"] == self.estado}
+        # de las opciones con "grupo" se puede tocar una sola por paso
+        grupos_usados = {o.get("grupo") for o in paso.get("opciones", ())
+                         if o["id"] in usados and o.get("grupo")}
         salida = []
 
         if paso["pide"] == "jugador":
@@ -375,6 +433,8 @@ class Armador:
             if extra.get("solo") and extra["solo"] != self.espera:
                 continue
             if extra.get("una_vez") and extra["id"] in usados:
+                continue
+            if extra.get("grupo") and extra["grupo"] in grupos_usados:
                 continue
             salida.append({
                 "id": extra["id"], "tipo": "boton", "etiqueta": extra["etiqueta"],

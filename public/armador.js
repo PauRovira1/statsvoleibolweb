@@ -65,6 +65,9 @@ class Armador {
     const paso = this.paso;
     if(!paso) return [];
     const usados = new Set(this.pasos.filter(p => p.estado === this.estado).map(p => p.id));
+    // de las opciones con "grupo" se puede tocar una sola por paso
+    const gruposUsados = new Set((paso.opciones || [])
+      .filter(o => o.grupo && usados.has(o.id)).map(o => o.grupo));
     const salida = [];
 
     if(paso.pide === "jugador"){
@@ -85,6 +88,7 @@ class Armador {
     (paso.opciones || []).forEach(extra => {
       if(extra.solo && extra.solo !== this.espera) return;
       if(extra.una_vez && usados.has(extra.id)) return;
+      if(extra.grupo && gruposUsados.has(extra.grupo)) return;
       salida.push({id: extra.id, tipo:"boton", etiqueta: extra.etiqueta,
                    texto: extra.texto, siguiente: extra.siguiente || null,
                    cierra: !!extra.cierra, tono: extra.tono || null});

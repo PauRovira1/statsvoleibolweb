@@ -216,19 +216,24 @@ try{
           <dl>
             <dt><code>5_1_6_A</code></dt><dd>saque directo, punto (as)</dd>
             <dt><code>5_1_6_E</code></dt><dd>error de saque</dd>
+            <dt><code>5_1_6_P_A</code></dt><dd>saque de potencia (el <code>_P</code> va antes de A / E / X)</dd>
             <dt><code>5_1_6_X/3_3/2_4/4_1_P</code></dt>
             <dd>saque · recepcion (calidad 0-3, o -1 si se paso) · armado zona · ataque</dd>
             <dt><code>…/4_1_D</code></dt><dd>lo defienden, sigue el punto</dd>
             <dt><code>…/4_1_O</code> <code>_M</code></dt><dd>afuera / a la malla</dd>
             <dt><code>…/4_1_B_7_P</code></dt><dd>lo bloquea el 7, punto del bloqueo</dd>
-            <dt><code>…/4_1_U_7</code></dt><dd>usa el bloqueo del 7, punto del ataque</dd>
+            <dt><code>…/4_1_U_7</code></dt><dd>Block Out del 7, punto del ataque</dd>
+            <dt><code>…/4_1_BD_7</code></dt><dd>Toque de Bloqueo del 7, sigue de su lado (la siguiente no es defensa)</dd>
             <dt><code>…/4_1_R_7</code></dt><dd>bloqueo rejugable, sigue el mismo equipo</dd>
-            <dt><code>…/9_F_3</code> <code>9_T_3</code></dt><dd>libre / toque hacia zona 3</dd>
-            <dt><code>…/9_F_0</code> <code>9_T_0</code></dt>
-            <dd>libre / toque errado: punto para el rival</dd>
+            <dt><code>…/9_F_3</code></dt><dd>libre hacia zona 3</dd>
+            <dt><code>…/9_F_3_P</code> <code>9_F_3_U_7</code></dt><dd>libre punto, o Block Out del 7</dd>
+            <dt><code>…/9_F_0</code></dt>
+            <dd>libre errado: punto para el rival</dd>
             <dt><code>…/9_S_6_P</code></dt><dd>pasada de segunda (sin armado antes)</dd>
             <dt><code>2_-1</code> <code>2_-2</code></dt>
-            <dd>armado que se pasa / armado malo que pierde el punto</dd>
+            <dd>armado que se pasa / armado malo que pierde el punto (AX)</dd>
+            <dt><code>2_4_A+</code> <code>_A0</code> <code>_A-</code></dt><dd>calidad del armado (opcional)</dd>
+            <dt><code>…/4_1_PO_P</code> <code>4_1_CO_D</code></dt><dd>ataque potente / colocado o finta (opcional)</dd>
             <dt><code>7_2/1_4/9_5_D</code></dt><dd>defensa · armado · ataque</dd>
             <dt><code>7_0</code></dt>
             <dd>defensa de calidad 0 que no se pudo jugar: punto del rival</dd>

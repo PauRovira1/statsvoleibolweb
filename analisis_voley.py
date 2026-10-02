@@ -81,6 +81,9 @@ Cada PUNTO se carga con una o mas jugadas en consola:
     X  = numero del jugador que saca
     Z1 = zona desde donde saca      (1, 6 o 5)
     Z2 = zona hacia donde saca      (1 a 9)
+    Z2 puede llevar un "_P" opcional atras (X_Z1_Z2_P_R1): es un saque de
+    POTENCIA. En las estadisticas los saques se separan en normales y de
+    potencia. Ej: 5_1_6_P_A, 5_1_6_P_X/3_3/2_4/4_1_P
     R1 = resultado del saque:
            X -> sigue la jugada (no fue punto directo)
            A -> as (punto directo para el equipo que saca)
@@ -99,6 +102,11 @@ Cada PUNTO se carga con una o mas jugadas en consola:
     W_Z3 puede llevar un "_X" opcional al final (W_Z3_X): significa que en
     realidad NO hubo armado (ej. un segundo toque que no fue una asistencia
     real), y esa jugada no se cuenta en las estadisticas de armado.
+    W_Z3 tambien puede llevar la CALIDAD DEL ARMADO, opcional:
+      W_Z3_A+  -> el atacante queda en situacion favorable
+      W_Z3_A0  -> condiciones normales
+      W_Z3_A-  -> pelota dificil, previsible o fuera de sistema
+    El AX (error de armado) es el "W_-2" de mas abajo.
     En vez de "W_Z3" tambien puede ser:
       W_-1  -> la armada se pasa directo al otro lado (overpass). El punto
                sigue, no hace falta cargar el ataque. Formato:
@@ -108,6 +116,10 @@ Cada PUNTO se carga con una o mas jugadas en consola:
                Formato: X_Z1_Z2_X/Y_C/W_-2
     A  = numero del jugador que ataca
     Z4 = zona hacia donde ataca     (1, 6 o 5)
+    Entre Z4 y R2 puede ir el TIPO DE RESOLUCION, opcional:
+      A_Z4_PO_R2 -> ataque potente
+      A_Z4_CO_R2 -> colocado o finta
+      (el block-out no se marca: es el resultado U_Y)
     R2 = resultado del ataque:
            P       -> punto directo (kill)
            D       -> el rival defiende, el punto sigue
@@ -116,6 +128,10 @@ Cada PUNTO se carga con una o mas jugadas en consola:
                       defiende (es lo mismo que "O" pero para diferenciar en
                       las estadisticas si fue afuera o a la red)
            B_Y_P   -> bloqueo del jugador Y, punto para el equipo que bloquea
+           BD_Y    -> el bloqueador Y toca el ataque y la pelota sigue del
+                      lado del que bloqueo. Para el atacante cuenta como
+                      defendido; la pelota que se levanta despues NO cuenta
+                      como defensa (el ataque lo freno el bloqueo)
            U_Y     -> toque de bloqueo del jugador Y ("usado"), punto para
                       el equipo que ataco
            R_Y     -> bloqueo rejugable del jugador Y: la pelota vuelve al
@@ -133,6 +149,12 @@ Cada PUNTO se carga con una o mas jugadas en consola:
                   las estadisticas (igual que el libre, pero se guarda como
                   un caso distinto).
 
+    A_F_Z_P     = LIBRE PUNTO / TOQUE PUNTO: el libre (o el toque) cae y
+    A_T_Z_P       es punto directo del que lo hizo.
+
+    A_F_Z_U_Y   = el libre (o el toque) usa el bloqueo del jugador Y: punto
+    A_T_Z_U_Y     del que lo hizo.
+
     A_F_0       = LIBRE MALO: el libre se erro (afuera, a la malla, o no
     A_T_0       = TOQUE MALO: paso). El punto termina ahi y es del equipo
                   contrario. La zona es "0" porque la pelota no llego a
@@ -146,7 +168,7 @@ Cada PUNTO se carga con una o mas jugadas en consola:
     porque ella misma reemplaza el armado + ataque juntos (es el segundo
     toque, no el tercero).
 
-2) Si el punto sigue (R2 fue D, R_Y o hubo un libre/toque), se pide una
+2) Si el punto sigue (R2 fue D, BD_Y, R_Y o hubo un libre/toque), se pide una
    jugada mas, esta vez SIN el bloque de saque, formato:
 
     Y_C/W_Z3/A_Z4_R2   (o  Y_C/W_Z3/A_F_Z  si es libre, o  Y_C/W_Z3/A_T_Z
@@ -172,7 +194,7 @@ Cada PUNTO se carga con una o mas jugadas en consola:
     A  = numero del jugador que ataca (o hace el libre, o el toque)
     Z4 = zona hacia donde ataca     (1, 6 o 5; 1 a 9 si es libre o toque)
     R2 = resultado del ataque (mismos codigos que arriba: P / D / O / M /
-         B_Y_P / U_Y / R_Y)
+         B_Y_P / BD_Y / U_Y / R_Y)
 
    Esto se puede repetir tantas veces como intercambios tenga el punto,
    hasta que alguien haga punto (R2 = P, O, M, B_Y_P o U_Y).
@@ -213,6 +235,12 @@ Ejemplos:
     7_2/1_5/9_5_O                  -> ...hasta que el ataque se va afuera, punto para la defensa
     7_2/1_5/9_5_B_6_P              -> ...o el jugador 6 bloquea y hace punto
     7_2/1_5/9_5_U_6                -> ...o toca el bloqueo y sale, punto igual para el ataque
+    7_2/1_5/9_5_BD_6               -> ...o el 6 toca el ataque en el bloqueo y sigue de su lado
+    7_2/1_5/9_F_8_P                -> ...o el libre del 9 a zona 8 es punto
+    7_2/1_5/9_T_8_U_6              -> ...o el toque del 9 usa el bloqueo del 6, punto del 9
+    5_1_6_P_A                      -> as con saque de potencia
+    5_1_6_X/3_3/2_4_A+/4_1_PO_P    -> armado A+ y ataque potente, punto
+    7_2/1_5_A-/9_5_CO_D            -> armado A-, el 9 coloca y lo defienden
     7_2/1_5/9_5_R_6                -> ...o el bloqueo es rejugable y el mismo equipo sigue atacando
     7_2/1_5/9_F_8                  -> ...o el jugador 9 no puede atacar y hace un libre a zona 8
     7_2/1_5/9_T_8                  -> ...o el jugador 9 toca hacia zona 8 (no cuenta como ataque)
@@ -267,9 +295,13 @@ def carpeta_lista(carpeta: Path) -> Path:
 # rotacion cargada se completa solo con el jugador al que le toca sacar. No hay
 # ambiguedad con la forma larga porque las zonas son de un solo digito, asi que
 # la cantidad de campos distingue "28_1_5_X" de "1_5_X".
+# El "_P" despues de la zona de destino marca un saque de potencia. Va antes
+# del resultado (5_1_6_P_A, 1_6_P_X/...) y es opcional: sin el, el saque es
+# el de siempre.
 SAQUE_PREFIJO = (
     r"^(?:(?P<sacador>\d+)_)?(?P<zona_saque>[165])"
     r"_(?P<zona_destino_saque>[1-9])"
+    r"(?:_(?P<saque_potencia>P))?"
 )
 
 PATRON_SAQUE_TERMINAL = re.compile(
@@ -277,7 +309,10 @@ PATRON_SAQUE_TERMINAL = re.compile(
     r"_(?P<resultado_saque>[AE])$"
 )
 
-RESULTADO_ATAQUE = r"(?:P|D|O|M|B_\d+_P|U_\d+|R_\d+)"
+# BD_Y: el bloqueador Y toca el ataque y la pelota sigue del lado del que
+# bloqueo. Para el que ataco es un ataque defendido, pero el que la levanta
+# despues no hizo una defensa: el ataque ya lo freno el bloqueo.
+RESULTADO_ATAQUE = r"(?:P|D|O|M|B_\d+_P|BD_\d+|U_\d+|R_\d+)"
 
 # El bloque de ataque puede ser un ataque normal (atacante_zona_resultado), un
 # libre (atacante_F_zona, el jugador no pudo atacar y solo la pasa), o un
@@ -288,20 +323,46 @@ RESULTADO_ATAQUE = r"(?:P|D|O|M|B_\d+_P|U_\d+|R_\d+)"
 # salio mal y termina el punto. No es una zona mas -- es la ausencia de zona,
 # la pelota no llego a ninguna -- y por eso se escribe igual que el 0 de la
 # recepcion y el de la defensa, que ya quieren decir "salio mal".
+#
+# Un libre o un toque bueno tambien puede terminar el punto: "_P" si cae
+# (9_F_3_P) y "_U_Y" si usa el bloqueo del jugador Y (9_T_3_U_7). Sin nada
+# atras el punto sigue del otro lado, como siempre.
+#
+# El ataque puede llevar el tipo de resolucion entre la direccion y el
+# resultado: "_PO" potente, "_CO" colocado o finta (4_1_PO_P, 4_5_CO_D). Es
+# opcional: se carga cuando se vio. El block-out no lleva etiqueta propia
+# porque ya es un resultado (_U_Y). La direccion (1, 6 o 5) sigue siendo
+# obligatoria: es la que se usa para ver si un atacante es predecible.
+TIPO_ATAQUE = r"(?:_(?P<tipo_ataque>PO|CO))?"
+
 ATAQUE_O_LIBRE = (
-    rf"(?:(?P<atacante>\d+)_(?P<zona_ataque>[165])_(?P<resultado>{RESULTADO_ATAQUE})"
-    r"|(?P<atacante_libre>\d+)_F_(?P<zona_libre>[0-9])"
-    r"|(?P<atacante_toca>\d+)_T_(?P<zona_toca>[0-9]))"
+    rf"(?:(?P<atacante>\d+)_(?P<zona_ataque>[165]){TIPO_ATAQUE}_(?P<resultado>{RESULTADO_ATAQUE})"
+    r"|(?P<atacante_libre>\d+)_F_(?:0|(?P<zona_libre>[1-9])(?:_(?P<final_libre>P|U_\d+))?)"
+    r"|(?P<atacante_toca>\d+)_T_(?:0|(?P<zona_toca>[1-9])(?:_(?P<final_toca>P|U_\d+))?))"
 )
 
-# Los cuatro resultados que salen de un bloque de libre o de toque. Se agrupan
+# Los resultados que salen de un bloque de libre o de toque. Se agrupan
 # porque comparten lo unico que importa al parsear: el bloque ya viene
 # resuelto, no hay un "_B_7_P" que descomponer (ver _procesar_resultado).
-LIBRE_O_TOQUE = ("F", "T", "FE", "TE")
+#   F/T   -> sigue el punto del otro lado
+#   FE/TE -> salio mal, punto del rival
+#   FP/TP -> punto directo
+#   FU/TU -> usa el bloqueo, punto del que lo hizo
+LIBRE_O_TOQUE = ("F", "T", "FE", "TE", "FP", "TP", "FU", "TU")
 
 # Despues de colocador_zona puede venir un "_X" opcional: indica que en
 # realidad no hubo armado (no se cuenta en las estadisticas de armado).
-ARMADO = r"(?P<colocador>\d+)_(?P<zona_colocacion>[1-6])(?:_(?P<sin_armado>X))?"
+#
+# Y tambien la calidad del armado, opcional:
+#   _A+  el atacante queda en situacion favorable
+#   _A0  condiciones normales
+#   _A-  pelota dificil, previsible o fuera de sistema
+# El AX (error de armado) no es una marca: es el "W_-2" de siempre, la armada
+# mala que termina el punto. Las dos marcas se aceptan en cualquier orden.
+ARMADO = (
+    r"(?P<colocador>\d+)_(?P<zona_colocacion>[1-6])"
+    r"(?P<marcas_armado>(?:_X(?:_A[+0-])?|_A[+0-](?:_X)?)?)"
+)
 
 PATRON_SAQUE_COMPLETO = re.compile(
     SAQUE_PREFIJO +
@@ -391,7 +452,7 @@ PATRON_DEFENSA_CERO = re.compile(
 
 # Atajo: el jugador ataca de primera (sin armado) directo desde la defensa.
 PATRON_DEFENSA_PRIMERA = re.compile(
-    r"^(?P<atacante>\d+)_A_(?P<zona_ataque>[165])_(?P<resultado>[PD])$"
+    r"^(?P<atacante>\d+)_A_(?P<zona_ataque>[165])" + TIPO_ATAQUE + r"_(?P<resultado>[PD])$"
 )
 
 # Cambio de jugador: C_entra_sale, con un _S opcional sobre el que entra
@@ -401,6 +462,8 @@ PATRON_DEFENSA_PRIMERA = re.compile(
 PATRON_CAMBIO = re.compile(
     r"^C_(?P<entra>\d+)(?P<marca_armador>_S)?_(?P<sale>\d+)$", re.IGNORECASE
 )
+
+NOMBRES_TIPO_ATAQUE = {"PO": "Potente", "CO": "Colocado"}
 
 CAMPOS_NUMERICOS = ("sacador", "receptor", "colocador", "atacante", "defensor")
 COMANDOS_SALIDA = {"salir", "fin", "exit", "q"}
@@ -432,15 +495,25 @@ ZONA_A_GRUPO = {
 }
 
 
+# Codigos con los que el rally sigue: si el ultimo bloque cargado termina en
+# uno de estos, el punto se definio despues, por un error en juego ("f").
+RESULTADOS_QUE_SIGUEN = ("D", "BD", "R", "F", "V", "T", "K")
+# De esos, con cuales la pelota pasa al otro lado. "R" es el unico que no: el
+# bloqueo rejugable devuelve la pelota al que ataco.
+CAMBIAN_DE_LADO = ("D", "BD", "F", "V", "T", "K")
+
+
 def _a_enteros(datos: dict) -> dict:
     for campo in CAMPOS_NUMERICOS:
         if datos.get(campo) is not None:
             datos[campo] = int(datos[campo])
+    if "saque_potencia" in datos:
+        datos["saque_potencia"] = bool(datos["saque_potencia"])
     return datos
 
 
 def _procesar_resultado(datos: dict) -> dict:
-    """Descompone el resultado del ataque (P/D/B_Y_P/U_Y/R_Y) en tipo + jugador de bloqueo."""
+    """Descompone el resultado del ataque (P/D/B_Y_P/BD_Y/U_Y/R_Y) en tipo + jugador de bloqueo."""
     crudo = datos["resultado"]
 
     if crudo in ("P", "D", "O", "M"):
@@ -456,33 +529,41 @@ def _procesar_resultado(datos: dict) -> dict:
 
 
 def _normalizar_armado(datos: dict) -> dict:
-    """True si hubo un armado real; False si vino marcado con el "_X" opcional."""
-    datos["armado_valido"] = datos.pop("sin_armado") is None
+    """armado_valido: True si hubo un armado real; False si vino marcado con
+    el "_X" opcional. calidad_armado: "+", "0", "-" o None si no se califico."""
+    marcas = datos.pop("marcas_armado") or ""
+    datos["armado_valido"] = "_X" not in marcas
+    calidad = re.search(r"_A([+0-])", marcas)
+    datos["calidad_armado"] = calidad.group(1) if calidad else None
     return datos
 
 
 def _normalizar_ataque(datos: dict) -> dict:
     """Unifica el ataque normal, el libre (atacante_F_zona) y el toque
     (atacante_T_zona) en las mismas claves."""
-    claves_alternativas = ("atacante_libre", "zona_libre", "atacante_toca", "zona_toca")
+    claves_alternativas = ("atacante_libre", "zona_libre", "final_libre",
+                           "atacante_toca", "zona_toca", "final_toca")
 
-    if datos.get("atacante_libre") is not None:
-        datos["atacante"] = datos.pop("atacante_libre")
-        zona = datos.pop("zona_libre")
-        # zona 0 = no llego a ninguna: el libre se erro y el punto se termina
-        datos["zona_ataque"] = None if zona == "0" else zona
-        datos["resultado"] = "FE" if zona == "0" else "F"
+    for letra, sufijo in (("F", "libre"), ("T", "toca")):
+        if datos.get(f"atacante_{sufijo}") is None:
+            continue
+        datos["atacante"] = datos.pop(f"atacante_{sufijo}")
+        zona = datos.pop(f"zona_{sufijo}")
+        final = datos.pop(f"final_{sufijo}")
+        datos["zona_ataque"] = zona
         datos["jugador_bloqueo"] = None
-        datos["es_segunda"] = False
-    elif datos.get("atacante_toca") is not None:
-        datos["atacante"] = datos.pop("atacante_toca")
-        zona = datos.pop("zona_toca")
-        datos["zona_ataque"] = None if zona == "0" else zona
-        datos["resultado"] = "TE" if zona == "0" else "T"
-        datos["jugador_bloqueo"] = None
-        datos["es_segunda"] = False
-    else:
-        datos["es_segunda"] = False
+        if zona is None:
+            # zona 0 = no llego a ninguna: se erro y el punto se termina
+            datos["resultado"] = letra + "E"
+        elif final is None:
+            datos["resultado"] = letra
+        elif final == "P":
+            datos["resultado"] = letra + "P"
+        else:
+            datos["resultado"] = letra + "U"
+            datos["jugador_bloqueo"] = int(final.split("_", 1)[1])
+        break
+    datos["es_segunda"] = False
 
     for clave in claves_alternativas:
         datos.pop(clave, None)
@@ -544,6 +625,7 @@ def parsear_bloque_saque(texto: str) -> dict | None:
             datos[campo] = None
         datos["es_segunda"] = False
         datos["resultado"] = "N"
+        datos["calidad_armado"] = "X"   # AX: error de armado
         return _a_enteros(datos)
 
     match = PATRON_SAQUE_COMPLETO.match(texto)
@@ -599,6 +681,7 @@ def parsear_bloque_defensa(texto: str) -> dict | None:
             datos[campo] = None
         datos["es_segunda"] = False
         datos["resultado"] = "N"
+        datos["calidad_armado"] = "X"   # AX: error de armado
         return _a_enteros(datos)
 
     match = PATRON_DEFENSA_OVERPASS.match(texto)
@@ -646,6 +729,9 @@ def _describir_resultado_ataque(bloque: dict) -> str:
         return "A LA MALLA (error de ataque, punto para la defensa)"
     if tipo == "B":
         return f"BLOQUEADO por jugador {bloque['jugador_bloqueo']} (punto para el bloqueo)"
+    if tipo == "BD":
+        return (f"toca el bloqueo del jugador {bloque['jugador_bloqueo']} "
+                "y sigue del lado del bloqueo (no cuenta como defensa)")
     if tipo == "U":
         return f"toque de bloqueo (jugador {bloque['jugador_bloqueo']}), punto para el ataque"
     return f"bloqueo rejugable (jugador {bloque['jugador_bloqueo']} bloquea), sigue atacando el mismo equipo"
@@ -668,19 +754,28 @@ def _describir_ataque(bloque: dict) -> str:
             f"Toque: jugador {bloque['atacante']} toca "
             f"hacia zona {bloque['zona_ataque']} (sigue el punto)"
         )
+    if bloque["resultado"] in ("FP", "TP", "FU", "TU"):
+        nombre = "Libre" if bloque["resultado"][0] == "F" else "Toque"
+        final = ("PUNTO" if bloque["resultado"][1] == "P" else
+                 f"usa el bloqueo del jugador {bloque['jugador_bloqueo']}, PUNTO")
+        return (f"{nombre}: jugador {bloque['atacante']} "
+                f"hacia zona {bloque['zona_ataque']} -> {final}")
     if bloque.get("es_segunda"):
         return (
             f"Segunda: jugador {bloque['atacante']} (zona {bloque['zona_ataque']}) "
             f"-> {_describir_resultado_ataque(bloque)}"
         )
+    tipo = NOMBRES_TIPO_ATAQUE.get(bloque.get("tipo_ataque"))
     return (
-        f"Ataque: jugador {bloque['atacante']} (zona {bloque['zona_ataque']}) "
-        f"-> {_describir_resultado_ataque(bloque)}"
+        f"Ataque{f' {tipo.lower()}' if tipo else ''}: jugador {bloque['atacante']} "
+        f"(zona {bloque['zona_ataque']}) -> {_describir_resultado_ataque(bloque)}"
     )
 
 
 def _describir_armado(bloque: dict) -> str:
     base = f"Armado: jugador {bloque['colocador']} (zona {bloque['zona_colocacion']})"
+    if bloque.get("calidad_armado"):
+        base += f" A{bloque['calidad_armado']}"
     if bloque.get("armado_valido") is False:
         return base + " (no hubo armado, no cuenta en estadisticas)"
     return base
@@ -688,7 +783,8 @@ def _describir_armado(bloque: dict) -> str:
 
 def describir_bloque_saque(bloque: dict) -> str:
     base = (
-        f"Saque: jugador {bloque['sacador']} "
+        f"Saque{' de potencia' if bloque.get('saque_potencia') else ''}: "
+        f"jugador {bloque['sacador']} "
         f"(zona {bloque['zona_saque']} -> zona {bloque['zona_destino_saque']})"
     )
     if bloque["resultado_saque"] == "A":
@@ -715,7 +811,7 @@ def describir_bloque_saque(bloque: dict) -> str:
             base + " (sigue) | "
             f"Recepcion: jugador {bloque['receptor']} (calidad {bloque['calidad_recepcion']}) | "
             f"Armado: jugador {bloque['colocador']} "
-            "-> ARMADO MALO (punto para el equipo contrario)"
+            "-> ARMADO MALO, AX (punto para el equipo contrario)"
         )
 
     if bloque["resultado"] == "K":
@@ -737,8 +833,9 @@ def describir_bloque_saque(bloque: dict) -> str:
 def describir_bloque_defensa(bloque: dict) -> str:
     if bloque.get("defensor") is None:
         resultado = "PUNTO" if bloque["resultado"] == "P" else "defendido"
+        tipo = NOMBRES_TIPO_ATAQUE.get(bloque.get("tipo_ataque"))
         return (
-            f"Ataque de primera: jugador {bloque['atacante']} "
+            f"Ataque de primera{f' {tipo.lower()}' if tipo else ''}: jugador {bloque['atacante']} "
             f"(zona {bloque['zona_ataque']}) -> {resultado}"
         )
 
@@ -764,7 +861,7 @@ def describir_bloque_defensa(bloque: dict) -> str:
         return (
             base + " | "
             f"Armado: jugador {bloque['colocador']} "
-            "-> ARMADO MALO (punto para el equipo contrario)"
+            "-> ARMADO MALO, AX (punto para el equipo contrario)"
         )
 
     if bloque["resultado"] == "K":
@@ -1217,7 +1314,7 @@ def _recalcular_estado_punto(equipo_saca: str, secuencia: list[dict]) -> tuple:
     tipo_resultado = secuencia[0]["resultado"]
 
     for bloque in secuencia[1:]:
-        if tipo_resultado in ("D", "F", "V", "T", "K"):
+        if tipo_resultado in CAMBIAN_DE_LADO:
             equipo_atacante, equipo_defensor = equipo_defensor, equipo_atacante
         tipo_resultado = bloque["resultado"]
 
@@ -1311,8 +1408,8 @@ def jugar_punto(
         tipo_resultado = bloque["resultado"]
         reiniciar_punto = False
 
-        while tipo_resultado in ("D", "R", "F", "V", "T", "K"):
-            if tipo_resultado in ("D", "F", "V", "T", "K"):
+        while tipo_resultado in RESULTADOS_QUE_SIGUEN:
+            if tipo_resultado in CAMBIAN_DE_LADO:
                 # el equipo que defendio (o que recibe el libre/overpass/toque) pasa a atacar
                 equipo_atacante, equipo_defensor = equipo_defensor, equipo_atacante
             # si es "R" (bloqueo rejugable) el equipo atacante no cambia: recupera
@@ -1413,9 +1510,6 @@ def calcular_estadisticas_armado(puntos: list[dict]) -> dict:
 # K1 los puntos que nunca llegaron a una recepcion.
 FASES_RALLY = ("K1", "K2", "K3", "Saque", "Sin fase")
 
-# Codigos con los que el rally sigue: si el ultimo bloque cargado termina en
-# uno de estos, el punto se definio despues, por un error en juego ("f").
-RESULTADOS_QUE_SIGUEN = ("D", "R", "F", "V", "T", "K")
 
 
 def _bloque_cierra_el_punto(bloque: dict) -> bool:
@@ -1464,6 +1558,12 @@ CAUSAS_GANADAS = {
     "L": "Pelota no defendida",
     "B": "Bloqueo punto",
     "A": "As de saque",
+    # Van aparte de "Ataque punto" por lo mismo que el libre malo va aparte
+    # de "Ataque afuera": el que hizo un libre o un toque no estaba rematando.
+    "FP": "Libre punto",
+    "TP": "Toque punto",
+    "FU": "Libre usando el bloqueo",
+    "TU": "Toque usando el bloqueo",
 }
 CAUSAS_ERROR = {
     "O": "Ataque afuera",
@@ -1691,6 +1791,9 @@ CALIDADES_DEFENSA = (-1, 0, 1, 2, 3)
 #   R -- bloqueo rejugable: la pelota rebota en el bloqueo y vuelve al lado del
 #        que ataco, asi que quien la levanta recupera SU propia pelota. Por eso
 #        R ademas no hace cambiar de lado la pelota, mas abajo.
+#   BD -- toque de bloqueo: el bloqueador toco el ataque y la pelota sigue de
+#        su lado. El ataque ya lo freno el bloqueo; el que la levanta despues
+#        no esta defendiendo un remate.
 #
 # Se anotan todas igual en la notacion (Y_C) y por eso se contaban juntas.
 # Contarlas infla la defensa de todos por igual y hace parecer mejor a quien
@@ -1717,7 +1820,7 @@ def defensas_del_punto(punto: dict):
     defensor = punto["equipo_saca"]
     resultado = jugadas[0]["resultado"]
     for bloque in jugadas[1:]:
-        if resultado in ("D", "F", "V", "T", "K"):
+        if resultado in CAMBIAN_DE_LADO:
             atacante, defensor = defensor, atacante
         if bloque.get("defensor") is not None and resultado in TRAS_UN_ATAQUE:
             # el que acaba de defender es el que pasa a tener la pelota
@@ -1889,7 +1992,8 @@ ZONAS_DESTINO_ATAQUE = (1, 5, 6)
 
 # Como se clasifica cada resultado de ataque a efectos de estas estadisticas:
 #   efectivo  -> P (punto directo) y U (toque de bloqueo, punto igual para el ataque)
-#   defendido -> D (defendido) y R (bloqueo rejugable, sigue el mismo equipo)
+#   defendido -> D (defendido), R (bloqueo rejugable, sigue el mismo equipo) y
+#                BD (toca el bloqueo y sigue del otro lado)
 #   fuera     -> O (se va afuera), M (a la malla) y B (bloqueado, punto para el bloqueo)
 #   (F, el libre, no cuenta como ataque; las pasadas de segunda tampoco, se
 #   filtran aparte por el flag "es_segunda")
@@ -1901,7 +2005,7 @@ def ataque_sin_defensa(jugadas: list, indice: int) -> bool:
     cerrara ahi recien se sabe en el bloque siguiente. Para el atacante eso es
     un ataque exitoso -- el rival la toco pero no la pudo jugar -- asi que se
     cuenta igual que un punto directo."""
-    if jugadas[indice].get("resultado") != "D":
+    if jugadas[indice].get("resultado") not in ("D", "BD"):
         return False
     siguiente = jugadas[indice + 1] if indice + 1 < len(jugadas) else None
     return siguiente is not None and siguiente.get("resultado") == "L"
@@ -1909,9 +2013,25 @@ def ataque_sin_defensa(jugadas: list, indice: int) -> bool:
 
 _CLASE_POR_RESULTADO = {
     "P": "efectivo", "U": "efectivo",
-    "D": "defendido", "R": "defendido",
+    "D": "defendido", "R": "defendido", "BD": "defendido",
     "O": "fuera", "M": "fuera", "B": "fuera",
 }
+
+
+def clase_del_ataque(jugadas: list, indice: int) -> str | None:
+    """efectivo / defendido / fuera, o None si ese bloque no tiene un ataque
+    que contar (no hubo ataque, fue un libre o un toque, o una segunda)."""
+    bloque = jugadas[indice]
+    if bloque.get("atacante") is None or bloque.get("equipo_atacante") is None:
+        return None
+    if bloque.get("es_segunda"):
+        return None  # toque de segunda (tip): no es un ataque real
+    clase = _CLASE_POR_RESULTADO.get(bloque.get("resultado"))
+    if clase is None:
+        return None  # libre (F) u otro caso que no cuenta como ataque
+    if ataque_sin_defensa(jugadas, indice):
+        return "efectivo"
+    return clase
 
 
 def calcular_estadisticas_ataque(puntos: list[dict]) -> dict:
@@ -1937,17 +2057,11 @@ def calcular_estadisticas_ataque(puntos: list[dict]) -> dict:
     for punto in puntos:
         jugadas = punto["jugadas"]
         for indice, bloque in enumerate(jugadas):
-            atacante = bloque.get("atacante")
-            equipo = bloque.get("equipo_atacante")
-            if atacante is None or equipo is None:
-                continue
-            if bloque.get("es_segunda"):
-                continue  # toque de segunda (tip): no es un ataque real
-            clase = _CLASE_POR_RESULTADO.get(bloque.get("resultado"))
+            clase = clase_del_ataque(jugadas, indice)
             if clase is None:
-                continue  # libre (F) u otro caso que no cuenta como ataque
-            if ataque_sin_defensa(jugadas, indice):
-                clase = "efectivo"
+                continue
+            atacante = bloque["atacante"]
+            equipo = bloque["equipo_atacante"]
 
             registro = _registro_jugador(equipo, atacante)
             registro[clase] += 1
@@ -1963,6 +2077,162 @@ def calcular_estadisticas_ataque(puntos: list[dict]) -> dict:
             datos_zona["destinos"][zona_ataque_int][clase] += 1
 
     return datos
+
+
+# Calidad del armado. "sin" es el armado que no se califico: la marca es
+# opcional y los partidos viejos no la tienen, asi que se cuenta aparte en vez
+# de suponer que fue normal.
+CALIDADES_ARMADO = ("+", "0", "-", "X", "sin")
+CALIDADES_ARMADO_ATAQUE = ("+", "0", "-", "sin")   # el AX no deja atacar
+NOMBRES_CALIDAD_ARMADO = {"+": "A+", "0": "A0", "-": "A-", "X": "AX", "sin": "sin calificar"}
+
+CLASES_ATAQUE = ("efectivo", "defendido", "fuera")
+TIPOS_RESOLUCION = ("Potente", "Colocado", "Block out", "Sin tipo")
+
+
+def _cero_clases() -> dict:
+    return {clase: 0 for clase in CLASES_ATAQUE}
+
+
+def calcular_calidad_armado(puntos: list[dict]) -> dict:
+    """Cuantos armados de cada calidad hizo cada armador.
+
+    Cuenta los armados reales (con zona y sin el "_X") y la armada mala, que
+    es el AX. El armado que se paso al otro lado ("W_-1") no entra: no tiene
+    zona ni calidad. Devuelve {equipo: {colocador: {calidad: cantidad}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        for bloque in punto["jugadas"]:
+            colocador = bloque.get("colocador")
+            if colocador is None:
+                continue
+            if bloque.get("resultado") == "N":
+                calidad = "X"
+                # la armada mala no tiene equipo_set: es del que tenia la pelota
+                equipo = _equipo_con_la_pelota(punto, bloque)
+            elif bloque.get("zona_colocacion") is not None and bloque.get("armado_valido", True):
+                calidad = bloque.get("calidad_armado") or "sin"
+                equipo = bloque.get("equipo_set")
+            else:
+                continue
+            if equipo is None:
+                continue
+            registro = datos[equipo].setdefault(colocador, {c: 0 for c in CALIDADES_ARMADO})
+            registro[calidad] += 1
+
+    return datos
+
+
+def _equipo_con_la_pelota(punto: dict, buscado: dict) -> str | None:
+    """De quien era la pelota en ese bloque, repasando el punto desde el saque
+    (como defensas_del_punto: el bloque no lo guarda)."""
+    jugadas = punto.get("jugadas") or []
+    if not jugadas or punto.get("equipo_saca") not in EQUIPOS:
+        return None
+    equipo = otro_equipo(punto["equipo_saca"])    # el que recibe el saque
+    if jugadas[0] is buscado:
+        return equipo
+    resultado = jugadas[0]["resultado"]
+    for bloque in jugadas[1:]:
+        if resultado in CAMBIAN_DE_LADO:
+            equipo = otro_equipo(equipo)
+        if bloque is buscado:
+            return equipo
+        resultado = bloque["resultado"]
+    return None
+
+
+def calcular_ataque_por_calidad_armado(puntos: list[dict]) -> dict:
+    """Resultado de los ataques de cada jugador segun la calidad del armado
+    que recibio. Es lo que permite no castigar al atacante por una pelota
+    mala, ni premiar al armador por un punto que hizo el atacante solo.
+
+    Solo entran los ataques que vienen de un armado real (los de primera no).
+    Devuelve {equipo: {atacante: {calidad: {efectivo, defendido, fuera}}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        jugadas = punto["jugadas"]
+        for indice, bloque in enumerate(jugadas):
+            clase = clase_del_ataque(jugadas, indice)
+            if clase is None or bloque.get("zona_colocacion") is None:
+                continue
+            if not bloque.get("armado_valido", True):
+                continue
+            calidad = bloque.get("calidad_armado") or "sin"
+            registro = datos[bloque["equipo_atacante"]].setdefault(
+                bloque["atacante"], {c: _cero_clases() for c in CALIDADES_ARMADO_ATAQUE})
+            registro[calidad][clase] += 1
+
+    return datos
+
+
+def tipo_de_resolucion(bloque: dict) -> str:
+    """Potente / Colocado / Block out / Sin tipo. El block-out se reconoce por
+    el resultado (U): no hace falta marcarlo."""
+    if bloque.get("resultado") == "U":
+        return "Block out"
+    return NOMBRES_TIPO_ATAQUE.get(bloque.get("tipo_ataque"), "Sin tipo")
+
+
+def calcular_ataque_por_tipo(puntos: list[dict]) -> dict:
+    """Ataques de cada jugador por tipo de resolucion y direccion final.
+
+    La direccion se mantiene abierta adentro de cada tipo: lo que se busca es
+    ver patrones, como un atacante que coloca siempre a la misma zona.
+    Devuelve {equipo: {atacante: {tipo: {direccion: {efectivo, defendido, fuera}}}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        jugadas = punto["jugadas"]
+        for indice, bloque in enumerate(jugadas):
+            clase = clase_del_ataque(jugadas, indice)
+            if clase is None or bloque.get("zona_ataque") is None:
+                continue
+            registro = datos[bloque["equipo_atacante"]].setdefault(bloque["atacante"], {})
+            por_direccion = registro.setdefault(tipo_de_resolucion(bloque), {})
+            por_direccion.setdefault(int(bloque["zona_ataque"]), _cero_clases())[clase] += 1
+
+    return datos
+
+
+def _pdf(clases: dict) -> str:
+    return "-".join(str(clases[c]) for c in CLASES_ATAQUE)
+
+
+def _formatear_calidad_armado(calidad: dict) -> list[str]:
+    if not calidad:
+        return ["    (sin armados)"]
+    return [
+        f"  Jugador {jugador}: " + ", ".join(
+            f"{NOMBRES_CALIDAD_ARMADO[c]} {calidad[jugador][c]}" for c in CALIDADES_ARMADO)
+        for jugador in sorted(calidad)
+    ]
+
+
+def _formatear_ataque_por_calidad(por_calidad: dict) -> list[str]:
+    if not por_calidad:
+        return ["    (sin ataques con armado)"]
+    return [
+        f"  Jugador {jugador}: " + ", ".join(
+            f"{NOMBRES_CALIDAD_ARMADO[c]} {_pdf(por_calidad[jugador][c])}"
+            for c in CALIDADES_ARMADO_ATAQUE)
+        for jugador in sorted(por_calidad)
+    ]
+
+
+def _formatear_ataque_por_tipo(por_tipo: dict) -> list[str]:
+    if not por_tipo:
+        return ["    (sin ataques)"]
+    lineas = []
+    for jugador in sorted(por_tipo):
+        for tipo in TIPOS_RESOLUCION:
+            for direccion in ZONAS_DESTINO_ATAQUE:
+                clases = por_tipo[jugador].get(tipo, {}).get(direccion)
+                if clases:
+                    lineas.append(f"  Jugador {jugador} - {tipo} - zona {direccion}: {_pdf(clases)}")
+    return lineas
 
 
 def calcular_estadisticas_bloqueo(puntos: list[dict]) -> dict:
@@ -1984,6 +2254,132 @@ def calcular_estadisticas_bloqueo(puntos: list[dict]) -> dict:
             datos[equipo][jugador] = datos[equipo].get(jugador, 0) + 1
 
     return datos
+
+
+def calcular_toques_de_bloqueo(puntos: list[dict]) -> dict:
+    """Toques de bloqueo que dejan la pelota viva del lado del que bloquea
+    ("BD"), por jugador y separado por equipo.
+
+    Van aparte de los bloqueos punto: no son punto, pero frenan el ataque, y
+    por eso la pelota que se levanta despues no se cuenta como defensa."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        for bloque in punto["jugadas"]:
+            if bloque.get("resultado") != "BD":
+                continue
+            jugador = bloque.get("jugador_bloqueo")
+            equipo = bloque.get("equipo_bloqueo")
+            if jugador is None or equipo is None:
+                continue
+            datos[equipo][jugador] = datos[equipo].get(jugador, 0) + 1
+
+    return datos
+
+
+TIPOS_SAQUE_FUERZA = ("normal", "potencia")
+
+
+def calcular_estadisticas_saque(puntos: list[dict]) -> dict:
+    """Saques por jugador, separados en normales y de potencia (los que llevan
+    el "_P"), con cuantos fueron as y cuantos error.
+
+    Devuelve {equipo: {jugador: {"normal"|"potencia": {saques, as, error}}}}.
+    El error en juego del que saca ("f") no deja saque cargado y no entra."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        jugadas = punto.get("jugadas") or []
+        if not jugadas:
+            continue
+        bloque = jugadas[0]
+        sacador = bloque.get("sacador")
+        resultado = bloque.get("resultado_saque")
+        equipo = punto.get("equipo_saca")
+        if sacador is None or resultado is None or equipo not in EQUIPOS:
+            continue
+        tipo = "potencia" if bloque.get("saque_potencia") else "normal"
+        registro = datos[equipo].setdefault(sacador, {
+            t: {"saques": 0, "as": 0, "error": 0} for t in TIPOS_SAQUE_FUERZA
+        })[tipo]
+        registro["saques"] += 1
+        if resultado == "A":
+            registro["as"] += 1
+        elif resultado == "E":
+            registro["error"] += 1
+
+    return datos
+
+
+TIPOS_LIBRE_TOQUE = (("F", "Libre"), ("T", "Toque"))
+FINALES_LIBRE_TOQUE = ("punto", "usando el bloqueo", "sigue", "malo")
+_FINAL_POR_RESULTADO = {"P": "punto", "U": "usando el bloqueo", "": "sigue", "E": "malo"}
+
+
+def calcular_libres_y_toques(puntos: list[dict]) -> dict:
+    """Libres y toques por jugador y como terminaron.
+
+    No entran en la tabla de ataques (el que hace un libre no esta
+    rematando), pero ahora pueden ser punto o usar el bloqueo, y eso tiene
+    que verse en algun lado.
+
+    Devuelve {equipo: {jugador: {"F"|"T": {final: cantidad}}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+
+    for punto in puntos:
+        for bloque in punto["jugadas"]:
+            resultado = bloque.get("resultado") or ""
+            if resultado not in LIBRE_O_TOQUE:
+                continue
+            atacante = bloque.get("atacante")
+            equipo = bloque.get("equipo_atacante")
+            if atacante is None or equipo is None:
+                continue
+            registro = datos[equipo].setdefault(atacante, {
+                letra: {final: 0 for final in FINALES_LIBRE_TOQUE}
+                for letra, _ in TIPOS_LIBRE_TOQUE
+            })
+            registro[resultado[0]][_FINAL_POR_RESULTADO[resultado[1:]]] += 1
+
+    return datos
+
+
+def _formatear_saques(saque: dict) -> list[str]:
+    if not saque:
+        return ["    (sin saques)"]
+
+    lineas = []
+    for jugador in sorted(saque):
+        tipos = saque[jugador]
+        total = sum(tipos[t]["saques"] for t in TIPOS_SAQUE_FUERZA)
+        lineas.append(f"  Jugador {jugador}: {total} saques")
+        for tipo in TIPOS_SAQUE_FUERZA:
+            d = tipos[tipo]
+            lineas.append(f"      {tipo.capitalize()}: {d['saques']} - as {d['as']}, error {d['error']}")
+    return lineas
+
+
+def _formatear_libres_y_toques(libres: dict) -> list[str]:
+    if not libres:
+        return ["    (sin libres ni toques)"]
+
+    lineas = []
+    for jugador in sorted(libres):
+        lineas.append(f"  Jugador {jugador}:")
+        for letra, nombre in TIPOS_LIBRE_TOQUE:
+            d = libres[jugador][letra]
+            detalle = ", ".join(f"{final} {d[final]}" for final in FINALES_LIBRE_TOQUE)
+            lineas.append(f"      {nombre}: {sum(d.values())} - {detalle}")
+    return lineas
+
+
+def _formatear_toques_de_bloqueo(toques: dict) -> list[str]:
+    if not toques:
+        return ["    (sin toques de bloqueo)"]
+    lineas = [f"  Jugador {jugador}: {toques[jugador]} toques de bloqueo"
+              for jugador in sorted(toques)]
+    lineas.append(f"  Total: {sum(toques.values())} toques de bloqueo")
+    return lineas
 
 
 def _formatear_bloqueos(bloqueo: dict) -> list[str]:
@@ -2135,7 +2531,9 @@ def _formatear_estadisticas_equipo(
     defensa: dict, defensa_por_set: dict,
     armado_por_set: dict, por_armador: dict, por_armador_por_set: dict,
     armadores: set | None, armado_calidad_armador: dict, fases: dict, causas: dict,
-    zona_armador: dict,
+    zona_armador: dict, saque: dict | None = None, libres: dict | None = None,
+    toques_bloqueo: dict | None = None, calidad_armado: dict | None = None,
+    ataque_calidad: dict | None = None, ataque_tipo: dict | None = None,
 ) -> str:
     lineas = [f"--- {nombre} ---"]
 
@@ -2245,6 +2643,9 @@ def _formatear_estadisticas_equipo(
         lineas.append(f"Armado segun calidad de recepcion (armador {jugador}):")
         lineas.extend(_formatear_matriz_calidad_zona(armado_calidad_armador[jugador]))
 
+    lineas.append("Calidad de armado por armador:")
+    lineas.extend(_formatear_calidad_armado(calidad_armado or {}))
+
     lineas.append("Ataques por jugador:")
     if not ataque:
         lineas.append("    (sin ataques)")
@@ -2256,6 +2657,24 @@ def _formatear_estadisticas_equipo(
     # bloquear no es atacar, y hay jugadores que bloquean sin haber atacado
     lineas.append("Bloqueos punto por jugador:")
     lineas.extend(_formatear_bloqueos(bloqueo))
+
+    # el bloqueo que toca y deja la pelota viva de este lado: no es punto,
+    # pero es lo que hace que la pelota siguiente no cuente como defensa
+    # puntos-defendidos-fuera, igual que el detalle por zona de los ataques
+    lineas.append("Ataque segun calidad del armado:")
+    lineas.extend(_formatear_ataque_por_calidad(ataque_calidad or {}))
+
+    lineas.append("Ataque por tipo y direccion:")
+    lineas.extend(_formatear_ataque_por_tipo(ataque_tipo or {}))
+
+    lineas.append("Toques de bloqueo por jugador:")
+    lineas.extend(_formatear_toques_de_bloqueo(toques_bloqueo or {}))
+
+    lineas.append("Libres y toques por jugador:")
+    lineas.extend(_formatear_libres_y_toques(libres or {}))
+
+    lineas.append("Saques por jugador:")
+    lineas.extend(_formatear_saques(saque or {}))
 
     return "\n".join(lineas)
 
@@ -2282,6 +2701,12 @@ def formatear_estadisticas(
     defensa = calcular_estadisticas_defensa(puntos)
     defensa_por_set = calcular_estadisticas_defensa_por_set(puntos)
     bloqueo = calcular_estadisticas_bloqueo(puntos)
+    toques_bloqueo = calcular_toques_de_bloqueo(puntos)
+    saque = calcular_estadisticas_saque(puntos)
+    libres = calcular_libres_y_toques(puntos)
+    calidad_armado = calcular_calidad_armado(puntos)
+    ataque_calidad = calcular_ataque_por_calidad_armado(puntos)
+    ataque_tipo = calcular_ataque_por_tipo(puntos)
     armado_por_set = calcular_estadisticas_armado_por_set(puntos)
     por_armador = calcular_armado_por_armador(puntos)
     por_armador_por_set = calcular_armado_por_armador_por_set(puntos)
@@ -2299,6 +2724,8 @@ def formatear_estadisticas(
             armadores.get(equipo),
             armado_calidad_armador[equipo],
             fases[equipo], causas[equipo], zona_armador[equipo],
+            saque[equipo], libres[equipo], toques_bloqueo[equipo],
+            calidad_armado[equipo], ataque_calidad[equipo], ataque_tipo[equipo],
         )
         for equipo in sorted(EQUIPOS)
     ]

@@ -52,8 +52,11 @@ def buscar_toques(armador: notacion.Armador, objetivo: str,
     dorsales de uno y dos digitos ("/1" y "/13" son las dos prefijo de
     "/13_5") elegir de a una se equivoca, y lo que hay que demostrar es que la
     secuencia EXISTE."""
-    if armador.linea == objetivo:
-        return [] if armador.cerrada else None
+    if armador.cerrada:
+        return [] if armador.linea == objetivo else None
+    # con la linea ya completa todavia puede faltar un toque que no escribe
+    # nada y cierra (el "Sigue" del libre y del toque), asi que se sigue
+    # buscando en vez de dar la linea por imposible
     if not objetivo.startswith(armador.linea):
         return None
 
@@ -129,6 +132,10 @@ def como_se_escribe_hoy(linea: str) -> str:
 # esa linea no se puede armar tocando -- el boton del 0 termina la jugada.
 RE_CERO_QUE_SEGUIA = re.compile(r"^\d+_0/")
 
+# El toque ("9_T_8"): ya no hay boton para cargarlo, ahora es un ataque
+# colocado / finta.
+RE_TOQUE = re.compile(r"\d_T_\d")
+
 
 def usa_notacion_retirada(linea: str) -> bool:
     """Si la linea se escribio con una regla que ya no rige.
@@ -137,7 +144,7 @@ def usa_notacion_retirada(linea: str) -> bool:
     pantalla ofrece la notacion de HOY. El motor igual la sigue leyendo, que es
     lo que hace que los partidos viejos se puedan volver a cargar; eso lo
     cuida test_analisis_voley, no este archivo."""
-    return bool(RE_CERO_QUE_SEGUIA.match(linea))
+    return bool(RE_CERO_QUE_SEGUIA.match(linea) or RE_TOQUE.search(linea))
 
 
 def es_jugada(linea: str, espera: str) -> bool:
@@ -247,9 +254,21 @@ class TestCasosRaros(unittest.TestCase):
 
     def test_punto_en_el_primer_ataque(self):
         armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                             "j9", "ataque", "z1", "punto")
+                             "j9", "ataque", "z1", "sin_forma", "punto")
         self.assertEqual(armador.linea, "1_6_X/7_3/8_4/9_1_P")
         self.assertTrue(armador.cerrada)
+
+    def test_primero_como_ataco_y_despues_que_paso(self):
+        armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
+                             "j9", "ataque", "z1")
+        self.assertEqual(armador.estado, "ATACA_FORMA")
+        armador.tocar("potente")
+        self.assertEqual(armador.estado, "ATACA_RESULTADO")
+        armador.tocar("malla")
+        self.assertEqual(armador.linea, "1_6_X/7_3/8_4/9_1_PO_M")
+        colocado = self.armar("primera", "j9", "z5", "colocado", "punto",
+                              espera="continuacion")
+        self.assertEqual(colocado.linea, "9_A_5_CO_P")
 
     def test_overpass_en_la_recepcion(self):
         self.assertEqual(
@@ -267,7 +286,7 @@ class TestCasosRaros(unittest.TestCase):
 
     def test_armado_que_no_cuenta(self):
         armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                             "sin_armado", "j9", "ataque", "z1", "punto")
+                             "sin_armado", "j9", "ataque", "z1", "sin_forma", "punto")
         self.assertEqual(armador.linea, "1_6_X/7_3/8_4_X/9_1_P")
 
     def test_el_marcador_de_sin_armado_no_se_puede_poner_dos_veces(self):
@@ -280,11 +299,10 @@ class TestCasosRaros(unittest.TestCase):
                        "j9", "libre", "z8").linea,
             "1_6_X/7_3/8_4/9_F_8")
 
-    def test_toque(self):
-        self.assertEqual(
-            self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                       "j9", "toque", "z8").linea,
-            "1_6_X/7_3/8_4/9_T_8")
+    def test_el_toque_ya_no_se_ofrece(self):
+        # ahora es un ataque colocado / finta; el "_T_" viejo se sigue leyendo
+        armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4", "j9")
+        self.assertEqual([o["id"] for o in armador.opciones()], ["ataque", "libre"])
 
     def test_pasada_de_segunda_despues_del_saque(self):
         self.assertEqual(
@@ -300,7 +318,7 @@ class TestCasosRaros(unittest.TestCase):
 
     def test_ataque_de_primera(self):
         self.assertEqual(
-            self.armar("primera", "j9", "z1", "punto", espera="continuacion").linea,
+            self.armar("primera", "j9", "z1", "sin_forma", "punto", espera="continuacion").linea,
             "9_A_1_P")
 
     def test_el_ataque_de_primera_no_existe_en_el_bloque_de_saque(self):
@@ -310,25 +328,25 @@ class TestCasosRaros(unittest.TestCase):
     def test_bloqueo_punto(self):
         self.assertEqual(
             self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                       "j9", "ataque", "z1", "bloqueo_punto", "j6").linea,
+                       "j9", "ataque", "z1", "sin_forma", "bloqueo_punto", "j6").linea,
             "1_6_X/7_3/8_4/9_1_B_6_P")
 
     def test_toque_de_bloqueo(self):
         self.assertEqual(
             self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                       "j9", "ataque", "z1", "bloqueo_usado", "j6").linea,
+                       "j9", "ataque", "z1", "sin_forma", "bloqueo_usado", "j6").linea,
             "1_6_X/7_3/8_4/9_1_U_6")
 
     def test_bloqueo_rejugable(self):
         self.assertEqual(
             self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                       "j9", "ataque", "z1", "bloqueo_rejugable", "j6").linea,
+                       "j9", "ataque", "z1", "sin_forma", "bloqueo_rejugable", "j6").linea,
             "1_6_X/7_3/8_4/9_1_R_6")
 
     def test_malla(self):
         self.assertEqual(
             self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                       "j9", "ataque", "z1", "malla").linea,
+                       "j9", "ataque", "z1", "sin_forma", "malla").linea,
             "1_6_X/7_3/8_4/9_1_M")
 
     def test_el_cero_de_defensa_cierra_el_punto(self):
@@ -353,7 +371,7 @@ class TestCasosRaros(unittest.TestCase):
 
     def test_el_bloqueador_sale_del_equipo_rival(self):
         armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
-                             "j9", "ataque", "z1", "bloqueo_punto")
+                             "j9", "ataque", "z1", "sin_forma", "bloqueo_punto")
         # ataca B, asi que el que bloquea es A
         dorsales = [o["valor"] for o in armador.opciones() if o["tipo"] == "jugador"]
         self.assertEqual(dorsales, self.PLANTELES["A"])

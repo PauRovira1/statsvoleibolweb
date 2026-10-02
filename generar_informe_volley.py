@@ -60,7 +60,9 @@ RE_CAUSAS_HDR = re.compile(r"^Puntos por causa:$")
 RE_CAUSA_ITEM = re.compile(r"^([A-Za-z][A-Za-z0-9 ]+):\s*(\d+)$")
 # el orden y el agrupado tienen que coincidir con analisis_voley.py
 CAUSAS_GANADAS = ["Ataque punto", "Ataque usando el bloqueo",
-                  "Pelota no defendida", "Bloqueo punto", "As de saque"]
+                  "Pelota no defendida", "Bloqueo punto", "As de saque",
+                  "Libre punto", "Toque punto",
+                  "Libre usando el bloqueo", "Toque usando el bloqueo"]
 CAUSAS_ERROR = ["Ataque afuera", "Ataque a la malla", "Error de saque",
                 "Armado malo", "Libre malo", "Toque malo", "Error en juego"]
 CAUSAS_PUNTO = CAUSAS_GANADAS + CAUSAS_ERROR
@@ -122,6 +124,44 @@ RE_AT_FUERA = re.compile(r"^Fuera:\s*(\d+)")
 RE_BLOQUEO_HDR = re.compile(r"^Bloqueos punto por jugador:$")
 RE_JUG_BLOQ = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*bloqueos punto")
 RE_POR_ZONA_HDR = re.compile(r"^Por zona\s+([\w-]+):$")
+
+RE_CALARM_HDR = re.compile(r"^Calidad de armado por armador:$")
+RE_CALARM_ITEM = re.compile(
+    r"^Jugador\s+(\S+):\s*A\+\s+(\d+),\s*A0\s+(\d+),\s*A-\s+(\d+),"
+    r"\s*AX\s+(\d+),\s*sin calificar\s+(\d+)$"
+)
+CALIDADES_ARMADO = ["A+", "A0", "A-", "AX", "Sin calificar"]
+CALIDADES_ARMADO_ATAQUE = ["A+", "A0", "A-", "Sin calificar"]
+
+RE_ATKCAL_HDR = re.compile(r"^Ataque segun calidad del armado:$")
+RE_ATKCAL_ITEM = re.compile(
+    r"^Jugador\s+(\S+):\s*A\+\s+(\d+)-(\d+)-(\d+),\s*A0\s+(\d+)-(\d+)-(\d+),"
+    r"\s*A-\s+(\d+)-(\d+)-(\d+),\s*sin calificar\s+(\d+)-(\d+)-(\d+)$"
+)
+
+RE_ATKTIPO_HDR = re.compile(r"^Ataque por tipo y direccion:$")
+RE_ATKTIPO_ITEM = re.compile(
+    r"^Jugador\s+(\S+)\s+-\s+(Potente|Colocado|Block out|Sin tipo)\s+-\s+zona\s+(\d):"
+    r"\s*(\d+)-(\d+)-(\d+)$"
+)
+TIPOS_RESOLUCION = ["Potente", "Colocado", "Block out", "Sin tipo"]
+DIRECCIONES_ATAQUE = ["1", "5", "6"]
+
+RE_TOQBLOQ_HDR = re.compile(r"^Toques de bloqueo por jugador:$")
+RE_JUG_TOQBLOQ = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*toques de bloqueo")
+
+RE_LIBRES_HDR = re.compile(r"^Libres y toques por jugador:$")
+RE_JUG_LIBRE = re.compile(r"^Jugador\s+(\S+):$")
+RE_LIBRE_ITEM = re.compile(
+    r"^(Libre|Toque):\s*(\d+)\s*-\s*punto\s+(\d+),\s*usando el bloqueo\s+(\d+),"
+    r"\s*sigue\s+(\d+),\s*malo\s+(\d+)$"
+)
+TIPOS_LIBRE = ["Libre", "Toque"]
+
+RE_SAQUES_HDR = re.compile(r"^Saques por jugador:$")
+RE_JUG_SAQ = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*saques$")
+RE_SAQ_ITEM = re.compile(r"^(Normal|Potencia):\s*(\d+)\s*-\s*as\s+(\d+),\s*error\s+(\d+)$")
+TIPOS_SAQUE_FUERZA = ["Normal", "Potencia"]
 RE_HACIA_PDF = re.compile(r"^Hacia zona\s+([\w-]+):\s*(\d+)-(\d+)-(\d+)$")
 
 
@@ -146,6 +186,18 @@ def empty_team_data():
         "ataques_jugador": {},      # "Jugador N" -> {totales,puntos,defendidos,fuera}
         "ataques_detalle": [],      # [(jugador, zona, direccion, p, d, f), ...]
         "bloqueos_jugador": {},     # "Jugador N" -> cantidad de bloqueos punto
+        # el bloqueo que toca y deja la pelota viva de su lado
+        "toques_bloqueo_jugador": {},  # "Jugador N" -> cantidad
+        # "Jugador N" -> {"Libre"|"Toque": {total,punto,usado,sigue,malo}}
+        "libres_jugador": {},
+        # "Jugador N" -> {"Normal"|"Potencia": {saques,as,error}}
+        "saques_jugador": {},
+        # "Jugador N" -> {"A+"|"A0"|"A-"|"AX"|"Sin calificar": cantidad}
+        "calidad_armado_jugador": {},
+        # "Jugador N" -> {"A+"|"A0"|"A-"|"Sin calificar": (puntos, defendidos, fuera)}
+        "ataque_calidad": {},
+        # [(jugador, tipo de resolucion, direccion, puntos, defendidos, fuera)]
+        "ataque_tipo": [],
     }
 
 
@@ -167,6 +219,8 @@ def parse_team_block(lines):
     cur_calidad_arm = None
     cur_player_atk = None
     cur_zona_atk = None
+    cur_player_libre = None
+    cur_player_saq = None
 
     for raw in lines:
         s = raw.strip()
@@ -249,6 +303,26 @@ def parse_team_block(lines):
             continue
         if RE_BLOQUEO_HDR.match(s):
             section = "bloqueos"
+            continue
+        if RE_TOQBLOQ_HDR.match(s):
+            section = "toques_bloqueo"
+            continue
+        if RE_CALARM_HDR.match(s):
+            section = "calidad_armado"
+            continue
+        if RE_ATKCAL_HDR.match(s):
+            section = "ataque_calidad"
+            continue
+        if RE_ATKTIPO_HDR.match(s):
+            section = "ataque_tipo"
+            continue
+        if RE_LIBRES_HDR.match(s):
+            section = "libres"
+            cur_player_libre = None
+            continue
+        if RE_SAQUES_HDR.match(s):
+            section = "saques"
+            cur_player_saq = None
             continue
 
         if section == "fases":
@@ -467,6 +541,65 @@ def parse_team_block(lines):
             if m:
                 # el volcado trae tambien una linea "Total:", que se ignora
                 data["bloqueos_jugador"][f"Jugador {m.group(1)}"] = int(m.group(2))
+            continue
+
+        if section == "calidad_armado":
+            m = RE_CALARM_ITEM.match(s)
+            if m:
+                data["calidad_armado_jugador"][f"Jugador {m.group(1)}"] = {
+                    calidad: int(m.group(i)) for i, calidad in enumerate(CALIDADES_ARMADO, start=2)
+                }
+            continue
+
+        if section == "ataque_calidad":
+            m = RE_ATKCAL_ITEM.match(s)
+            if m:
+                numeros = [int(x) for x in m.groups()[1:]]
+                data["ataque_calidad"][f"Jugador {m.group(1)}"] = {
+                    calidad: tuple(numeros[3 * i:3 * i + 3])
+                    for i, calidad in enumerate(CALIDADES_ARMADO_ATAQUE)
+                }
+            continue
+
+        if section == "ataque_tipo":
+            m = RE_ATKTIPO_ITEM.match(s)
+            if m:
+                data["ataque_tipo"].append((f"Jugador {m.group(1)}", m.group(2), m.group(3),
+                                            int(m.group(4)), int(m.group(5)), int(m.group(6))))
+            continue
+
+        if section == "toques_bloqueo":
+            m = RE_JUG_TOQBLOQ.match(s)
+            if m:
+                data["toques_bloqueo_jugador"][f"Jugador {m.group(1)}"] = int(m.group(2))
+            continue
+
+        if section == "libres":
+            m = RE_JUG_LIBRE.match(s)
+            if m:
+                cur_player_libre = f"Jugador {m.group(1)}"
+                data["libres_jugador"][cur_player_libre] = {}
+                continue
+            m = RE_LIBRE_ITEM.match(s)
+            if m and cur_player_libre:
+                total, punto, usado, sigue, malo = (int(m.group(i)) for i in range(2, 7))
+                data["libres_jugador"][cur_player_libre][m.group(1)] = {
+                    "total": total, "punto": punto, "usado": usado,
+                    "sigue": sigue, "malo": malo,
+                }
+            continue
+
+        if section == "saques":
+            m = RE_JUG_SAQ.match(s)
+            if m:
+                cur_player_saq = f"Jugador {m.group(1)}"
+                data["saques_jugador"][cur_player_saq] = {}
+                continue
+            m = RE_SAQ_ITEM.match(s)
+            if m and cur_player_saq:
+                data["saques_jugador"][cur_player_saq][m.group(1)] = {
+                    "saques": int(m.group(2)), "as": int(m.group(3)), "error": int(m.group(4)),
+                }
             continue
 
     return data
@@ -724,14 +857,16 @@ def poner_nombres(data, nombres):
         return f"{clave} · {nombre}" if nombre else clave
 
     por_jugador = ("armado_armador", "recepciones", "armado_calidad_armador",
-                   "ataques_jugador", "bloqueos_jugador")
+                   "ataques_jugador", "bloqueos_jugador", "toques_bloqueo_jugador",
+                   "libres_jugador", "saques_jugador", "calidad_armado_jugador",
+                   "ataque_calidad")
     for campo in por_jugador:
         data[campo] = {etiqueta(j): v for j, v in data[campo].items()}
     for campo in ("armado_armador_por_set", "recepciones_por_set"):
         data[campo] = {s: {etiqueta(j): v for j, v in por.items()}
                        for s, por in data[campo].items()}
-    data["ataques_detalle"] = [(etiqueta(j),) + tuple(resto)
-                               for j, *resto in data["ataques_detalle"]]
+    for campo in ("ataques_detalle", "ataque_tipo"):
+        data[campo] = [(etiqueta(j),) + tuple(resto) for j, *resto in data[campo]]
     return data
 
 
@@ -759,6 +894,29 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
 
     atk_players = sorted(data["ataques_jugador"].keys(), key=lambda j: -data["ataques_jugador"][j]["totales"])
     bloq_players = sorted(data["bloqueos_jugador"], key=lambda j: (-data["bloqueos_jugador"][j], j))
+    toqbloq_players = sorted(data["toques_bloqueo_jugador"],
+                             key=lambda j: (-data["toques_bloqueo_jugador"][j], j))
+    # solo las combinaciones jugador/tipo que pasaron alguna vez
+    libre_filas = sorted(
+        ((j, tipo) for j, tipos in data["libres_jugador"].items()
+         for tipo in TIPOS_LIBRE if tipos.get(tipo, {}).get("total")),
+        key=lambda jt: (-data["libres_jugador"][jt[0]][jt[1]]["total"], jt[0], jt[1]))
+    calarm_players = sorted(
+        data["calidad_armado_jugador"],
+        key=lambda j: (-sum(data["calidad_armado_jugador"][j].values()), j))
+    # (jugador, calidad) que tuvieron algun ataque, ordenados por jugador
+    atkcal_filas = [(j, cal) for j in sorted(data["ataque_calidad"],
+                                             key=lambda j: -sum(map(sum, data["ataque_calidad"][j].values())))
+                    for cal in CALIDADES_ARMADO_ATAQUE if sum(data["ataque_calidad"][j][cal])]
+    vol_tipo = defaultdict(int)
+    for j, tipo, _dr, p_, d_, f_ in data["ataque_tipo"]:
+        vol_tipo[(j, tipo)] += p_ + d_ + f_
+    atktipo_filas = sorted(vol_tipo, key=lambda jt: (-sum(v for (j, _), v in vol_tipo.items()
+                                                          if j == jt[0]), jt[0],
+                                                     TIPOS_RESOLUCION.index(jt[1])))
+    saq_players = sorted(
+        data["saques_jugador"],
+        key=lambda j: (-sum(t["saques"] for t in data["saques_jugador"][j].values()), j))
 
     zona_vol, dir_vol = defaultdict(int), defaultdict(int)
     for jugador, zona, direccion, p, d, f in data["ataques_detalle"]:
@@ -963,12 +1121,73 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         db.cell(row=i, column=45, value=v)
     BLOQ_LAST = 1 + max(len(bloq_items), 1)
 
+    db["CR1"] = "Jugador"; db["CS1"] = "ToquesBloqueo"
+    toqbloq_items = sorted(data["toques_bloqueo_jugador"].items(), key=lambda kv: (-kv[1], kv[0]))
+    for i, (j, v) in enumerate(toqbloq_items, start=2):
+        db.cell(row=i, column=96, value=j)
+        db.cell(row=i, column=97, value=v)
+    TOQBLOQ_LAST = 1 + max(len(toqbloq_items), 1)
+
+    db["CU1"] = "Jugador"; db["CV1"] = "Tipo"; db["CW1"] = "Total"; db["CX1"] = "Punto"
+    db["CY1"] = "UsandoBloqueo"; db["CZ1"] = "Sigue"; db["DA1"] = "Malo"
+    libre_rows = [(j, tipo, d) for j, tipos in data["libres_jugador"].items()
+                  for tipo, d in tipos.items()]
+    for i, (j, tipo, d) in enumerate(libre_rows, start=2):
+        db.cell(row=i, column=99, value=j)
+        db.cell(row=i, column=100, value=tipo)
+        for columna, clave in ((101, "total"), (102, "punto"), (103, "usado"),
+                               (104, "sigue"), (105, "malo")):
+            db.cell(row=i, column=columna, value=d.get(clave, 0))
+    LIBRE_LAST = 1 + max(len(libre_rows), 1)
+
+    db["DC1"] = "Jugador"; db["DD1"] = "Tipo"; db["DE1"] = "Saques"; db["DF1"] = "As"; db["DG1"] = "Error"
+    saq_rows = [(j, tipo, d) for j, tipos in data["saques_jugador"].items()
+                for tipo, d in tipos.items()]
+    for i, (j, tipo, d) in enumerate(saq_rows, start=2):
+        db.cell(row=i, column=107, value=j)
+        db.cell(row=i, column=108, value=tipo)
+        db.cell(row=i, column=109, value=d.get("saques", 0))
+        db.cell(row=i, column=110, value=d.get("as", 0))
+        db.cell(row=i, column=111, value=d.get("error", 0))
+    SAQ_LAST = 1 + max(len(saq_rows), 1)
+
+    db["DI1"] = "Armador"; db["DJ1"] = "CalidadArmado"; db["DK1"] = "Cantidad"
+    calarm_rows = [(j, cal, cnt) for j, cals in data["calidad_armado_jugador"].items()
+                   for cal, cnt in cals.items()]
+    for i, (j, cal, cnt) in enumerate(calarm_rows, start=2):
+        db.cell(row=i, column=113, value=j)
+        db.cell(row=i, column=114, value=cal)
+        db.cell(row=i, column=115, value=cnt)
+    CALARM_LAST = 1 + max(len(calarm_rows), 1)
+
+    db["DM1"] = "Jugador"; db["DN1"] = "CalidadArmado"; db["DO1"] = "Puntos"
+    db["DP1"] = "Defendidos"; db["DQ1"] = "Fuera"
+    atkcal_rows = [(j, cal, pdf) for j, cals in data["ataque_calidad"].items()
+                   for cal, pdf in cals.items()]
+    for i, (j, cal, (p_, d_, f_)) in enumerate(atkcal_rows, start=2):
+        db.cell(row=i, column=117, value=j)
+        db.cell(row=i, column=118, value=cal)
+        db.cell(row=i, column=119, value=p_)
+        db.cell(row=i, column=120, value=d_)
+        db.cell(row=i, column=121, value=f_)
+    ATKCAL_LAST = 1 + max(len(atkcal_rows), 1)
+
+    db["DS1"] = "Jugador"; db["DT1"] = "TipoResolucion"; db["DU1"] = "Direccion"
+    db["DV1"] = "Puntos"; db["DW1"] = "Defendidos"; db["DX1"] = "Fuera"
+    for i, (j, tipo, dr, p_, d_, f_) in enumerate(data["ataque_tipo"], start=2):
+        for columna, valor in zip(range(123, 129), (j, tipo, dr, p_, d_, f_)):
+            db.cell(row=i, column=columna, value=valor)
+    ATKTIPO_LAST = 1 + max(len(data["ataque_tipo"]), 1)
+
     for col in ["A", "B", "C", "D", "E", "F", "H", "I", "K", "L", "M", "O", "P", "Q", "R", "S", "U", "V", "W", "X", "Y", "Z",
                 "AB", "AC", "AD", "AE", "AF", "AG", "AH",
                 "AJ", "AK", "AL", "AM", "AN", "AO", "AP", "AR", "AS",
                 "AU", "AV", "AW", "AY", "AZ", "BA", "BC", "BD", "BE", "BF",
                 "BH", "BI", "BJ", "BK", "BM", "BN", "BO", "BP", "BQ",
-                "BS", "BT", "BU", "BW", "BX", "BY", "BZ"]:
+                "BS", "BT", "BU", "BW", "BX", "BY", "BZ",
+                "CR", "CS", "CU", "CV", "CW", "CX", "CY", "CZ", "DA",
+                "DC", "DD", "DE", "DF", "DG", "DI", "DJ", "DK",
+                "DM", "DN", "DO", "DP", "DQ", "DS", "DT", "DU", "DV", "DW", "DX"]:
         db.column_dimensions[col].width = 13
 
     D = "Datos_Base!"
@@ -995,6 +1214,14 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
 
     def sumif_cellcrit(value_col, last_row, crit_col, crit_cell):
         return f"SUMIF({D}{rng(crit_col, last_row)},{crit_cell},{D}{rng(value_col, last_row)})"
+
+    def sumifs_crit(value_col, last_row, criterios):
+        """SUMIFS con criterios literales [(columna, valor), ...]."""
+        args = ",".join(f'{D}{rng(c, last_row)},"{v}"' for c, v in criterios)
+        return f"SUMIFS({D}{rng(value_col, last_row)},{args})"
+
+    def tipo_count(criterios):
+        return "+".join(sumifs_crit(c, ATKTIPO_LAST, criterios) for c in ("DV", "DW", "DX"))
 
     def atk_count_terms(zona=None, direccion=None, jugador_cell=None):
         """Suma Puntos+Defendidos+Fuera del detalle filtrando por zona y/o direccion
@@ -1109,7 +1336,8 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
             "K3: el resto del rally. \"Saque\": el punto se definio en el saque (as o error), "
             "sin llegar a la recepcion. \"Sin fase\": error en juego antes de cualquier jugada. "
             "Un punto es \"ganado\" si lo cerro una accion de quien se lo llevo (ataque punto, "
-            "usar el bloqueo, bloqueo o as) y \"por error\" si lo cerro una falla del que lo "
+            "usar el bloqueo, bloqueo, as, o un libre o toque que fue punto) y \"por error\" "
+            "si lo cerro una falla del que lo "
             "perdio. El mismo punto es error del rival en los hechos y error propio en los "
             "recibidos. Los hechos suman el marcador propio y los recibidos el del rival.",
         )
@@ -1203,8 +1431,10 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
     row = set_nota(ws, row, 1, 10,
         "Defender es levantar un ATAQUE del rival. La CALIDAD 0 es la pelota que el "
         "defensor tocó pero no pudo jugar: el punto termina ahí y es del que atacó. "
-        "No entran acá los balones que vienen de un libre, un toque, un overpass ni "
-        "un bloqueo rejugable: en ninguno de esos casos hubo un ataque que defender.")
+        "No entran acá los balones que vienen de un libre, un toque, un overpass, "
+        "un bloqueo rejugable ni un toque de bloqueo (el bloqueador tocó el ataque y "
+        "la pelota siguió de su lado): en ninguno de esos casos hubo un ataque que "
+        "defender, o ya lo frenó el bloqueo.")
 
     row = set_subtitle(ws, row, 1, 10, "Defensas por jugador")
     row = set_headers(ws, row, 1, CABEZA_DEF)
@@ -1590,7 +1820,42 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         "si existen armados en jugadas de transición (tras defensa) no asociados a una recepción.",
     )
 
-    widths = {"A": 12}
+    row += 1
+    # La calidad del armado es opcional al cargar: lo que no se califico va
+    # aparte y los porcentajes se calculan solo sobre lo calificado.
+    row = set_subtitle(ws, row, 1, 11, "Calidad del armado por armador")
+    if not any(sum(v.values()) - v.get("Sin calificar", 0)
+               for v in data["calidad_armado_jugador"].values()):
+        row = set_footnote(ws, row, 1, 11,
+                           "Sin armados calificados en el volcado (A+ / A0 / A- / AX).")
+    else:
+        row = set_headers(ws, row, 1, ["Armador", "A+", "A0", "A-", "AX", "Calificados",
+                                       "% A+", "% A0", "% A-", "% AX", "Sin calificar"])
+        ca_first = row
+        for p in calarm_players:
+            r = row
+            vals = [p] + ["=" + sumifs_dos("DK", CALARM_LAST, "DI", p, "DJ", cal)
+                          for cal in ("A+", "A0", "A-", "AX")]
+            vals.append(f"=SUM(B{r}:E{r})")
+            vals += [f'=IFERROR({c}{r}/F{r},"")' for c in "BCDE"]
+            vals.append("=" + sumifs_dos("DK", CALARM_LAST, "DI", p, "DJ", "Sin calificar"))
+            row = set_data_row(ws, row, 1, vals,
+                               formats=[None] + ["0"] * 5 + [PCT_FMT] * 4 + ["0"])
+        tc = row
+        row = set_data_row(
+            ws, row, 1,
+            ["TOTAL"] + [f"=SUM({c}{ca_first}:{c}{tc - 1})" for c in "BCDEF"]
+            + [f'=IFERROR({c}{tc}/F{tc},"")' for c in "BCDE"]
+            + [f"=SUM(K{ca_first}:K{tc - 1})"],
+            formats=[None] + ["0"] * 5 + [PCT_FMT] * 4 + ["0"], total=True)
+        row = set_footnote(
+            ws, row, 1, 11,
+            "A+: el atacante queda en situación favorable. A0: condiciones normales. "
+            "A-: pelota difícil, previsible o fuera de sistema. AX: error de armado "
+            "(armada mala, punto del rival). Los % son sobre los armados calificados.",
+        )
+
+    widths = {"A": 22 if calarm_players else 12}
     for i, z in enumerate(matriz_arm_zonas):
         widths[col_letter(2 + i)] = 10
     widths[col_letter(2 + n_mz)] = 10
@@ -1655,6 +1920,58 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         )
     row += 1
 
+    # El bloqueador toca el ataque y la pelota sigue de su lado. No es punto,
+    # pero frena el ataque: por eso la pelota siguiente no cuenta como defensa.
+    row = set_subtitle(ws, row, 1, 3, "Toques de bloqueo por jugador (sigue el punto)")
+    if not toqbloq_players:
+        row = set_footnote(ws, row, 1, 3, "Sin toques de bloqueo registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Jugador", "Toques de bloqueo", "% del total del equipo"])
+        tq_first = row
+        for p in toqbloq_players:
+            r = row
+            b_ = sumif("CS", TOQBLOQ_LAST, "CR", p)
+            c_ = f"=IFERROR(B{r}/B${tq_first + len(toqbloq_players)},\"\")"
+            row = set_data_row(ws, row, 1, [p, "=" + b_, c_], formats=[None, "0", PCT_FMT])
+        tt = row
+        row = set_data_row(
+            ws, row, 1,
+            ["TOTAL", f"=SUM(B{tq_first}:B{tt - 1})", f"=IFERROR(B{tt}/B{tt},\"\")"],
+            formats=[None, "0", PCT_FMT], total=True,
+        )
+    row += 1
+
+    # Libres y toques: no son ataques (el que los hace no remata), pero pueden
+    # ser punto, usar el bloqueo, seguir o salir mal.
+    row = set_subtitle(ws, row, 1, 8, "Libres y toques por jugador")
+    if not libre_filas:
+        row = set_footnote(ws, row, 1, 8, "Sin libres ni toques registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Jugador", "Tipo", "Total", "Punto", "Usando el bloqueo",
+                                       "Sigue", "Malo", "% Punto"])
+        lt_first = row
+        for p, tipo in libre_filas:
+            r = row
+            vals = [p, tipo]
+            for col in ("CW", "CX", "CY", "CZ", "DA"):
+                vals.append("=" + sumifs_dos(col, LIBRE_LAST, "CU", p, "CV", tipo))
+            vals.append(f"=IFERROR((D{r}+E{r})/C{r},\"\")")
+            row = set_data_row(ws, row, 1, vals,
+                               formats=[None, None, "0", "0", "0", "0", "0", PCT_FMT])
+        tl = row
+        row = set_data_row(
+            ws, row, 1,
+            ["TOTAL", ""] + [f"=SUM({c}{lt_first}:{c}{tl - 1})" for c in "CDEFG"]
+            + [f"=IFERROR((D{tl}+E{tl})/C{tl},\"\")"],
+            formats=[None, None, "0", "0", "0", "0", "0", PCT_FMT], total=True,
+        )
+        row = set_footnote(
+            ws, row, 1, 8,
+            "\"% Punto\" cuenta los que fueron punto directo y los que usaron el bloqueo. "
+            "\"Sigue\": la pelota paso y el punto continuo. \"Malo\": se erro, punto del rival.",
+        )
+    row += 1
+
     ncols2 = 1 + n_az + 3
     row = set_subtitle(ws, row, 1, ncols2, "Ataques por jugador y zona de origen")
     row = set_headers(ws, row, 1, ["Jugador"] + [f"Zona {z}" for z in atk_zonas] +
@@ -1688,6 +2005,47 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         "Nota: \"Sin zona registrada\" son ataques cuyo total declarado por jugador no tiene zona/dirección "
         "asociada en el detalle del volcado original (ver advertencias del script en consola).",
     )
+
+    row += 1
+    # Separar por calidad del armado evita castigar al atacante por una pelota
+    # mala, o premiarlo por una que le dejaron servida.
+    row = set_subtitle(ws, row, 1, 9, "Ataque según calidad del armado")
+    if not atkcal_filas:
+        row = set_footnote(ws, row, 1, 9, "Sin ataques con armado registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Calidad"] + ["Ataques", "Puntos", "Defendidos", "Fuera", "% Punto", "% Fuera", "Eficacia"])
+        eq_first = row
+        for cal in CALIDADES_ARMADO_ATAQUE:
+            r = row
+            vals = [cal] + [f"=C{r}+D{r}+E{r}"] + [
+                "=" + sumif(col, ATKCAL_LAST, "DN", cal) for col in ("DO", "DP", "DQ")]
+            vals += [f'=IFERROR(C{r}/B{r},"")', f'=IFERROR(E{r}/B{r},"")',
+                     f'=IFERROR((C{r}-E{r})/B{r},"")']
+            row = set_data_row(ws, row, 1, vals, formats=[None] + ["0"] * 4 + [PCT_FMT] * 3)
+        te = row
+        row = set_data_row(
+            ws, row, 1,
+            ["TOTAL"] + [f"=SUM({c}{eq_first}:{c}{te - 1})" for c in "BCDE"]
+            + [f'=IFERROR(C{te}/B{te},"")', f'=IFERROR(E{te}/B{te},"")',
+               f'=IFERROR((C{te}-E{te})/B{te},"")'],
+            formats=[None] + ["0"] * 4 + [PCT_FMT] * 3, total=True)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 9, "Ataque según calidad del armado, por jugador")
+        row = set_headers(ws, row, 1, ["Jugador", "Calidad"] + ["Ataques", "Puntos", "Defendidos", "Fuera", "% Punto", "% Fuera", "Eficacia"])
+        for p, cal in atkcal_filas:
+            r = row
+            vals = [p, cal, f"=D{r}+E{r}+F{r}"] + [
+                "=" + sumifs_dos(col, ATKCAL_LAST, "DM", p, "DN", cal) for col in ("DO", "DP", "DQ")]
+            vals += [f'=IFERROR(D{r}/C{r},"")', f'=IFERROR(F{r}/C{r},"")',
+                     f'=IFERROR((D{r}-F{r})/C{r},"")']
+            row = set_data_row(ws, row, 1, vals,
+                               formats=[None, None] + ["0"] * 4 + [PCT_FMT] * 3)
+        row = set_footnote(
+            ws, row, 1, 9,
+            "Solo ataques que vienen de un armado (los de primera no). Eficacia = "
+            "(puntos − fuera) / ataques; \"fuera\" incluye afuera, malla y bloqueado.",
+        )
 
     widths = {"A": 13}
     for i in range(n_az):
@@ -1780,14 +2138,153 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         "volcado; ver Hoja \"Ataque jugador\" para los ataques sin zona/dirección y advertencias del script.",
     )
 
-    widths = {"A": 13, "B": 10, "C": 11, "D": 10, "E": 11, "F": 10, "G": 10, "H": 10}
+    row += 1
+    # Tipo de resolucion (potente / colocado / block-out) cruzado con la
+    # direccion final: es donde se ve si un atacante es demasiado predecible.
+    row = set_subtitle(ws, row, 1, 8, "Resultado por tipo de resolución")
+    if not atktipo_filas:
+        row = set_footnote(ws, row, 1, 8, "Sin ataques con dirección registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Tipo"] + ["Ataques", "Puntos", "Defendidos", "Fuera", "% Punto", "% Fuera", "Eficacia"])
+        tr_first = row
+        for tipo in TIPOS_RESOLUCION:
+            r = row
+            vals = [tipo, f"=C{r}+D{r}+E{r}"] + [
+                "=" + sumif(col, ATKTIPO_LAST, "DT", tipo) for col in ("DV", "DW", "DX")]
+            vals += [f'=IFERROR(C{r}/B{r},"")', f'=IFERROR(E{r}/B{r},"")',
+                     f'=IFERROR((C{r}-E{r})/B{r},"")']
+            row = set_data_row(ws, row, 1, vals, formats=[None] + ["0"] * 4 + [PCT_FMT] * 3)
+        tt = row
+        row = set_data_row(
+            ws, row, 1,
+            ["TOTAL"] + [f"=SUM({c}{tr_first}:{c}{tt - 1})" for c in "BCDE"]
+            + [f'=IFERROR(C{tt}/B{tt},"")', f'=IFERROR(E{tt}/B{tt},"")',
+               f'=IFERROR((C{tt}-E{tt})/B{tt},"")'],
+            formats=[None] + ["0"] * 4 + [PCT_FMT] * 3, total=True)
+        row += 1
+
+        cab_dir = [f"Zona {d}" for d in DIRECCIONES_ATAQUE]
+        cab_pct = [f"% Zona {d}" for d in DIRECCIONES_ATAQUE]
+        row = set_subtitle(ws, row, 1, 8, "Tipo de resolución × dirección (equipo)")
+        row = set_headers(ws, row, 1, ["Tipo"] + cab_dir + ["Total"] + cab_pct)
+        for tipo in TIPOS_RESOLUCION:
+            r = row
+            vals = [tipo] + ["=" + tipo_count([("DT", tipo), ("DU", d)]) for d in DIRECCIONES_ATAQUE]
+            vals.append(f"=SUM(B{r}:D{r})")
+            vals += [f'=IFERROR({c}{r}/E{r},"")' for c in "BCD"]
+            row = set_data_row(ws, row, 1, vals, formats=[None] + ["0"] * 4 + [PCT_FMT] * 3)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 10, "Dirección por jugador y tipo de resolución")
+        row = set_headers(ws, row, 1, ["Jugador", "Tipo"] + cab_dir + ["Total"] + cab_pct
+                          + ["% dirección más usada"])
+        for p, tipo in atktipo_filas:
+            r = row
+            vals = [p, tipo] + ["=" + tipo_count([("DS", p), ("DT", tipo), ("DU", d)])
+                                for d in DIRECCIONES_ATAQUE]
+            vals.append(f"=SUM(C{r}:E{r})")
+            vals += [f'=IFERROR({c}{r}/F{r},"")' for c in "CDE"]
+            vals.append(f'=IFERROR(MAX(C{r}:E{r})/F{r},"")')
+            row = set_data_row(ws, row, 1, vals,
+                               formats=[None, None] + ["0"] * 4 + [PCT_FMT] * 4)
+        row = set_footnote(
+            ws, row, 1, 10,
+            "\"% dirección más usada\" alto con varios ataques = patrón previsible. "
+            "El block-out se toma del resultado; \"Sin tipo\" son los ataques que se "
+            "cargaron sin marcar potente o colocado.",
+        )
+
+    widths = {"A": 22, "B": 10, "C": 11, "D": 10, "E": 11, "F": 10, "G": 10, "H": 10}
     autosize(ws, widths)
+    ws.freeze_panes = "A4"
+
+    # ------------------------------------------------------------------
+    # Hoja: Saque (normal y de potencia)
+    # ------------------------------------------------------------------
+    ws = new_sheet(wb, "Saque")
+    row = 1
+    row = set_title(ws, row, 1, 9, f"SAQUE — {equipo_name.upper()}")
+    row = set_nota(ws, row, 1, 9,
+        "Los saques de POTENCIA son los que se cargaron con el \"_P\" (ej. 5_1_6_P_A). "
+        "\"En juego\": el saque paso y el rival recibio. El error en juego del que "
+        "saca (\"f\") no deja saque cargado y no entra.")
+
+    row = set_subtitle(ws, row, 1, 9, "Saques por jugador")
+    if not saq_players:
+        row = set_footnote(ws, row, 1, 9, "Sin saques registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Jugador", "Saques", "As", "Errores", "En juego",
+                                       "% As", "% Error", "Potencia", "% Potencia"])
+        sq_first = row
+        for p in saq_players:
+            r = row
+            row = set_data_row(ws, row, 1, [
+                p,
+                "=" + sumif("DE", SAQ_LAST, "DC", p),
+                "=" + sumif("DF", SAQ_LAST, "DC", p),
+                "=" + sumif("DG", SAQ_LAST, "DC", p),
+                f"=B{r}-C{r}-D{r}",
+                f"=IFERROR(C{r}/B{r},\"\")",
+                f"=IFERROR(D{r}/B{r},\"\")",
+                "=" + sumifs_dos("DE", SAQ_LAST, "DC", p, "DD", "Potencia"),
+                f"=IFERROR(H{r}/B{r},\"\")",
+            ], formats=[None, "0", "0", "0", "0", PCT_FMT, PCT_FMT, "0", PCT_FMT])
+        ts = row
+        row = set_data_row(ws, row, 1, [
+            "TOTAL",
+            f"=SUM(B{sq_first}:B{ts - 1})", f"=SUM(C{sq_first}:C{ts - 1})",
+            f"=SUM(D{sq_first}:D{ts - 1})", f"=SUM(E{sq_first}:E{ts - 1})",
+            f"=IFERROR(C{ts}/B{ts},\"\")", f"=IFERROR(D{ts}/B{ts},\"\")",
+            f"=SUM(H{sq_first}:H{ts - 1})", f"=IFERROR(H{ts}/B{ts},\"\")",
+        ], formats=[None, "0", "0", "0", "0", PCT_FMT, PCT_FMT, "0", PCT_FMT], total=True)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 8, "Saque normal vs. potencia (equipo)")
+        row = set_headers(ws, row, 1, ["Tipo", "Saques", "% de los saques", "As", "Errores",
+                                       "En juego", "% As", "% Error"])
+        tipo_first = row
+        fila_total = tipo_first + len(TIPOS_SAQUE_FUERZA)
+        for tipo in TIPOS_SAQUE_FUERZA:
+            r = row
+            row = set_data_row(ws, row, 1, [
+                tipo,
+                "=" + sumif("DE", SAQ_LAST, "DD", tipo),
+                f"=IFERROR(B{r}/B${fila_total},\"\")",
+                "=" + sumif("DF", SAQ_LAST, "DD", tipo),
+                "=" + sumif("DG", SAQ_LAST, "DD", tipo),
+                f"=B{r}-D{r}-E{r}",
+                f"=IFERROR(D{r}/B{r},\"\")",
+                f"=IFERROR(E{r}/B{r},\"\")",
+            ], formats=[None, "0", PCT_FMT, "0", "0", "0", PCT_FMT, PCT_FMT])
+        tt = row
+        row = set_data_row(ws, row, 1, [
+            "TOTAL", f"=SUM(B{tipo_first}:B{tt - 1})", f"=IFERROR(B{tt}/B{tt},\"\")",
+            f"=SUM(D{tipo_first}:D{tt - 1})", f"=SUM(E{tipo_first}:E{tt - 1})",
+            f"=SUM(F{tipo_first}:F{tt - 1})",
+            f"=IFERROR(D{tt}/B{tt},\"\")", f"=IFERROR(E{tt}/B{tt},\"\")",
+        ], formats=[None, "0", PCT_FMT, "0", "0", "0", PCT_FMT, PCT_FMT], total=True)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 9, "Normal vs. potencia por jugador")
+        row = set_headers(ws, row, 1, ["Jugador", "Normal", "As normal", "Error normal",
+                                       "Potencia", "As potencia", "Error potencia",
+                                       "% As potencia", "% Error potencia"])
+        for p in saq_players:
+            r = row
+            vals = [p]
+            for tipo in TIPOS_SAQUE_FUERZA:
+                for col in ("DE", "DF", "DG"):
+                    vals.append("=" + sumifs_dos(col, SAQ_LAST, "DC", p, "DD", tipo))
+            vals += [f"=IFERROR(F{r}/E{r},\"\")", f"=IFERROR(G{r}/E{r},\"\")"]
+            row = set_data_row(ws, row, 1, vals,
+                               formats=[None] + ["0"] * 6 + [PCT_FMT, PCT_FMT])
+    autosize(ws, {"A": 22, "B": 11, "C": 12, "D": 12, "E": 11, "F": 12, "G": 13, "H": 13, "I": 15})
     ws.freeze_panes = "A4"
 
     # ------------------------------------------------------------------
     # Orden de hojas y hoja oculta
     # ------------------------------------------------------------------
-    order = ["Partido", "Fases y armador", "Recepción", "Defensa", "Armado",
+    order = ["Partido", "Fases y armador", "Saque", "Recepción", "Defensa", "Armado",
              "Ataque jugador", "Zona y dirección", "Datos_Base"]
     wb._sheets = [wb[name] for name in order]
     wb["Datos_Base"].sheet_state = "hidden"

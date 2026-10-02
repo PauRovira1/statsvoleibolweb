@@ -7,7 +7,7 @@ guardado, que esta vacio, y las tablas se ven en blanco. Esta copia guarda los
 numeros para poder mirar el informe desde el telefono.
 
 Se evalua solo la gramatica que genera generar_informe_volley.py (SUM, SUMIF,
-SUMIFS, IFERROR, SUMPRODUCT y aritmetica entre celdas). Si aparece algo que no
+SUMIFS, IFERROR, SUMPRODUCT, MAX y aritmetica entre celdas). Si aparece algo que no
 entiende, deja la formula tal cual en vez de inventar un numero: es preferible
 una celda que se ve rara a una cifra equivocada en un informe.
 """
@@ -127,6 +127,8 @@ class Evaluador:
         expresion = self._a_python(formula, hoja_actual)
         entorno = {
             "SUM": lambda *args: sum(_numero(v) for a in args
+                                     for v in (a if isinstance(a, list) else [a])),
+            "MAX": lambda *args: max(_numero(v) for a in args
                                      for v in (a if isinstance(a, list) else [a])),
             "SUMIF": self._sumif,
             "SUMIFS": self._sumifs,
