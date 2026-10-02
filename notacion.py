@@ -108,12 +108,25 @@ PASOS = {
             {"id": "c3", "etiqueta": "3", "texto": "_3", "siguiente": "ARMA_JUGADOR"},
             {"id": "c2", "etiqueta": "2", "texto": "_2", "siguiente": "ARMA_JUGADOR"},
             {"id": "c1", "etiqueta": "1", "texto": "_1", "siguiente": "ARMA_JUGADOR"},
-            {"id": "c0", "etiqueta": "0", "texto": "_0", "siguiente": "ARMA_JUGADOR"},
+            # El 0 quiere decir dos cosas distintas segun donde se toque, asi
+            # que son dos botones y en pantalla solo se ve el que corresponde:
+            #
+            #   RECIBIENDO UN SAQUE: es un pase malo que igual se juega. El
+            #   punto sigue, hay armado y ataque despues.
+            #
+            #   DEFENDIENDO UN ATAQUE: la pelota se toco pero no se pudo
+            #   jugar. El punto termina ahi y es del que la mando.
+            #
+            # Los dos escriben "_0": la diferencia la da el lugar, y el motor
+            # ya la sabe. Antes el de defensa tenia un gemelo que seguia el
+            # punto; se retiro, pero el motor lo sigue leyendo por escrito
+            # (Y_0/armado/ataque) para que los partidos ya guardados carguen.
+            {"id": "c0", "etiqueta": "0", "texto": "_0",
+             "siguiente": "ARMA_JUGADOR", "solo": "saque"},
+            {"id": "c0_cae", "etiqueta": "0 - no se pudo jugar", "texto": "_0",
+             "cierra": True, "tono": "mal", "solo": "continuacion"},
             {"id": "overpass", "etiqueta": "se fue al otro lado", "texto": "_-1",
              "cierra": True},
-            # el saque no la tiene: no hay patron X_Z_Z_X/Y_-2 en el motor
-            {"id": "perdida", "etiqueta": "defensa perdida", "texto": "_-2",
-             "cierra": True, "tono": "mal", "solo": "continuacion"},
         ],
     },
 
@@ -167,15 +180,28 @@ PASOS = {
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_FONDO),
         "prefijo": "_", "siguiente": "ATACA_RESULTADO",
     },
+    # El libre y el toque tambien se pueden errar. Va como una opcion mas del
+    # paso de la zona y no como un paso aparte porque es lo que pasa en la
+    # cancha: la pelota se fue, no fue "a una zona y ademas mal". La zona que
+    # se escribe es el 0, el mismo que ya quiere decir "salio mal" en la
+    # recepcion y en la defensa.
     "LIBRE_ZONA": {
         "titulo": "Hacia que zona va el libre",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_TODAS),
         "prefijo": "_F_", "cierra": True,
+        "opciones": [
+            {"id": "libre_malo", "etiqueta": "salio mal - punto del rival",
+             "texto": "_F_0", "cierra": True, "tono": "mal"},
+        ],
     },
     "TOQUE_ZONA": {
         "titulo": "Hacia que zona toca",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_TODAS),
         "prefijo": "_T_", "cierra": True,
+        "opciones": [
+            {"id": "toque_malo", "etiqueta": "salio mal - punto del rival",
+             "texto": "_T_0", "cierra": True, "tono": "mal"},
+        ],
     },
     "ATACA_RESULTADO": {
         "titulo": "Como termino el ataque",

@@ -482,9 +482,11 @@ nuevo**. Son dos comandos:
 
 `--subir` arma el zip y lo manda a la funcion `voley`. Tarda unos segundos.
 
-**El partido que este cargado no se pierde.** La sesion vive en S3, no en la
-memoria de la funcion, asi que el primer pedido despues de la actualizacion la
-vuelve a leer de ahi. Se puede actualizar en medio de un partido.
+**El partido que este cargado no se pierde.** El partido en curso vive en la
+pantalla que lo esta cargando (en el navegador, no en la funcion ni en S3): en
+cada pedido manda sus lineas y el servidor las corre por el motor. Actualizar
+la funcion, o que el pedido caiga en otra instancia, no le hace nada. Se puede
+actualizar en medio de un partido.
 
 No hay que tocar CloudFront (no cachea nada), ni el rol, ni la URL, ni S3.
 
@@ -510,6 +512,37 @@ insertada** -> pestaña **JSON**:
 
 Nombre: `voley-deploy`. Es solo sobre esta funcion y solo para actualizar el
 codigo: no puede borrarla ni cambiarle la configuracion.
+
+#### Si sigue fallando despues de agregar la politica
+
+Mira el final del mensaje de error. Si dice **"because no permissions boundary
+allows"**, la politica de arriba esta bien puesta pero no alcanza:
+
+```
+User: arn:aws:iam::...:user/pau-cli is not authorized to perform:
+lambda:UpdateFunctionCode ... because no permissions boundary allows
+the lambda:UpdateFunctionCode action
+```
+
+El usuario tiene un **limite de permisos** *(permissions boundary)*, que es un
+techo: lo que puede hacer es lo que permiten sus politicas **Y** lo que permite
+el limite, las dos cosas a la vez. Agregarle una politica que permita Lambda no
+sirve si el limite no lo permite tambien.
+
+Se arregla en la consola, **con la cuenta root o con un usuario
+administrador**: `pau-cli` no se puede tocar a si mismo (ni siquiera puede
+leerse, da `AccessDenied ... iam:GetUser`).
+
+IAM -> **Usuarios** -> `pau-cli` -> pestaña **Permisos** -> seccion **Límite de
+permisos** *(Permissions boundary)*. Ahi hay dos caminos:
+
+| Que hacer | Cuando |
+|---|---|
+| **Eliminar límite de permisos** *(Remove boundary)* | Si el limite se puso sin querer, que es lo comun: aparece en el asistente de crear usuario y es facil dejarlo puesto. Sacarlo no abre la cuenta: el usuario sigue limitado a lo que dicen sus politicas, o sea S3 de este bucket y esta funcion. |
+| Editar la politica del limite y agregarle `lambda:UpdateFunctionCode` y `lambda:GetFunction` | Si el limite lo pusiste a proposito y lo queres conservar. Ojo que la politica del limite puede estar compartida con otros usuarios. |
+
+Mientras tanto, para no quedarte sin poder actualizar, esta el camino de abajo:
+subir el `.zip` a mano no pide ningun permiso de IAM.
 
 ### Si preferis no usar el CLI
 

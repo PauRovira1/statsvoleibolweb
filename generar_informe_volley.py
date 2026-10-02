@@ -57,12 +57,20 @@ ZONAS_ARMADOR = [1, 2, 3, 4, 5, 6]
 COLUMNAS_ZARM = ["K1", "K2", "K3", "As", "Error de saque", "Sin fase"]
 
 RE_CAUSAS_HDR = re.compile(r"^Puntos por causa:$")
-RE_CAUSA_ITEM = re.compile(r"^([A-Za-z][A-Za-z ]+):\s*(\d+)$")
+RE_CAUSA_ITEM = re.compile(r"^([A-Za-z][A-Za-z0-9 ]+):\s*(\d+)$")
 # el orden y el agrupado tienen que coincidir con analisis_voley.py
-CAUSAS_GANADAS = ["Ataque punto", "Ataque usando el bloqueo", "Bloqueo punto", "As de saque"]
+CAUSAS_GANADAS = ["Ataque punto", "Ataque usando el bloqueo",
+                  "Pelota no defendida", "Bloqueo punto", "As de saque"]
 CAUSAS_ERROR = ["Ataque afuera", "Ataque a la malla", "Error de saque",
-                "Armado malo", "Defensa perdida", "Error en juego"]
+                "Armado malo", "Libre malo", "Toque malo", "Error en juego"]
 CAUSAS_PUNTO = CAUSAS_GANADAS + CAUSAS_ERROR
+# Como se llamaba antes cada causa en los volcados ya guardados. Sin esto los
+# partidos viejos perderian esos puntos al releerse: el nombre no estaria en
+# CAUSAS_PUNTO y la linea se descartaria sin decir nada.
+# Los volcados viejos traen esta causa con otros nombres. Se traducen al leer
+# para que un partido guardado hace meses siga cuadrando con uno de hoy.
+CAUSAS_RENOMBRADAS = {"Defensa perdida": "Pelota no defendida",
+                      "Defensa 0": "Pelota no defendida"}
 
 RE_ARMADO_ZONA_HDR = re.compile(r"^Armado por zona:$")
 RE_ARMADO_ZONA_SET_HDR = re.compile(r"^Armado por zona \(set (\d+)\):$")
@@ -71,6 +79,13 @@ RE_ZONA_ITEM = re.compile(r"^Zona\s+([\w-]+):\s*(\d+)\s*\([\d.]+%\)$")
 RE_ARMADOR_HDR = re.compile(r"^Armado por armador:$")
 RE_ARMADOR_SET_HDR = re.compile(r"^Armado por armador \(set (\d+)\):$")
 RE_JUG_ARM = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*armados$")
+
+RE_DEF_HDR = re.compile(r"^Defensas por jugador:$")
+RE_DEF_SET_HDR = re.compile(r"^Defensas por jugador \(set (\d+)\):$")
+RE_JUG_DEF = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*defensas$")
+# Fila de los volcados viejos: esas pelotas ahora son defensas de calidad 0 y
+# se suman ahi al leerlas.
+RE_PERDIDA = re.compile(r"^Defensa perdida:\s*(\d+)\s*\([\d.]+%\)$")
 
 RE_RECEP_HDR = re.compile(r"^Recepciones por jugador:$")
 RE_RECEP_SET_HDR = re.compile(r"^Recepciones por jugador \(set (\d+)\):$")
@@ -119,6 +134,10 @@ def empty_team_data():
         "armado_zona_por_set": {},  # set(int) -> {zona: cantidad}
         "armado_armador": {},       # "Jugador N" -> {zona: cantidad}
         "armado_armador_por_set": {},  # set(int) -> {"Jugador N": {zona: cantidad}}
+        # defender un ataque no es recibir un saque: van aparte, aunque las
+        # calidades sean las mismas
+        "defensas": {},             # "Jugador N" -> {cal3..cal0, pase}
+        "defensas_por_set": {},     # set(int) -> {"Jugador N": {...}}
         "recepciones": {},          # "Jugador N" -> {cal3,cal2,cal1,cal0,pase}
         "recepciones_por_set": {},  # set(int) -> {"Jugador N": {cal3,...,pase}}
         "recepcion_tipo_saque": {}, # "1 a 1" -> {tipo, cal3,cal2,cal1,cal0,pase}
@@ -134,6 +153,8 @@ def parse_team_block(lines):
     data = empty_team_data()
     section = None
     cur_player_rec = None
+    cur_player_def = None
+    cur_set_def = None
     cur_set_rec = None
     cur_set_arm = None
     cur_set_armador = None
@@ -187,6 +208,17 @@ def parse_team_block(lines):
         if RE_RECTIPO_HDR.match(s):
             section = "recepcion_tipo_saque"
             cur_tipo_saque = None
+            continue
+        m = RE_DEF_SET_HDR.match(s)
+        if m:
+            section = "defensas_set"
+            cur_set_def = int(m.group(1))
+            data["defensas_por_set"].setdefault(cur_set_def, {})
+            cur_player_def = None
+            continue
+        if RE_DEF_HDR.match(s):
+            section = "defensas"
+            cur_player_def = None
             continue
         m = RE_RECEP_SET_HDR.match(s)
         if m:
@@ -254,8 +286,9 @@ def parse_team_block(lines):
                 continue
             m = RE_CAUSA_ITEM.match(s)
             # los subtotales "Ganados"/"Por error" se recalculan, no se leen
-            if m and cur_clase_fase and m.group(1) in CAUSAS_PUNTO:
-                data["causas"][cur_clase_fase][m.group(1)] = int(m.group(2))
+            causa = CAUSAS_RENOMBRADAS.get(m.group(1), m.group(1)) if m else None
+            if m and cur_clase_fase and causa in CAUSAS_PUNTO:
+                data["causas"][cur_clase_fase][causa] = int(m.group(2))
             continue
 
         if section == "armado_zona":
@@ -283,6 +316,34 @@ def parse_team_block(lines):
                 destino[cur_armador][m.group(1)] = int(m.group(2))
             # la linea "Otros jugadores: N armados" se ignora a proposito: se
             # recalcula en el Excel como total del equipo menos los armadores
+            continue
+
+        if section in ("defensas", "defensas_set"):
+            destino = (data["defensas"] if section == "defensas"
+                       else data["defensas_por_set"][cur_set_def])
+            m = RE_JUG_DEF.match(s)
+            if m:
+                cur_player_def = f"Jugador {m.group(1)}"
+                destino[cur_player_def] = {"cal3": 0, "cal2": 0, "cal1": 0,
+                                           "cal0": 0, "pase": 0}
+                continue
+            if not cur_player_def:
+                continue
+            m = RE_PERDIDA.match(s)
+            if m:
+                destino[cur_player_def]["cal0"] += int(m.group(1))
+                continue
+            m = RE_PASE.match(s)
+            if m:
+                destino[cur_player_def]["pase"] = int(m.group(1))
+                continue
+            m = RE_CALIDAD_CNT.match(s)
+            if m:
+                # suma y no asigna: en un volcado viejo la fila "Defensa
+                # perdida" viene ANTES que "Calidad 0" y las dos van al mismo
+                # lugar; asignando, la segunda pisaba a la primera
+                destino[cur_player_def][f"cal{m.group(1)}"] += int(m.group(2))
+                continue
             continue
 
         if section == "recepciones":
@@ -563,6 +624,20 @@ def set_subtitle(ws, row, col_start, col_end, text):
     return row + 1
 
 
+def set_nota(ws, row, col_start, col_end, texto):
+    """Una linea de texto explicando la hoja, debajo del titulo.
+
+    Va adentro del archivo y no en un instructivo aparte: el Excel se manda
+    por WhatsApp y se abre en el celular de alguien que no tiene el resto a
+    mano."""
+    ws.merge_cells(start_row=row, start_column=col_start, end_row=row, end_column=col_end)
+    c = ws.cell(row=row, column=col_start, value=texto)
+    c.font = Font(name="Calibri", size=9, italic=True, color="5B6B7E")
+    c.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+    ws.row_dimensions[row].height = 30
+    return row + 2
+
+
 def set_headers(ws, row, col_start, headers):
     for i, h in enumerate(headers):
         c = ws.cell(row=row, column=col_start + i, value=h)
@@ -669,6 +744,9 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
     rec_players = sorted(data["recepciones"].keys(),
                           key=lambda j: -sum(v for k, v in data["recepciones"][j].items()))
 
+    def_players = sorted(data["defensas"].keys(),
+                         key=lambda j: -sum(v for k, v in data["defensas"][j].items()))
+
     armz_zonas = sorted(data["armado_zona"].keys(), key=lambda z: -data["armado_zona"][z])
     arm_sets = sorted(data["armado_zona_por_set"])
     armadores = sorted(data["armado_armador"],
@@ -726,6 +804,32 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         db.cell(row=i, column=41, value=v["cal0"])
         db.cell(row=i, column=42, value=v["pase"])
     RECSET_LAST = 1 + max(len(recset_rows), 1)
+
+    # Defensa: las mismas columnas que recepcion. La pelota que no se llega a
+    # jugar es una defensa de calidad 0 y se cuenta en Cal0.
+    db["CB1"] = "Jugador"; db["CC1"] = "Cal3"; db["CD1"] = "Cal2"; db["CE1"] = "Cal1"
+    db["CF1"] = "Cal0"; db["CG1"] = "Pase"
+    def_items = list(data["defensas"].items())
+    for i, (j, v) in enumerate(def_items, start=2):
+        for columna, clave in ((80, None), (81, "cal3"), (82, "cal2"), (83, "cal1"),
+                               (84, "cal0"), (85, "pase")):
+            db.cell(row=i, column=columna, value=j if clave is None else v.get(clave, 0))
+    DEF_LAST = 1 + max(len(def_items), 1)
+
+    db["CJ1"] = "Set"; db["CK1"] = "Jugador"; db["CL1"] = "Cal3"; db["CM1"] = "Cal2"
+    db["CN1"] = "Cal1"; db["CO1"] = "Cal0"; db["CP1"] = "Pase"
+    defset_rows = [
+        (numero, jugador, v)
+        for numero in sorted(data["defensas_por_set"])
+        for jugador, v in data["defensas_por_set"][numero].items()
+    ]
+    for i, (numero, jugador, v) in enumerate(defset_rows, start=2):
+        db.cell(row=i, column=88, value=numero)
+        db.cell(row=i, column=89, value=jugador)
+        for columna, clave in ((90, "cal3"), (91, "cal2"), (92, "cal1"),
+                               (93, "cal0"), (94, "pase")):
+            db.cell(row=i, column=columna, value=v.get(clave, 0))
+    DEFSET_LAST = 1 + max(len(defset_rows), 1)
 
     db["AB1"] = "TipoSaque"; db["AC1"] = "ParZonas"; db["AD1"] = "Cal3"; db["AE1"] = "Cal2"
     db["AF1"] = "Cal1"; db["AG1"] = "Cal0"; db["AH1"] = "Pase"
@@ -1082,11 +1186,92 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
     ws.freeze_panes = "A4"
 
     # ------------------------------------------------------------------
+    # Hoja: Defensa
+    #
+    # Va aparte de Recepcion a proposito. Son la misma habilidad en dos
+    # momentos distintos, pero no se entrenan igual y mezclarlas taparia a
+    # alguien que recibe bien y defiende mal (o al reves).
+    # ------------------------------------------------------------------
+    CABEZA_DEF = ["Jugador", "Defensas", "% del total", "Calidad 3", "Calidad 2",
+                  "Calidad 1", "Calidad 0", "Pase al otro lado",
+                  "% Positiva (cal. 2+3)", "% Perfecta (cal. 3)"]
+    FORMATOS_DEF = [None, "0", PCT_FMT, "0", "0", "0", "0", "0", PCT_FMT, PCT_FMT]
+
+    ws = new_sheet(wb, "Defensa")
+    row = 1
+    row = set_title(ws, row, 1, 10, f"DEFENSA — {equipo_name.upper()}")
+    row = set_nota(ws, row, 1, 10,
+        "Defender es levantar un ATAQUE del rival. La CALIDAD 0 es la pelota que el "
+        "defensor tocó pero no pudo jugar: el punto termina ahí y es del que atacó. "
+        "No entran acá los balones que vienen de un libre, un toque, un overpass ni "
+        "un bloqueo rejugable: en ninguno de esos casos hubo un ataque que defender.")
+
+    row = set_subtitle(ws, row, 1, 10, "Defensas por jugador")
+    row = set_headers(ws, row, 1, CABEZA_DEF)
+    def_first = row
+    for p_ in def_players:
+        r = row
+        valores = [p_, f"=SUM(D{r}:H{r})",
+                   f"=IFERROR(B{r}/B${def_first + len(def_players)},\"\")"]
+        for col in ("CC", "CD", "CE", "CF", "CG"):
+            valores.append("=" + sumif(col, DEF_LAST, "CB", p_))
+        valores.append(f"=IFERROR((D{r}+E{r})/B{r},\"\")")
+        valores.append(f"=IFERROR(D{r}/B{r},\"\")")
+        row = set_data_row(ws, row, 1, valores, formats=FORMATOS_DEF)
+    td = row
+    row = set_data_row(
+        ws, row, 1,
+        ["TOTAL", f"=SUM(B{def_first}:B{td - 1})", f"=IFERROR(B{td}/B{td},\"\")"]
+        + [f"=SUM({c}{def_first}:{c}{td - 1})" for c in "DEFGH"]
+        + [f"=IFERROR((D{td}+E{td})/B{td},\"\")", f"=IFERROR(D{td}/B{td},\"\")"],
+        formats=FORMATOS_DEF, total=True,
+    )
+    row += 1
+
+    sets_def = sorted(data["defensas_por_set"])
+    if len(sets_def) > 1:
+        for numero in sets_def:
+            jugadores_set = [p_ for p_ in def_players if p_ in data["defensas_por_set"][numero]]
+            if not jugadores_set:
+                continue
+            row = set_subtitle(ws, row, 1, 10, f"Defensas por jugador — Set {numero}")
+            row = set_headers(ws, row, 1, CABEZA_DEF)
+            set_first = row
+            for p_ in jugadores_set:
+                r = row
+                valores = [p_, f"=SUM(D{r}:H{r})",
+                           f"=IFERROR(B{r}/B${set_first + len(jugadores_set)},\"\")"]
+                for col in ("CL", "CM", "CN", "CO", "CP"):
+                    valores.append(f"=SUMIFS({D}{rng(col, DEFSET_LAST)},"
+                                   f"{D}{rng('CJ', DEFSET_LAST)},{numero},"
+                                   f"{D}{rng('CK', DEFSET_LAST)},\"{p_}\")")
+                valores.append(f"=IFERROR((D{r}+E{r})/B{r},\"\")")
+                valores.append(f"=IFERROR(D{r}/B{r},\"\")")
+                row = set_data_row(ws, row, 1, valores, formats=FORMATOS_DEF)
+            ts = row
+            row = set_data_row(
+                ws, row, 1,
+                ["TOTAL", f"=SUM(B{set_first}:B{ts - 1})", f"=IFERROR(B{ts}/B{ts},\"\")"]
+                + [f"=SUM({c}{set_first}:{c}{ts - 1})" for c in "DEFGH"]
+                + [f"=IFERROR((D{ts}+E{ts})/B{ts},\"\")", f"=IFERROR(D{ts}/B{ts},\"\")"],
+                formats=FORMATOS_DEF, total=True,
+            )
+            row += 1
+
+    autosize(ws, {"A": 22})
+    ws.freeze_panes = "A4"
+
+    # ------------------------------------------------------------------
     # Hoja 2: Recepcion
     # ------------------------------------------------------------------
     ws = new_sheet(wb, "Recepción")
     row = 1
     row = set_title(ws, row, 1, 10, f"RECEPCIÓN — {equipo_name.upper()}")
+    row = set_nota(ws, row, 1, 10,
+        "Recibir es levantar el SAQUE del rival. Acá la CALIDAD 0 NO termina el punto: "
+        "es una recepción negativa, un pase malo que igual se juega y que le complica "
+        "el armado al equipo. Es la diferencia con la hoja de Defensa, donde el 0 sí "
+        "cierra el punto.")
 
     row = set_subtitle(ws, row, 1, 10, "Recepciones por jugador")
     row = set_headers(ws, row, 1, [
@@ -1602,7 +1787,8 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
     # ------------------------------------------------------------------
     # Orden de hojas y hoja oculta
     # ------------------------------------------------------------------
-    order = ["Partido", "Fases y armador", "Recepción", "Armado", "Ataque jugador", "Zona y dirección", "Datos_Base"]
+    order = ["Partido", "Fases y armador", "Recepción", "Defensa", "Armado",
+             "Ataque jugador", "Zona y dirección", "Datos_Base"]
     wb._sheets = [wb[name] for name in order]
     wb["Datos_Base"].sheet_state = "hidden"
     wb.active = 0

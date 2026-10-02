@@ -1,12 +1,114 @@
 /* Estilos de la interfaz web. La paleta y las variables son las mismas de
    siempre: las pestanas nuevas tienen que parecer la misma aplicacion.
    Regla de oro del celular: la pagina no se mueve para el costado nunca; lo
-   que es ancho (tablas, matrices) se desplaza solo, dentro de su caja. */
+   que es ancho (tablas, matrices) se desplaza solo, dentro de su caja.
+
+   DOS TEMAS. Todo color vive aca arriba: abajo no queda ninguno escrito a
+   mano, porque el que se escapa es el que despues se ve negro sobre negro en
+   el otro tema. Las unicas excepciones, a proposito, son los que van ENCIMA
+   del acento (que es azul en los dos) y los dos azules de las cabeceras de la
+   planilla, que son los colores del Excel de verdad.
+
+   Cual manda: <html data-tema="claro|oscuro">, que lo escribe la pagina. Con
+   la preferencia en "auto" la escribe copiando la del navegador
+   (prefers-color-scheme) y sigue sus cambios en vivo; con el boton puesto,
+   escribe la elegida. Asi la hoja tiene una sola lista de cada tema en vez de
+   una por media query y otra por atributo, que es como se desincronizan. */
 :root{
   --fondo:#11151c; --panel:#181e28; --panel2:#1f2733; --borde:#2b3543;
   --texto:#e8edf4; --suave:#93a1b5; --acento:#4aa3ff; --ok:#3ecf8e;
   --error:#ff6b6b; --aviso:#ffc857;
+
+  --fuerte:#fff;            /* el texto de lo resaltado (hover, pestana activa) */
+  --sobre-acento:#08121f;   /* lo que va escrito arriba del acento */
+  --sobre-aviso:#1a1200;
+  --anillo:#4aa3ff33;       /* el halo del foco */
+  --sombra:#000;
+  --acento-suave:#4aa3ff22; /* fondo de la fila del saque */
+  --acento-tenue:#4aa3ff1a; /* fondo del partido elegido */
+  --realce:#ffffff12;       /* fila de totales */
+  --realce-suave:#ffffff08; /* fila con el mouse encima */
+  --linea-tenue:#ffffff10;  /* los renglones de la planilla */
+  --pastilla:#0003;         /* fondo de las etiquetas de posicion */
+  --pastilla-fuerte:#0004;
+
+  --ok-borde:#2f6b52;   --ok-fondo:#14251e;    --ok-texto:#bff0da;
+  --error-borde:#7a3030; --error-fondo:#2a1618; --error-texto:#ffc9c9;
+  --error-tenue:#ff9d9d;
+  --aviso-fondo:#2a2415; --aviso-borde:#6b5a2a;
+
+  --degradado:#1b2a3d;        /* el lado oscuro del turno y del boton de la guia */
+  --degradado-hover:#22364e;
+  --codigo:#9ecbff;
+  --pre:#cfd9e6;
+  --hoja-encabezado:#24303f;
+  --hoja-total:#242c38;
+
+  --cancha:#141a23;              /* la zona vacia */
+  --cancha-numero:#48566a;
+  --cancha-viva:#16283c;         /* la zona que se puede tocar */
+  --cancha-viva-hover:#1c334c;
+  --jugador-vivo:#1b2f47;
+  --jugador-vivo-hover:#24405e;
+
+  --marca-si:#8fe0bb;
+  --marca-no:#5d6b7d;
+  --pos-libero:#c792ea;
+  --pos-opuesto:#ff9f6b;
+
   --mono:ui-monospace,"Cascadia Mono","Consolas",monospace;
+  /* para los controles nativos: desplegables, calendarios, barras de scroll.
+     Sin esto quedan blancos en medio de una pagina oscura. */
+  color-scheme:dark;
+}
+
+/* El claro. Misma lista, otros valores. Los tres colores de estado (ok,
+   error, aviso) se oscurecen bastante: sobre blanco, el verde y el amarillo
+   que funcionan sobre negro quedan ilegibles. */
+:root[data-tema="claro"]{
+  --fondo:#f2f5f9; --panel:#ffffff; --panel2:#eaeef4; --borde:#d2dae5;
+  --texto:#16202e; --suave:#5b6a7e; --acento:#1668cc; --ok:#10805a;
+  --error:#c62f2f; --aviso:#8a6300;
+
+  --fuerte:#0b1220;
+  --sobre-acento:#ffffff;
+  --sobre-aviso:#fffaf0;
+  --anillo:#1668cc33;
+  --sombra:#aab5c6;
+  --acento-suave:#1668cc1f;
+  --acento-tenue:#1668cc14;
+  --realce:#00000010;
+  --realce-suave:#00000008;
+  --linea-tenue:#00000014;
+  --pastilla:#0000000d;
+  --pastilla-fuerte:#00000014;
+
+  --ok-borde:#8ac7ae;   --ok-fondo:#e8f6f0;    --ok-texto:#0b6446;
+  --error-borde:#e4a7a7; --error-fondo:#fdedec; --error-texto:#97201f;
+  --error-tenue:#b02e2e;
+  --aviso-fondo:#fdf3dc; --aviso-borde:#dcc07d;
+
+  --degradado:#dfeafa;
+  --degradado-hover:#cfe0f8;
+  --codigo:#0b4f9e;
+  --pre:#2b3746;
+  --hoja-encabezado:#dfe5ee;
+  --hoja-total:#e9edf3;
+
+  --cancha:#e7ebf2;
+  /* mas oscuro que el equivalente del tema oscuro: son numeros de 10px y
+     sobre fondo claro el gris del otro tema daba 2.4:1, ilegible al sol */
+  --cancha-numero:#6e7b8c;
+  --cancha-viva:#d9e8fd;
+  --cancha-viva-hover:#c4dafa;
+  --jugador-vivo:#d5e6fb;
+  --jugador-vivo-hover:#bdd6f7;
+
+  --marca-si:#0b6446;
+  --marca-no:#93a0b0;
+  --pos-libero:#7a34b8;
+  --pos-opuesto:#b04d0d;
+  color-scheme:light;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--fondo);color:var(--texto);
@@ -16,19 +118,26 @@ body{margin:0;background:var(--fondo);color:var(--texto);
 /* ---------- pestanas ---------- */
 .pestanas{position:sticky;top:0;z-index:5;display:flex;gap:6px;
           background:var(--fondo);padding:4px 0 10px;
-          box-shadow:0 6px 10px -8px #000}
+          box-shadow:0 6px 10px -8px var(--sombra)}
 .pestana{flex:1;background:var(--panel);border:1px solid var(--borde);
          color:var(--suave);border-radius:10px;padding:10px 8px;font-size:14px;
          font-weight:600;cursor:pointer;display:flex;justify-content:center;
          align-items:center;gap:6px}
 .pestana:hover{color:var(--texto)}
-.pestana.activa{background:var(--panel2);border-color:var(--acento);color:#fff}
+.pestana.activa{background:var(--panel2);border-color:var(--acento);color:var(--fuerte)}
 /* el contador avisa que hay un partido a medio cargar aunque estes mirando
    otra pestana: es lo unico que se puede perder */
-.chip{background:var(--acento);color:#08121f;font-size:11px;font-weight:700;
+.chip{background:var(--acento);color:var(--sobre-acento);font-size:11px;font-weight:700;
       border-radius:999px;padding:1px 7px;min-width:20px;
       font-variant-numeric:tabular-nums}
 .vista[hidden]{display:none}
+/* El boton del tema va en la barra de pestanas porque es lo unico que se ve
+   desde las cuatro. No crece como ellas: es cuadrado y del ancho de su icono,
+   asi no les roba lugar al titulo en un celular. */
+.tema{flex:0 0 auto;width:42px;padding:10px 0;font-size:16px;line-height:1;
+      background:var(--panel);border:1px solid var(--borde);color:var(--suave)}
+.tema:hover{color:var(--texto);border-color:var(--suave)}
+@media (max-width:460px){.tema{width:36px;font-size:15px}}
 
 /* ---------- candado de la pantalla de carga ----------
    Con el candado puesto la pantalla de la cancha no se dibuja: se esconde
@@ -44,7 +153,7 @@ body{margin:0;background:var(--fondo);color:var(--texto);
 .candado .fila{margin-top:0}
 #clave{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--borde);
        border-radius:10px;color:var(--texto);padding:13px 15px;font:16px/1.2 var(--mono)}
-#clave:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+#clave:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px var(--anillo)}
 .candado .mensaje{margin-top:12px;min-height:0}
 
 /* ---------- marcador ---------- */
@@ -62,7 +171,7 @@ body{margin:0;background:var(--fondo);color:var(--texto);
 .centro .set{font-size:20px;font-weight:700;color:var(--texto)}
 
 /* ---------- turno ---------- */
-.turno{margin-top:12px;background:linear-gradient(90deg,#1b2a3d,#181e28);
+.turno{margin-top:12px;background:linear-gradient(90deg,var(--degradado),var(--panel));
        border:1px solid var(--borde);border-left:4px solid var(--acento);
        border-radius:10px;padding:12px 16px;font-size:clamp(16px,3.4vw,21px);
        font-weight:600}
@@ -73,16 +182,16 @@ body{margin:0;background:var(--fondo);color:var(--texto);
 #linea{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--borde);
        border-radius:10px;color:var(--texto);padding:14px 16px;
        font:18px/1.2 var(--mono)}
-#linea:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+#linea:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px var(--anillo)}
 button{background:var(--panel2);border:1px solid var(--borde);color:var(--texto);
        border-radius:10px;padding:11px 15px;font-size:14px;cursor:pointer}
-button:hover{border-color:var(--acento);color:#fff}
-button.primario{background:var(--acento);border-color:var(--acento);color:#08121f;
+button:hover{border-color:var(--acento);color:var(--fuerte)}
+button.primario{background:var(--acento);border-color:var(--acento);color:var(--sobre-acento);
                 font-weight:700;padding-left:22px;padding-right:22px}
 /* Reiniciar y Borrar: lo unico que no se puede deshacer. Se distinguen en
    reposo, no solo al pasar por encima, porque en el celular no hay hover y
    ademas quedan al lado de los botones de descargar. */
-button.peligro{border-color:#7a3030;color:#ff9d9d}
+button.peligro{border-color:var(--error-borde);color:var(--error-tenue)}
 button.peligro:hover{border-color:var(--error);color:var(--error)}
 button.tenue{color:var(--suave)}
 button[disabled]{opacity:.4;cursor:default}
@@ -91,15 +200,15 @@ button[disabled]:hover{border-color:var(--borde);color:var(--suave)}
 .mensaje{margin-top:10px;padding:11px 14px;border-radius:10px;font-size:14px;
          font-family:var(--mono);white-space:pre-wrap;word-break:break-word;
          border:1px solid var(--borde);background:var(--panel);min-height:20px}
-.mensaje.ok{border-color:#2f6b52;background:#14251e;color:#bff0da}
-.mensaje.error{border-color:#7a3030;background:#2a1618;color:#ffc9c9}
+.mensaje.ok{border-color:var(--ok-borde);background:var(--ok-fondo);color:var(--ok-texto)}
+.mensaje.error{border-color:var(--error-borde);background:var(--error-fondo);color:var(--error-texto)}
 
 /* El aviso de que el servidor no esta guardando en ningun lado. Usa el
    amarillo de aviso y no el rojo de error: la aplicacion funciona, lo que no
    hay es garantia de que el partido siga estando manana. */
 .avisoServidor{margin:0 0 10px;padding:10px 13px;border-radius:10px;
                font-size:13px;border:1px solid var(--aviso);
-               background:#2a2415;color:var(--aviso)}
+               background:var(--aviso-fondo);color:var(--aviso)}
 
 .atajos{margin-top:10px;display:flex;flex-wrap:wrap;gap:7px}
 .atajos button{padding:8px 12px;font-size:13px}
@@ -115,6 +224,42 @@ button[disabled]:hover{border-color:var(--borde);color:var(--suave)}
 /* ---------- paneles ---------- */
 .columnas{margin-top:14px;display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:820px){.columnas{grid-template-columns:1fr}}
+/* Varias cosas que van una arriba de la otra dentro de una sola celda de la
+   grilla. Sin esto, lo que se agrega al final de .columnas cae en la columna
+   de al lado en vez de debajo del panel al que pertenece. */
+.apilado{display:grid;gap:14px;align-content:start;min-width:0}
+
+/* El enlace a la guia. Es lo unico de esta pantalla que lleva a otra pagina,
+   asi que no se disfraza de panel: se ve como un boton grande y con el acento
+   de la aplicacion, para que se encuentre sin buscarlo. */
+.guia{display:flex;align-items:center;gap:12px;text-decoration:none;
+      background:linear-gradient(90deg,var(--degradado),var(--panel));
+      border:1px solid var(--acento);border-left:4px solid var(--acento);
+      border-radius:12px;padding:13px 15px;color:var(--texto)}
+.guia:hover{background:linear-gradient(90deg,var(--degradado-hover),var(--panel2))}
+.guia .icono{font-size:22px;line-height:1;flex:none}
+.guia .que{min-width:0}
+.guia strong{display:block;font-size:14.5px}
+.guia small{display:block;color:var(--suave);font-size:12.5px;margin-top:2px}
+.guia .flecha{margin-left:auto;color:var(--acento);font-size:18px;flex:none}
+
+/* ---------- partidos guardados en privado ----------
+   El contador va pegado al titulo y no al borde: el espacio libre del summary
+   se lo lleva su margen automatico, asi la flecha de abrir/cerrar queda donde
+   esta en todos los demas paneles. */
+.panel > summary .chip{margin-right:auto}
+.privado{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+         padding:9px 0;border-bottom:1px solid var(--borde)}
+.privado:last-child{border-bottom:none}
+.privado .que{flex:1;min-width:140px}
+.privado .nombre{font-weight:600;font-size:13.5px}
+.privado .cuando{color:var(--suave);font-size:12px;margin-top:2px;
+                 font-variant-numeric:tabular-nums}
+.privado button{padding:7px 11px;font-size:12.5px}
+/* En el celular no entran el nombre y los dos botones en el mismo renglon:
+   el nombre se lleva la fila entera y los botones quedan juntos abajo, en vez
+   de "Borrar" solo colgando en el renglon siguiente. */
+@media(max-width:520px){.privado .que{flex:1 0 100%}}
 .panel{background:var(--panel);border:1px solid var(--borde);border-radius:12px;
        overflow:hidden;min-width:0}
 .panel > summary{padding:11px 15px;cursor:pointer;font-weight:600;font-size:14px;
@@ -128,7 +273,7 @@ button[disabled]:hover{border-color:var(--borde);color:var(--suave)}
 .cuerpo{padding:12px 15px;max-height:340px;overflow:auto}
 .cuerpo.alto{max-height:min(52vh,460px)}
 .cuerpo.libre{max-height:none}
-.cuerpo pre{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;color:#cfd9e6}
+.cuerpo pre{margin:0;font:12px/1.5 var(--mono);white-space:pre-wrap;color:var(--pre)}
 
 .jugada{padding:7px 0;border-bottom:1px solid var(--borde);font-size:12.5px}
 .jugada:last-child{border-bottom:none}
@@ -142,10 +287,10 @@ th{color:var(--suave);font-weight:600;font-size:11px;text-transform:uppercase;
    letter-spacing:.05em}
 .zona{font-family:var(--mono)}
 .armador{color:var(--aviso);font-weight:700}
-.saque{background:#4aa3ff22;box-shadow:inset 3px 0 0 var(--acento)}
+.saque{background:var(--acento-suave);box-shadow:inset 3px 0 0 var(--acento)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 th.num{text-align:right}
-tbody tr.total td{background:#ffffff12;font-weight:700}
+tbody tr.total td{background:var(--realce);font-weight:700}
 
 /* Toda tabla ancha vive dentro de una de estas: el que se mueve para el
    costado es el envoltorio, nunca la pagina. */
@@ -154,7 +299,7 @@ tbody tr.total td{background:#ffffff12;font-weight:700}
 .tabla + .nota{margin-top:2px}
 
 .ayuda code{background:var(--panel2);border:1px solid var(--borde);border-radius:5px;
-            padding:1px 5px;font:12px var(--mono);color:#9ecbff}
+            padding:1px 5px;font:12px var(--mono);color:var(--codigo)}
 .ayuda dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:6px 12px;
           align-items:baseline}
 .ayuda dt{margin:0}
@@ -169,13 +314,13 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .enlace{background:var(--panel2);border:1px solid var(--borde);color:var(--texto);
         border-radius:10px;padding:11px 15px;font-size:14px;text-decoration:none;
         display:inline-block}
-.enlace:hover{border-color:var(--acento);color:#fff}
+.enlace:hover{border-color:var(--acento);color:var(--fuerte)}
 
 /* ---------- pestana Partidos ---------- */
 .buscador{margin-top:2px}
 #busca{width:100%;background:var(--panel2);border:1px solid var(--borde);
        border-radius:10px;color:var(--texto);padding:13px 15px;font-size:16px}
-#busca:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+#busca:focus{outline:none;border-color:var(--acento);box-shadow:0 0 0 3px var(--anillo)}
 .filtros{margin-top:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:end}
 .filtros label{color:var(--suave);font-size:11px;text-transform:uppercase;
                letter-spacing:.05em;display:flex;flex-direction:column;gap:4px}
@@ -191,8 +336,8 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
          border-bottom:1px solid var(--borde);border-radius:0;padding:10px 4px;
          display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;
          align-items:center;color:var(--texto)}
-.partido:hover{background:#ffffff08;border-color:var(--borde)}
-.partido.elegido{background:#4aa3ff1a;box-shadow:inset 3px 0 0 var(--acento)}
+.partido:hover{background:var(--realce-suave);border-color:var(--borde)}
+.partido.elegido{background:var(--acento-tenue);box-shadow:inset 3px 0 0 var(--acento)}
 .partido .fecha{font-family:var(--mono);font-size:12.5px;color:var(--suave);
                 white-space:nowrap}
 .partido .equipos{font-weight:600;min-width:0}
@@ -208,8 +353,8 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 }
 .marca{border:1px solid var(--borde);border-radius:6px;padding:0 5px;
        font-size:11px;font-family:var(--mono)}
-.marca.si{border-color:#2f6b52;color:#8fe0bb}
-.marca.no{color:#5d6b7d}
+.marca.si{border-color:var(--ok-borde);color:var(--marca-si)}
+.marca.no{color:var(--marca-no)}
 
 .detalle{margin-top:14px}
 .cabeza{background:var(--panel);border:1px solid var(--borde);border-radius:12px;
@@ -221,7 +366,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
          padding:3px 9px;font-variant-numeric:tabular-nums;font-size:13px}
 .selector{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 0}
 .selector button.activa{background:var(--acento);border-color:var(--acento);
-                        color:#08121f;font-weight:700}
+                        color:var(--sobre-acento);font-weight:700}
 .selector button{padding:8px 12px;font-size:13px}
 
 /* ---------- el .xlsx, que es el plato principal del partido ---------- */
@@ -239,14 +384,14 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
                -webkit-overflow-scrolling:touch}
 
 .hoja table{font-size:12.5px;min-width:max-content}
-.hoja td{white-space:nowrap;border-bottom:1px solid #ffffff10}
+.hoja td{white-space:nowrap;border-bottom:1px solid var(--linea-tenue)}
 .hoja tr.titulo td{background:#1F3864;color:#fff;font-weight:700;
                    text-transform:uppercase;letter-spacing:.04em}
 .hoja tr.subtitulo td{background:#2E5C9A;color:#fff;font-weight:700}
-.hoja tr.encabezado td{background:#24303f;color:var(--suave);font-size:11px;
+.hoja tr.encabezado td{background:var(--hoja-encabezado);color:var(--suave);font-size:11px;
                        text-transform:uppercase;letter-spacing:.04em;
                        white-space:normal;min-width:70px}
-.hoja tr.total td{background:#242c38;font-weight:700}
+.hoja tr.total td{background:var(--hoja-total);font-weight:700}
 .hoja tr.nota td{color:var(--suave);font-size:11.5px;font-style:italic;
                  white-space:normal}
 .hoja tr.vacia td{height:8px;border:none}
@@ -258,12 +403,12 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
    navegable una hoja como Datos_Base. Va con fondo opaco para que las
    columnas no se le transparenten por debajo. */
 .hoja td:first-child{position:sticky;left:0;z-index:1;background:var(--panel)}
-.hoja tr.encabezado td:first-child{background:#24303f}
-.hoja tr.total td:first-child{background:#242c38}
+.hoja tr.encabezado td:first-child{background:var(--hoja-encabezado)}
+.hoja tr.total td:first-child{background:var(--hoja-total)}
 .hoja tr.combinada td{position:static}
 
 /* ---------- pestana Jugadores (maqueta) ---------- */
-.aviso{margin:2px 0 12px;background:#2a2416;border:1px solid #6b5a2a;
+.aviso{margin:2px 0 12px;background:var(--aviso-fondo);border:1px solid var(--aviso-borde);
        color:var(--aviso);border-radius:10px;padding:10px 14px;font-size:13px}
 .ficha{background:var(--panel);border:1px solid var(--borde);border-radius:12px;
        padding:14px 16px;display:flex;flex-wrap:wrap;gap:14px;align-items:center}
@@ -309,7 +454,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
    su mitad, no moviendola. */
 .modos{margin-top:12px;display:flex;gap:6px}
 .modos button{flex:1;padding:10px 8px;font-size:14px;font-weight:600}
-.modos button.activa{background:var(--panel2);border-color:var(--acento);color:#fff}
+.modos button.activa{background:var(--panel2);border-color:var(--acento);color:var(--fuerte)}
 
 .visual{margin-top:10px}
 .visual[hidden]{display:none}
@@ -338,12 +483,12 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 /* Una celda es una zona. Sirve para dos cosas segun el paso: mostrar al
    jugador que esta parado ahi, o ser el destino que se toca. */
 .celda{position:relative;min-height:52px;border-radius:8px;
-       border:1px solid transparent;background:#141a23;
+       border:1px solid transparent;background:var(--cancha);
        display:flex;align-items:center;justify-content:center}
 .celda .numeroZona{position:absolute;top:3px;left:5px;font-size:10px;
-                   color:#48566a;font-variant-numeric:tabular-nums}
-.celda.zonaViva{border-color:var(--acento);background:#16283c;cursor:pointer}
-.celda.zonaViva:hover{background:#1c334c}
+                   color:var(--cancha-numero);font-variant-numeric:tabular-nums}
+.celda.zonaViva{border-color:var(--acento);background:var(--cancha-viva);cursor:pointer}
+.celda.zonaViva:hover{background:var(--cancha-viva-hover)}
 .celda.zonaViva .numeroZona{color:var(--acento)}
 
 /* El jugador: un circulo con el dorsal. 44px es el minimo para el pulgar. */
@@ -352,14 +497,14 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
          font-size:15px;font-variant-numeric:tabular-nums;
          background:var(--panel2);border:2px solid var(--borde);
          color:var(--suave);padding:0;line-height:1}
-.jugador.viva{border-color:var(--acento);color:#fff;background:#1b2f47;
+.jugador.viva{border-color:var(--acento);color:var(--fuerte);background:var(--jugador-vivo);
               cursor:pointer}
-.jugador.viva:hover{background:#24405e}
+.jugador.viva:hover{background:var(--jugador-vivo-hover)}
 .jugador[disabled]{opacity:.45;cursor:default}
 .jugador[disabled]:hover{background:var(--panel2);border-color:var(--borde)}
 /* el armador lleva el mismo amarillo que el _S de la tabla de rotacion */
 .jugador.armador{box-shadow:0 0 0 2px var(--aviso)}
-.jugador.saca{background:var(--acento);border-color:var(--acento);color:#08121f}
+.jugador.saca{background:var(--acento);border-color:var(--acento);color:var(--sobre-acento)}
 
 /* ---------- lo que se pregunta en cada paso ---------- */
 .pedido{margin-top:10px}
@@ -367,8 +512,8 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
          letter-spacing:.06em;margin-bottom:7px}
 .opciones{display:flex;flex-wrap:wrap;gap:7px}
 .opciones button{min-height:44px;padding:10px 16px;font-size:15px;font-weight:600}
-.opciones button.bien{border-color:#2f6b52;color:#bff0da}
-.opciones button.mal{border-color:#7a3030;color:#ff9d9d}
+.opciones button.bien{border-color:var(--ok-borde);color:var(--ok-texto)}
+.opciones button.mal{border-color:var(--error-borde);color:var(--error-tenue)}
 .opciones button.secundaria{font-weight:400;font-size:13px;color:var(--suave);
                             min-height:38px;padding:8px 12px}
 
@@ -402,7 +547,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
                    border-radius:10px;color:var(--texto);padding:14px 16px;
                    font:17px/1.2 system-ui,sans-serif}
 .preparacion input:focus{outline:none;border-color:var(--acento);
-                         box-shadow:0 0 0 3px #4aa3ff33}
+                         box-shadow:0 0 0 3px var(--anillo)}
 .preparacion .grande{min-height:52px;font-size:16px;font-weight:600}
 .preparacion .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}
 
@@ -415,7 +560,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 
 /* El libero se distingue del resto: no rota y entra solo por el que cubre. */
 .jugador.libero{border-style:dashed;border-color:var(--ok)}
-.jugador.libero.viva{border-color:var(--ok);background:#14251e}
+.jugador.libero.viva{border-color:var(--ok);background:var(--ok-fondo)}
 
 /* ---------- corregir a mano el resumen de un partido ---------- */
 .correccion{margin-top:10px;background:var(--panel2);border:1px solid var(--borde);
@@ -429,7 +574,7 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
         border:1px solid var(--borde);border-radius:8px;color:var(--texto);
         padding:9px 11px;font:14px/1.2 var(--mono);min-width:0}
 .campoCorreccion input:focus,.campoCorreccion select:focus{outline:none;
-        border-color:var(--acento);box-shadow:0 0 0 3px #4aa3ff33}
+        border-color:var(--acento);box-shadow:0 0 0 3px var(--anillo)}
 .correccion .fila{margin:0;display:flex;gap:7px;flex-wrap:wrap}
 
 /* ---------- nombres y buscador de la pestana Jugadores ---------- */
@@ -438,11 +583,13 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
                border:1px solid var(--borde);border-radius:10px;color:var(--texto);
                padding:10px 13px;font:14px/1.2 system-ui,sans-serif}
 #buscarJugador:focus{outline:none;border-color:var(--acento);
-                     box-shadow:0 0 0 3px #4aa3ff33}
+                     box-shadow:0 0 0 3px var(--anillo)}
 /* el dorsal manda y el nombre acompaña: se busca por "el 13", no por el nombre */
 #selectorDorsal button{display:inline-flex;align-items:baseline;gap:6px}
 #selectorDorsal button[hidden]{display:none}
 .nombreJugador{font-size:11.5px;color:var(--suave);font-weight:400}
+/* de aca para abajo, lo que va ENCIMA del acento: el acento es azul en
+   los dos temas, asi que estos no cambian */
 #selectorDorsal button.activa .nombreJugador{color:#cfe4ff}
 .nombreFicha{font-size:17px;font-weight:700;margin-bottom:2px}
 
@@ -456,11 +603,11 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .etiquetaPos{display:inline-block;font-size:10px;font-weight:700;
              text-transform:uppercase;letter-spacing:.05em;
              padding:2px 6px;border-radius:999px;border:1px solid currentColor;
-             background:#0003;color:var(--suave);white-space:nowrap}
+             background:var(--pastilla);color:var(--suave);white-space:nowrap}
 .etiquetaPos.armador{color:var(--aviso)}
-.etiquetaPos.libero {color:#c792ea}
+.etiquetaPos.libero {color:var(--pos-libero)}
 .etiquetaPos.punta  {color:var(--acento)}
-.etiquetaPos.opuesto{color:#ff9f6b}
+.etiquetaPos.opuesto{color:var(--pos-opuesto)}
 .etiquetaPos.central{color:var(--ok)}
 
 /* en el boton del dorsal van debajo del nombre, sin agrandar la fila */
@@ -478,7 +625,12 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 /* el elegido se pinta con SU color, asi se ve cual esta puesto sin leerlo */
 .filtroEtiquetas button.activa{color:var(--texto);background:var(--panel2);
         border-color:currentColor;box-shadow:inset 0 0 0 1px currentColor}
-.filtroEtiquetas button.etiquetaPos.activa{background:#0004}
+.filtroEtiquetas button.etiquetaPos.activa{background:var(--pastilla-fuerte)}
+/* Los campeonatos ya vienen escritos como se tipearon (en minuscula y con su
+   numeral): en mayusculas se verian distintos de como figuran en Partidos. */
+.filtroEtiquetas.torneos{margin-top:12px}
+.filtroEtiquetas.torneos button{text-transform:none;letter-spacing:0;font-size:12px}
+.filtroEtiquetas.torneos button.activa{color:var(--acento)}
 
 /* ---------- resumen del equipo ----------
    El circulo de la ficha lleva iniciales en vez de un dorsal: dos letras no
@@ -490,3 +642,40 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 @media (max-width:460px){
   .pestana{font-size:12.5px;padding:10px 4px;gap:4px}
 }
+
+/* ---------- plantel A / B ----------
+   Va en gris y en forma de cuadrado, distinto de las etiquetas de posicion:
+   es un dato de otra clase y mezclarlo con los colores de los roles haria
+   dudar de que significa cada color. */
+.plantel{display:inline-block;min-width:16px;text-align:center;
+         font:700 10px/1.5 system-ui,sans-serif;border-radius:4px;
+         padding:0 4px;margin-left:4px;
+         background:var(--panel2);border:1px solid var(--borde);color:var(--suave)}
+.plantel.pA{border-color:var(--suave);color:var(--texto)}
+#selectorDorsal button.activa .plantel{background:#0003;color:#fff;border-color:#fff6}
+.filtroEtiquetas .plantel{margin-left:0}
+/* separa los dos grupos de filtros: posicion de un lado, plantel del otro */
+.separadorFiltro{width:1px;align-self:stretch;background:var(--borde);margin:2px 3px}
+
+/* dos desplegables en la misma celda del editor, sin que se desborde */
+.dosSelects{display:flex;gap:4px;min-width:0}
+.dosSelects select{flex:1;min-width:0}
+
+/* ---------- etiqueta de campeonato en la fila de un partido ---------- */
+.partido .torneo{background:var(--panel2);border:1px solid var(--acento);
+        color:var(--acento);border-radius:999px;padding:1px 8px;
+        font-size:11px;font-weight:600}
+
+/* ---------- juega en mas de un equipo ----------
+   Un numerito, no una etiqueta con texto: lo que importa es que salte a la
+   vista que esa persona esta en dos listas, y cuantas. */
+.enVarios{display:inline-block;min-width:15px;text-align:center;margin-left:4px;
+          font:700 9px/1.6 system-ui,sans-serif;border-radius:50%;
+          background:var(--aviso);color:var(--sobre-aviso)}
+#selectorDorsal button.activa .enVarios{background:#fff;color:#08121d}
+.enVariosFiltro{border-color:var(--aviso) !important;color:var(--aviso) !important}
+.enVariosFiltro.activa{background:var(--aviso) !important;color:var(--sobre-aviso) !important}
+
+/* el enlace a la guia va entre los atajos, asi que tiene que verse como los
+   botones de al lado aunque sea un <a> */
+#btnGuia{display:inline-flex;align-items:center;text-decoration:none}

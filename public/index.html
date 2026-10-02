@@ -5,6 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Estadisticas de voley</title>
 <link rel="stylesheet" href="interfaz.css">
+<script>
+/* El tema, antes de dibujar nada. interfaz.js va al final del <body>: puesto
+   solo desde ahi, la pagina aparecia un instante en oscuro y saltaba a claro.
+   Es la misma cuenta que hace aplicarTema(), y tiene que seguir siendolo. */
+try{
+  var t = localStorage.getItem("voley.tema");
+  if(t !== "claro" && t !== "oscuro")
+    t = matchMedia("(prefers-color-scheme: light)").matches ? "claro" : "oscuro";
+  document.documentElement.dataset.tema = t;
+}catch(e){}
+</script>
 </head>
 <body>
 <div class="envoltorio">
@@ -16,6 +27,9 @@
     <button class="pestana" data-vista="jugadores">Jugadores</button>
     <button class="pestana" data-vista="partidos">Partidos</button>
     <button class="pestana" data-vista="cargar">Cargar<span class="chip" id="chipCargar" hidden></span></button>
+    <!-- El tema va aca y no adentro de una vista: es lo unico que se cambia
+         estando en cualquiera de las cuatro. -->
+    <button class="tema" id="btnTema" type="button" aria-label="Cambiar el tema">🌗</button>
   </nav>
 
   <!-- Aviso del servidor. Casi siempre esta vacio y no se ve. Aparece cuando
@@ -34,6 +48,9 @@
       <div class="filtros">
         <label>Equipo
           <select id="filtroEquipo"><option value="">Todos</option></select>
+        </label>
+        <label>Campeonato
+          <select id="filtroTorneo"><option value="">Todos</option></select>
         </label>
         <label>Desde <input type="date" id="filtroDesde"></label>
         <label>Hasta <input type="date" id="filtroHasta"></label>
@@ -165,6 +182,7 @@
       <span class="etiqueta" style="margin-left:8px">Sesion</span>
       <button id="btnBorrar">Borrar ultima linea</button>
       <button id="btnGuardar">Guardar .txt</button>
+      <button id="btnPrivado">Guardar en privado</button>
       <button id="btnExcel">Excel</button>
       <button id="btnBloquear" class="tenue">Bloquear</button>
       <button id="btnReiniciar" class="peligro">Reiniciar</button>
@@ -206,10 +224,14 @@
             <dt><code>…/4_1_U_7</code></dt><dd>usa el bloqueo del 7, punto del ataque</dd>
             <dt><code>…/4_1_R_7</code></dt><dd>bloqueo rejugable, sigue el mismo equipo</dd>
             <dt><code>…/9_F_3</code> <code>9_T_3</code></dt><dd>libre / toque hacia zona 3</dd>
+            <dt><code>…/9_F_0</code> <code>9_T_0</code></dt>
+            <dd>libre / toque errado: punto para el rival</dd>
             <dt><code>…/9_S_6_P</code></dt><dd>pasada de segunda (sin armado antes)</dd>
             <dt><code>2_-1</code> <code>2_-2</code></dt>
             <dd>armado que se pasa / armado malo que pierde el punto</dd>
             <dt><code>7_2/1_4/9_5_D</code></dt><dd>defensa · armado · ataque</dd>
+            <dt><code>7_0</code></dt>
+            <dd>defensa de calidad 0 que no se pudo jugar: punto del rival</dd>
             <dt><code>9_A_1_P</code></dt><dd>ataque de primera, sin armado</dd>
             <dt><code>f</code> <code>w</code> <code>x</code></dt>
             <dd>error en juego · cerrar set · deshacer</dd>
@@ -227,20 +249,56 @@
         </div>
       </details>
 
-      <details class="panel">
-        <summary>Cargar un partido ya escrito</summary>
-        <div class="cuerpo">
-          <p class="nota" style="margin-top:0">Pega la lista de inputs de un .txt
-          (desde el nombre del equipo A hasta la ultima jugada).</p>
-          <textarea id="pegar" placeholder="Palestino&#10;UVC&#10;28 15 99_S 88 10 13&#10;&#10;B&#10;…"></textarea>
-          <div class="fila"><button id="btnPegar">Cargar todo</button></div>
-        </div>
-      </details>
+      <!-- La guia va pegada a "Cargar un partido ya escrito" y no suelta en
+           la grilla: .columnas son dos columnas, asi que un hijo mas caeria al
+           costado y no debajo. Envueltos, quedan uno arriba del otro en las
+           dos anchuras. -->
+      <div class="apilado">
+        <details class="panel">
+          <summary>Cargar un partido ya escrito</summary>
+          <div class="cuerpo">
+            <p class="nota" style="margin-top:0">Pega la lista de inputs de un .txt
+            (desde el nombre del equipo A hasta la ultima jugada).</p>
+            <textarea id="pegar" placeholder="Palestino&#10;UVC&#10;28 15 99_S 88 10 13&#10;&#10;B&#10;…"></textarea>
+            <div class="fila"><button id="btnPegar">Cargar todo</button></div>
+          </div>
+        </details>
 
-      <details class="panel">
-        <summary>Cambios registrados</summary>
-        <div class="cuerpo" id="cambios"></div>
-      </details>
+        <a class="guia" id="btnGuia" href="/guia.html" target="_blank" rel="noopener">
+          <span class="icono">📖</span>
+          <span class="que">
+            <strong>Como cargar partidos</strong>
+            <small>La guia entera: que significa cada letra y como se escribe cada jugada</small>
+          </span>
+          <span class="flecha">→</span>
+        </a>
+      </div>
+
+      <div class="apilado">
+        <!-- Guardar el .txt publica el partido. Esto lo sube sin publicarlo,
+             que es lo unico que falta para poder cortar a mitad de partido. -->
+        <details class="panel" id="panelPrivados">
+          <summary>Guardados en privado<span class="chip" id="chipPrivados" hidden></span></summary>
+          <div class="cuerpo">
+            <p class="nota" style="margin-top:0">Sube el partido tal como esta,
+            sin publicarlo: no aparece en Partidos ni cuenta en las
+            estadisticas. Es para cortar a mitad de partido, apagar la maquina
+            y seguir despues, aca o en otro dispositivo. Cuando el partido
+            termina se guarda con <b>Guardar .txt</b>, que es lo que lo publica,
+            y este se puede borrar.</p>
+            <div class="fila">
+              <button class="primario" id="btnGuardarPrivado">Guardar este partido</button>
+              <button id="btnRefrescarPrivados" class="tenue">Actualizar</button>
+            </div>
+            <div id="listaPrivados"></div>
+          </div>
+        </details>
+
+        <details class="panel">
+          <summary>Cambios registrados</summary>
+          <div class="cuerpo" id="cambios"></div>
+        </details>
+      </div>
     </div>
   </section>
 

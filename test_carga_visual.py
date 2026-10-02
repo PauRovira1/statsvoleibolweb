@@ -111,6 +111,35 @@ def ultimo_bloque(sesion) -> dict | None:
     return None
 
 
+def como_se_escribe_hoy(linea: str) -> str:
+    """La misma jugada, en la notacion de ahora.
+
+    La defensa que no se pudo jugar se escribia "7_-2" y ahora es un 0 como
+    cualquier otra defensa: "7_0". El motor sigue leyendo la forma vieja
+    porque los volcados de Datos/ estan llenos de ella, pero tocando sale la
+    de ahora, que es con la que hay que comparar."""
+    defensor, _, final = linea.partition("_")
+    if final == "-2" and defensor.isdigit():
+        return defensor + "_0"
+    return linea
+
+
+# Una defensa calidad 0 seguida de armado y ataque: "7_0/3_4/9_1_P".
+# Se cargaba asi cuando el 0 no cerraba el punto. Ahora si lo cierra, asi que
+# esa linea no se puede armar tocando -- el boton del 0 termina la jugada.
+RE_CERO_QUE_SEGUIA = re.compile(r"^\d+_0/")
+
+
+def usa_notacion_retirada(linea: str) -> bool:
+    """Si la linea se escribio con una regla que ya no rige.
+
+    No se puede armar tocando y no tiene sentido pedir que se pueda: la
+    pantalla ofrece la notacion de HOY. El motor igual la sigue leyendo, que es
+    lo que hace que los partidos viejos se puedan volver a cargar; eso lo
+    cuida test_analisis_voley, no este archivo."""
+    return bool(RE_CERO_QUE_SEGUIA.match(linea))
+
+
 def es_jugada(linea: str, espera: str) -> bool:
     """Si esta linea es una jugada y no un comando, un nombre o una rotacion."""
     if espera == "saque":
@@ -127,10 +156,11 @@ class TestEquivalencia(unittest.TestCase):
         for numero, linea in enumerate(lineas_del_volcado(archivo), start=1):
             instantanea = sesion.instantanea()
             espera = instantanea["pendiente"]["espera"]
-            if espera and es_jugada(linea, espera):
+            if espera and es_jugada(linea, espera) and not usa_notacion_retirada(linea):
                 armador = armador_para(instantanea)
+                hoy = como_se_escribe_hoy(linea)
                 candidatos = [int(n) for n in dict.fromkeys(re.findall(r"\d+", linea))]
-                toques = buscar_toques(armador, linea, candidatos)
+                toques = buscar_toques(armador, hoy, candidatos)
                 self.assertIsNotNone(
                     toques,
                     f"{archivo.name} linea {numero}: no hay forma de armar {linea!r} "
@@ -145,7 +175,7 @@ class TestEquivalencia(unittest.TestCase):
                     if paso["pide"] == "jugador":
                         lados[repetido.estado] = repetido.equipo_de(paso["lado"])
                     repetido.tocar(identificador, valor)
-                self.assertEqual(repetido.linea, linea, f"{archivo.name} linea {numero}")
+                self.assertEqual(repetido.linea, hoy, f"{archivo.name} linea {numero}")
                 self.assertTrue(repetido.cerrada, f"{archivo.name} linea {numero}")
                 revisadas += 1
                 sesion.enviar(linea)
@@ -301,13 +331,25 @@ class TestCasosRaros(unittest.TestCase):
                        "j9", "ataque", "z1", "malla").linea,
             "1_6_X/7_3/8_4/9_1_M")
 
-    def test_defensa_perdida_solo_en_una_continuacion(self):
-        self.assertEqual(
-            self.armar("j7", "c0", espera="continuacion").linea, "7_0")
-        continuacion = self.armar("j7", espera="continuacion")
-        self.assertIn("perdida", [o["id"] for o in continuacion.opciones()])
-        saque = self.armar("z1", "z6", "sigue", "j7")
-        self.assertNotIn("perdida", [o["id"] for o in saque.opciones()])
+    def test_el_cero_de_defensa_cierra_el_punto(self):
+        """Una defensa calidad 0 termina la jugada: esa pelota no se pudo
+        jugar y el punto es del que la mando.
+
+        Antes habia dos botones -- un 0 que seguia y otro que cerraba -- y
+        quedo uno solo."""
+        cae = self.armar("j7", "c0_cae", espera="continuacion")
+        self.assertEqual(cae.linea, "7_0")
+        self.assertTrue(cae.cerrada)
+
+    def test_el_cero_no_se_ofrece_en_la_recepcion_del_saque(self):
+        """En recepcion el 0 es un pase malo que igual se juega, no una pelota
+        perdida: ahi el boton tiene que seguir llevando al armado."""
+        saque = self.armar("z1", "z6", "sigue", "j7", "c0")
+        self.assertFalse(saque.cerrada)
+        self.assertEqual(saque.linea, "1_6_X/7_0")
+        # y el de defensa no se ofrece ahi
+        pide = self.armar("z1", "z6", "sigue", "j7")
+        self.assertNotIn("c0_cae", [o["id"] for o in pide.opciones()])
 
     def test_el_bloqueador_sale_del_equipo_rival(self):
         armador = self.armar("z1", "z6", "sigue", "j7", "c3", "j8", "z4",
@@ -463,13 +505,15 @@ class TestInterpreteDelNavegador(unittest.TestCase):
             for linea in lineas_del_volcado(archivo):
                 instantanea = sesion.instantanea()
                 espera = instantanea["pendiente"]["espera"]
-                if espera and es_jugada(linea, espera):
+                if (espera and es_jugada(linea, espera)
+                        and not usa_notacion_retirada(linea)):
                     armador = armador_para(instantanea)
+                    hoy = como_se_escribe_hoy(linea)
                     candidatos = [int(n) for n in dict.fromkeys(re.findall(r"\d+", linea))]
-                    toques = buscar_toques(armador, linea, candidatos)
+                    toques = buscar_toques(armador, hoy, candidatos)
                     self.assertIsNotNone(toques, f"{archivo.name}: {linea!r}")
                     casos.append({
-                        "esperado": linea,
+                        "esperado": hoy,
                         "toques": toques,
                         "contexto": {
                             "espera": espera,

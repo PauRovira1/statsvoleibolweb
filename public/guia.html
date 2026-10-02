@@ -1,0 +1,871 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Cómo cargar un partido</title>
+<style>
+@page { size: A4; margin: 15mm 14mm 14mm 14mm; }
+
+:root{
+  --tinta:#16202c; --suave:#5b6b7e; --linea:#d3dbe4; --fondo2:#f4f7fa;
+  --acento:#1f6fc4; --ok:#1d8a5f; --mal:#c23b3b; --aviso:#9a6b00;
+  --mono: "Cascadia Mono","Consolas","DejaVu Sans Mono",monospace;
+}
+*{box-sizing:border-box}
+body{ margin:0; color:var(--tinta); background:#fff;
+      font:10.5pt/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;
+      -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+h1{ font-size:26pt; line-height:1.1; margin:0 0 6px; letter-spacing:-.5px }
+h2{ font-size:15pt; margin:0 0 10px; padding-bottom:5px;
+    border-bottom:2px solid var(--acento); color:var(--acento);
+    break-after:avoid; page-break-after:avoid }
+h3{ font-size:11.5pt; margin:16px 0 5px; break-after:avoid; page-break-after:avoid }
+p{ margin:0 0 8px }
+ul,ol{ margin:0 0 8px; padding-left:19px }
+li{ margin-bottom:4px }
+strong{ font-weight:650 }
+code,.cod{ font-family:var(--mono); font-size:9.5pt; background:var(--fondo2);
+           border:1px solid var(--linea); border-radius:4px; padding:1px 4px;
+           white-space:nowrap }
+
+.hoja{ padding-top:2px }
+h2{ margin-top:22px }
+.portada{ break-after:page; page-break-after:always }
+.chuleta{ break-before:page; page-break-before:always }
+.caja{ break-inside:avoid; page-break-inside:avoid }
+.pasos li{ break-inside:avoid; page-break-inside:avoid }
+h3 + table, h3 + p, h3 + ol, h3 + ul{ break-before:avoid; page-break-before:avoid }
+.evitar{ break-inside:avoid; page-break-inside:avoid }
+
+/* ---------- portada ---------- */
+.portada{ display:flex; flex-direction:column; justify-content:center;
+          min-height:245mm; text-align:left }
+.portada .sello{ font:600 9.5pt/1 var(--mono); letter-spacing:2px;
+                 text-transform:uppercase; color:var(--acento); margin-bottom:14px }
+.portada .bajada{ font-size:13pt; color:var(--suave); margin:10px 0 28px; max-width:135mm }
+.portada .pie{ margin-top:30px; font-size:9.5pt; color:var(--suave);
+               border-top:1px solid var(--linea); padding-top:10px }
+.portada .indice{ background:var(--fondo2); border:1px solid var(--linea);
+                  border-radius:10px; padding:14px 18px; max-width:135mm }
+.portada .indice ol{ margin:0; columns:2; column-gap:26px; font-size:10pt }
+
+/* ---------- cajas ---------- */
+.caja{ border:1px solid var(--linea); border-left:4px solid var(--acento);
+       background:var(--fondo2); border-radius:0 8px 8px 0;
+       padding:10px 13px; margin:0 0 12px }
+.caja.ojo{ border-left-color:var(--mal) }
+.caja.bien{ border-left-color:var(--ok) }
+.caja .titulo{ font-weight:700; font-size:10pt; margin-bottom:4px }
+.caja p:last-child, .caja ul:last-child{ margin-bottom:0 }
+
+/* ---------- tablas ---------- */
+table{ width:100%; border-collapse:collapse; margin:0 0 12px; font-size:9.5pt }
+th,td{ text-align:left; vertical-align:top; padding:5px 7px;
+       border-bottom:1px solid var(--linea) }
+thead th{ background:var(--fondo2); border-bottom:1.5px solid var(--acento);
+          font-size:9pt; text-transform:uppercase; letter-spacing:.4px;
+          color:var(--suave) }
+td.c{ font-family:var(--mono); white-space:nowrap }
+tr.cierra td:last-child{ box-shadow:inset 3px 0 0 var(--ok) }
+.tabla-chica td, .tabla-chica th{ padding:4px 6px }
+
+/* ---------- pasos numerados ---------- */
+.pasos{ list-style:none; padding:0; margin:0 0 12px; counter-reset:paso }
+.pasos li{ position:relative; padding-left:30px; margin-bottom:9px; counter-increment:paso }
+.pasos li::before{ content:counter(paso); position:absolute; left:0; top:0;
+  width:21px; height:21px; border-radius:50%; background:var(--acento); color:#fff;
+  font:700 9.5pt/21px var(--mono); text-align:center }
+
+/* ---------- cancha ---------- */
+.cancha{ width:74mm; margin:0 0 6px; font-size:8.5pt }
+.mitad{ display:grid; grid-template-columns:repeat(3,1fr); border:1.5px solid var(--tinta) }
+.mitad div{ height:13mm; border:.5px solid var(--linea); display:flex;
+            align-items:center; justify-content:center; font:700 11pt var(--mono) }
+.mitad .medio{ background:var(--fondo2); color:var(--suave) }
+.red{ height:0; border-top:3px dashed var(--tinta); margin:0 }
+.rotulo{ font-size:8.5pt; color:var(--suave); margin:3px 0 }
+.doscol{ display:flex; gap:14px; align-items:flex-start }
+.doscol > div{ flex:1; min-width:0 }
+
+/* ---------- linea de ejemplo ---------- */
+.linea{ font-family:var(--mono); font-size:11pt; background:#fff;
+        border:1px solid var(--linea); border-radius:6px; padding:8px 10px;
+        margin:0 0 4px; letter-spacing:.5px }
+.linea b{ color:var(--acento) }
+.pie-linea{ font-size:9pt; color:var(--suave); margin:0 0 12px }
+
+/* ---------- chuleta ---------- */
+.chuleta{ font-size:9pt }
+.chuleta h2{ font-size:13pt }
+.chuleta table{ font-size:8.5pt; margin-bottom:8px }
+.chuleta th,.chuleta td{ padding:3px 5px }
+.chuleta h3{ margin:10px 0 4px; font-size:10pt }
+.tijera{ border-top:1.5px dashed var(--linea); text-align:center; color:var(--suave);
+         font-size:8pt; padding-top:4px; margin-top:14px }
+.nota{ font-size:9pt; color:var(--suave) }
+</style>
+</head>
+<body>
+
+<!-- ================= PORTADA ================= -->
+<section class="hoja portada">
+  <div class="sello">Estadísticas de vóley · Guía de carga</div>
+  <h1>Cómo cargar<br>un partido</h1>
+  <p class="bajada">Todo lo que hay que saber para sentarse al costado de la
+  cancha con el celular y dejar el partido cargado, punto por punto, sin saber
+  de antemano ningún código.</p>
+
+  <div class="indice">
+    <ol>
+      <li>Lo mínimo, en diez líneas</li>
+      <li>Antes de empezar</li>
+      <li>Entrar a cargar</li>
+      <li>Preparar el partido</li>
+      <li>La cancha y las zonas</li>
+      <li>Cargar una jugada tocando</li>
+      <li>Qué te va a preguntar, paso por paso</li>
+      <li>Los casos raros</li>
+      <li>Cambios y líberos</li>
+      <li>Equivocarse, cerrar el set y terminar</li>
+      <li>Escribiendo, para los rápidos</li>
+      <li>Si pasa esto, hacé esto</li>
+      <li>Chuleta para la cancha</li>
+    </ol>
+  </div>
+
+  <div class="pie">
+    Versión 1 · septiembre de 2026 · Club Palestino<br>
+    La app: <strong>www.statsvoleypalestino.lat</strong> — la contraseña te la
+    pasa quien administra el sistema.
+  </div>
+</section>
+
+<!-- ================= 1 y 2 ================= -->
+<section class="hoja">
+<h2>1 · Lo mínimo, en diez líneas</h2>
+
+<p>La app lleva sola el marcador, la rotación, quién saca y los sets. Vos le
+contás <strong>qué pasó en cada pelota</strong>: quién sacó, quién recibió,
+quién armó, quién atacó y cómo terminó. Nada más.</p>
+
+<ol class="pasos">
+  <li>Entrás a la app y abrís la pestaña <strong>Cargar</strong>. Ponés la contraseña.</li>
+  <li>Contestás cinco preguntas de preparación: los dos nombres, las dos
+      rotaciones y quién saca primero.</li>
+  <li>Dejás el modo <strong>Tocando</strong> puesto. La pantalla te va
+      preguntando y vos tocás lo que pasó. Sólo se enciende lo que se puede tocar.</li>
+  <li>Cuando el punto termina, el marcador se mueve solo y la pantalla te pide
+      el saque del punto siguiente.</li>
+  <li>Al final del partido tocás <strong>Guardar .txt</strong> y después
+      <strong>Excel</strong>. Recién ahí el partido queda guardado de verdad.</li>
+</ol>
+
+<div class="caja">
+  <div class="titulo">No hace falta saber la notación</div>
+  <p>El modo Tocando arma el código solo. La notación escrita está en esta guía
+  (página 8) porque es más rápida cuando le agarrás la mano, pero se puede
+  cargar un campeonato entero sin escribir un solo código.</p>
+</div>
+
+<div class="caja ojo">
+  <div class="titulo">La regla de oro: el partido es de tu dispositivo</div>
+  <p>Lo que cargás <strong>vive en el celular o la tablet donde lo estás
+  cargando</strong>, no en un lugar compartido. Dos personas pueden cargar dos
+  partidos al mismo tiempo, cada una en lo suyo, sin pisarse. Lo que trae eso:
+  el partido se ve <strong>solo en ese dispositivo</strong> hasta que apretes
+  Guardar, así que no lo sigas desde otro, y nunca aprietes
+  <strong>Reiniciar</strong> sin estar seguro de que lo que hay en pantalla ya
+  está guardado.</p>
+</div>
+
+<h2 style="margin-top:20px">2 · Antes de empezar</h2>
+
+<p>Llevá resuelto esto <em>antes</em> del primer saque, porque después el partido
+no espera:</p>
+
+<table>
+  <thead><tr><th style="width:38%">Qué</th><th>Detalle</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Un celular o tablet con internet</strong></td>
+        <td>Se carga con una mano, parado. Batería cargada: un partido son dos
+            horas de pantalla prendida.</td></tr>
+    <tr><td><strong>La contraseña</strong></td>
+        <td>Sólo hace falta para cargar. Mirar partidos y jugadores no la pide.</td></tr>
+    <tr><td><strong>Los dorsales de los dos equipos</strong></td>
+        <td>Los seis que arrancan en cancha, en el orden de las zonas 1 a 6.
+            Se sacan de la planilla del partido.</td></tr>
+    <tr><td><strong>Quién es el armador</strong></td>
+        <td>De cada equipo. La app lo usa para preseleccionarlo y para las
+            estadísticas de armado.</td></tr>
+    <tr><td><strong>Quién es el líbero</strong></td>
+        <td>Y por quién entra. Es opcional, pero si no lo declarás sus
+            recepciones quedan mezcladas.</td></tr>
+    <tr><td><strong>Un lugar para sentarte</strong></td>
+        <td>Donde veas los dos lados y los números de espalda. Si sólo ves un
+            lado, la mitad del partido la vas a cargar adivinando.</td></tr>
+  </tbody>
+</table>
+
+<div class="caja bien">
+  <div class="titulo">Si es tu primera vez</div>
+  <p>Cargá un set de un partido viejo o de un entrenamiento antes de ir a uno
+  de verdad. Son quince minutos y te ahorran cargar el primer set real a medias.
+  Cuando termines, apretá <strong>Reiniciar</strong> para dejar la app limpia.</p>
+</div>
+</section>
+
+<!-- ================= 3 y 4 ================= -->
+<section class="hoja">
+<h2>3 · Entrar a cargar</h2>
+
+<ol class="pasos">
+  <li>Abrí <strong>www.statsvoleypalestino.lat</strong> en el navegador del
+      celular. Conviene agregarla a la pantalla de inicio: se abre como una app.</li>
+  <li>Arriba hay cuatro pestañas: <strong>Equipo</strong>,
+      <strong>Jugadores</strong>, <strong>Partidos</strong> y
+      <strong>Cargar</strong>. Andá a <strong>Cargar</strong>.</li>
+  <li>Escribí la contraseña y tocá <strong>Entrar</strong>. La pantalla queda
+      habilitada hasta que la bloqueés vos o pase mucho tiempo.</li>
+  <li>Si dejás el equipo apoyado y te vas, tocá <strong>Bloquear</strong>: nadie
+      puede meter una jugada, y lo cargado no se pierde.</li>
+</ol>
+
+<div class="caja">
+  <div class="titulo">Si aparece un aviso amarillo arriba de todo</div>
+  <p>Quiere decir que el servidor no tiene dónde guardar de verdad y el partido
+  se puede perder. Avisá antes de empezar a cargar, no después.</p>
+</div>
+
+<h2 style="margin-top:20px">4 · Preparar el partido</h2>
+
+<p>La app arranca preguntando cinco cosas, una por pantalla. Todas se contestan
+tocando; no hay que escribir nada salvo los nombres.</p>
+
+<table>
+  <thead><tr><th style="width:26%">Te pregunta</th><th>Qué contestás</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Nombre del equipo A</strong></td>
+        <td>El nombre tal como querés verlo en el informe, por ejemplo
+            <code>Palestino TC A Masc</code>. Escribilo <strong>siempre igual</strong>
+            que en los partidos anteriores: así todos los partidos del mismo
+            equipo quedan juntos en las estadísticas.</td></tr>
+    <tr><td><strong>Nombre del equipo B</strong></td>
+        <td>El rival. Mismo criterio.</td></tr>
+    <tr><td><strong>Rotación de A</strong></td>
+        <td>Los seis de cancha en sus zonas, el armador y, si hay, el líbero.
+            Ver abajo.</td></tr>
+    <tr><td><strong>Rotación de B</strong></td>
+        <td>Lo mismo del otro lado.</td></tr>
+    <tr><td><strong>Quién saca primero</strong></td>
+        <td>Dos botones con los nombres. Tocás el que saca.</td></tr>
+  </tbody>
+</table>
+
+<h3>Cargar una rotación</h3>
+<p>Aparece media cancha con seis casilleros numerados del 1 al 6. Para cada uno:</p>
+<ol class="pasos">
+  <li>Tocá el casillero de la zona.</li>
+  <li>Marcá el dorsal en el teclado numérico y tocá <strong>OK</strong>.</li>
+  <li>Cuando estén los seis, elegí el <strong>armador</strong> tocando su número
+      en la fila de abajo.</li>
+  <li>Si hay líbero: <strong>+ líbero</strong>, su dorsal, y después tocá
+      <strong>a quién cubre</strong> (uno o dos jugadores de los seis).
+      Se pueden declarar hasta dos líberos por equipo.</li>
+  <li><strong>Listo</strong>.</li>
+</ol>
+
+<div class="caja">
+  <div class="titulo">Lo único que hay que tener claro</div>
+  <p>La <strong>zona 1 es la del que saca</strong>: fondo derecha, mirando la
+  cancha desde atrás de ese equipo. Desde ahí se numera en contra de las agujas
+  del reloj. Si te equivocás en el orden, el partido queda mal rotado de punta a
+  punta, así que revisalo dos veces antes de tocar Listo.</p>
+  <p class="nota">El líbero no ocupa zona ni rota: por eso se carga aparte y no
+  entra entre los seis.</p>
+</div>
+
+<div class="caja bien">
+  <div class="titulo">¿Y si no sé la rotación?</div>
+  <p>Se puede tocar <strong>Sin rotación</strong> y cargar igual. Se pierde poco:
+  la app deja de saber a quién le toca sacar y te va a pedir el dorsal del
+  sacador en cada punto. Se puede hacer un set entero así, pero es más trabajo.</p>
+</div>
+</section>
+
+<!-- ================= 5 ================= -->
+<section class="hoja">
+<h2>5 · La cancha y las zonas</h2>
+
+<p>Todo lo que se carga son <strong>jugadores</strong> y <strong>zonas</strong>.
+Las zonas son las mismas que se dibujan en la pantalla, y se numeran
+<strong>desde cada lado</strong>: la zona 1 de un equipo queda enfrentada a la
+zona 5 del otro.</p>
+
+<div class="doscol">
+  <div>
+    <div class="cancha">
+      <div class="rotulo">Equipo A (mitad de arriba en la pantalla)</div>
+      <div class="mitad">
+        <div>1</div><div>6</div><div>5</div>
+        <div class="medio">9</div><div class="medio">8</div><div class="medio">7</div>
+        <div>2</div><div>3</div><div>4</div>
+      </div>
+      <div class="red"></div>
+      <div class="mitad">
+        <div>4</div><div>3</div><div>2</div>
+        <div class="medio">7</div><div class="medio">8</div><div class="medio">9</div>
+        <div>5</div><div>6</div><div>1</div>
+      </div>
+      <div class="rotulo">Equipo B (mitad de abajo) · la línea de puntos es la red</div>
+    </div>
+  </div>
+  <div>
+    <table class="tabla-chica">
+      <thead><tr><th>Zonas</th><th>Qué son</th></tr></thead>
+      <tbody>
+        <tr><td class="c">1 · 6 · 5</td>
+            <td>Fondo. Desde ahí se saca y hacia ahí se remata.</td></tr>
+        <tr><td class="c">4 · 3 · 2</td>
+            <td>Red. Hacia ahí se arma.</td></tr>
+        <tr><td class="c">7 · 8 · 9</td>
+            <td>La franja del medio. Sólo se usan como destino de un saque, un
+                libre o un toque.</td></tr>
+      </tbody>
+    </table>
+    <p class="nota">No hace falta memorizar esto: cuando la app te pide una zona
+    enciende únicamente las que valen en ese paso. Las demás no responden.</p>
+  </div>
+</div>
+
+<h2 style="margin-top:18px">6 · Cargar una jugada tocando</h2>
+
+<p>Arriba de la cancha hay dos botones: <strong>Tocando</strong> y
+<strong>Escribiendo</strong>. Dejá <strong>Tocando</strong>.</p>
+
+<p>A partir de ahí la pantalla hace una pregunta por vez
+(<em>«Quién saca» · «Desde qué zona» · «Cómo terminó el saque»…</em>) y enciende
+sólo lo que se puede tocar. Debajo de la cancha se va armando la línea del punto,
+con un acento <code>^</code> marcando qué falta:</p>
+
+<div class="linea">1_5_X/3_3/2_4/4_1_<b>^</b></div>
+<p class="pie-linea">falta cómo terminó el ataque</p>
+
+<p>Y siempre están a mano los dos botones que te salvan:</p>
+<ul>
+  <li><strong>◀ Deshacer el paso</strong>: borra el último toque. Se puede apretar
+      todas las veces que haga falta, hasta volver al principio de la jugada.</li>
+  <li><strong>Cancelar la jugada</strong>: tira abajo la jugada entera y vuelve a
+      empezar. No toca el marcador ni lo cargado antes.</li>
+</ul>
+
+<div class="caja">
+  <div class="titulo">Un punto puede ser varias jugadas</div>
+  <p>Cada vez que la pelota cruza la red y el punto sigue, la app te pide
+  <strong>otra jugada</strong>, ya sin el saque, y enciende al equipo que ahora
+  tiene la pelota. Un punto largo son cuatro o cinco jugadas seguidas: es normal.
+  El punto se cierra solo cuando cargás un final (punto, afuera, malla, bloqueo).</p>
+</div>
+</section>
+
+<!-- ================= 7 ================= -->
+<section class="hoja">
+<h2>7 · Qué te va a preguntar, paso por paso</h2>
+
+<p>Éste es el recorrido completo de una pelota. La columna
+<strong>«Y después»</strong> dice si el punto termina ahí o si la app te va a
+pedir otra jugada.</p>
+
+<h3>Bloque de saque (la primera jugada de cada punto)</h3>
+<table class="evitar">
+  <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
+  <tbody>
+    <tr><td>Quién saca</td>
+        <td>Nada: si cargaste la rotación, la app ya sabe quién es y te lo
+            muestra arriba. Sólo lo pregunta si el equipo no tiene rotación.</td>
+        <td>—</td></tr>
+    <tr><td>Desde qué zona</td><td>Zona 1, 6 o 5 de su propia cancha</td><td>—</td></tr>
+    <tr><td>Hacia qué zona</td><td>Cualquier zona de la cancha rival (1 a 9)</td><td>—</td></tr>
+    <tr class="cierra"><td rowspan="3">Cómo terminó</td>
+        <td><strong>As</strong></td><td><strong>Punto</strong> para el que saca</td></tr>
+    <tr class="cierra"><td><strong>Error</strong></td><td><strong>Punto</strong> para el que recibe</td></tr>
+    <tr><td><strong>Sigue</strong></td><td>La pelota pasa al equipo que recibe</td></tr>
+  </tbody>
+</table>
+
+<h3>Recepción o defensa</h3>
+<table class="evitar">
+  <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
+  <tbody>
+    <tr><td>Quién la toca</td><td>El jugador que recibe o defiende</td><td>—</td></tr>
+    <tr><td rowspan="3">Con qué calidad</td>
+        <td><strong>3 / 2 / 1 / 0</strong> — 3 es pase perfecto, 0 es pase que no
+            deja jugar</td>
+        <td>Sigue: hay que cargar el armado</td></tr>
+    <tr class="cierra"><td><strong>0 · no se pudo jugar</strong> — la pelota se
+            cayó ahí (sólo aparece en pelotas de continuación, no en la recepción
+            del saque)</td>
+        <td><strong>Punto</strong> para el equipo contrario</td></tr>
+    <tr><td><strong>Se fue al otro lado</strong> — la pelota cruza sola en el
+            primer toque</td>
+        <td>Sigue, del otro lado. No hay armado ni ataque</td></tr>
+  </tbody>
+</table>
+
+<p class="nota" style="margin-top:-6px">Los dos ceros son la misma calidad y
+escriben lo mismo: lo único que cambia es que uno sigue la jugada y el otro la
+cierra. Si la pelota se levantó, aunque haya sido mal, es el <strong>0</strong>;
+si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
+
+<h3>Armado</h3>
+<table class="evitar">
+  <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
+  <tbody>
+    <tr><td>Quién arma</td>
+        <td>El armador ya viene marcado en la cancha, pero se puede tocar a
+            cualquiera</td><td>—</td></tr>
+    <tr><td rowspan="4">Hacia qué zona arma</td>
+        <td>Zona 1 a 6</td><td>Sigue: hay que cargar el ataque</td></tr>
+    <tr><td><strong>Se pasó al otro lado</strong></td><td>Sigue, del otro lado</td></tr>
+    <tr class="cierra"><td><strong>Armada mala</strong></td>
+        <td><strong>Punto</strong> para el equipo contrario</td></tr>
+    <tr><td><strong>No cuenta como armado</strong> (un segundo toque que no fue
+            una asistencia de verdad)</td>
+        <td>Sigue igual, pero esa pelota no se le cuenta al armador</td></tr>
+    <tr><td>Atajo</td><td><strong>La manda de segunda</strong>: el que recibió la
+            manda él mismo al otro lado</td>
+        <td>Reemplaza armado y ataque juntos. Ver el punto 8</td></tr>
+  </tbody>
+</table>
+
+<h3>Ataque</h3>
+<table class="evitar">
+  <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
+  <tbody>
+    <tr><td>Quién ataca</td><td>El jugador que remata</td><td>—</td></tr>
+    <tr><td rowspan="3">Qué hace con la pelota</td>
+        <td><strong>Ataque</strong> → zona 1, 6 o 5 del rival</td>
+        <td>Sigue: falta el resultado</td></tr>
+    <tr><td><strong>Libre</strong> → cualquier zona (1 a 9)</td>
+        <td>Sigue, del otro lado. No cuenta como ataque</td></tr>
+    <tr><td><strong>Toque</strong> → cualquier zona (1 a 9)</td>
+        <td>Sigue, del otro lado. No cuenta como ataque</td></tr>
+    <tr><td><strong>Libre</strong> o <strong>Toque</strong> →
+            <strong>salió mal</strong></td>
+        <td><strong>Punto del rival</strong>. No cuenta como ataque fallado:
+            el que hizo el libre no estaba rematando</td></tr>
+    <tr class="cierra"><td rowspan="7">Cómo terminó el ataque</td>
+        <td><strong>Punto</strong></td><td><strong>Punto</strong> del que atacó</td></tr>
+    <tr><td><strong>Defendido</strong></td>
+        <td>Sigue, del lado del que defendió</td></tr>
+    <tr class="cierra"><td><strong>Afuera</strong></td>
+        <td><strong>Punto</strong> del que defendía</td></tr>
+    <tr class="cierra"><td><strong>Malla</strong> (a la red)</td>
+        <td><strong>Punto</strong> del que defendía</td></tr>
+    <tr class="cierra"><td><strong>Bloqueo punto</strong> + tocás al bloqueador</td>
+        <td><strong>Punto</strong> del que bloqueó</td></tr>
+    <tr class="cierra"><td><strong>Tocó el bloqueo</strong> + tocás al bloqueador
+            (la usó y se fue afuera del bloqueo)</td>
+        <td><strong>Punto</strong> del que atacó</td></tr>
+    <tr><td><strong>Bloqueo rejugable</strong> + tocás al bloqueador</td>
+        <td>Sigue, <strong>del mismo lado que atacó</strong></td></tr>
+  </tbody>
+</table>
+
+<p class="nota">La marca verde al costado señala las opciones que
+<strong>cierran el punto</strong>. Todas las demás dejan la pelota en juego y la
+app te va a pedir la jugada siguiente.</p>
+</section>
+
+<!-- ================= 8 y 9 ================= -->
+<section class="hoja">
+<h2>8 · Los casos raros</h2>
+
+<p>Son cuatro, y todos aparecen como un botón más dentro del paso donde
+corresponden. No hay que buscarlos en ningún menú.</p>
+
+<table>
+  <thead><tr><th style="width:26%">Qué pasó</th><th style="width:30%">Dónde está el botón</th><th>Qué hace</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Pasada de segunda</strong><br>
+            <span class="nota">el que recibió la manda él mismo al otro lado, en
+            el segundo toque</span></td>
+        <td>En <em>«Quién arma»</em>: <strong>la manda de segunda</strong></td>
+        <td>Reemplaza armado y ataque <strong>juntos</strong>. Después te pide el
+            jugador, la zona (1 a 9) y cómo terminó: punto, defendido o afuera.</td></tr>
+    <tr><td><strong>Ataque de primera</strong><br>
+            <span class="nota">la ataca de una, sin que nadie arme</span></td>
+        <td>En <em>«Quién la toca»</em> de una pelota de continuación:
+            <strong>ataca de primera</strong></td>
+        <td>Reemplaza defensa, armado y ataque. Después te pide el jugador, la
+            zona (1, 6 o 5) y si fue punto o lo defendieron.</td></tr>
+    <tr><td><strong>Libre o toque</strong><br>
+            <span class="nota">no la atacó: la devolvió</span></td>
+        <td>En <em>«Qué hace con la pelota»</em>: <strong>Libre</strong> o
+            <strong>Toque</strong></td>
+        <td>Elegís la zona y listo: el punto sigue del otro lado. Si el libre o
+            el toque se erró (se fue, quedó en la red, no pasó), en vez de una
+            zona tocás <strong>salió mal</strong> y el punto es del rival. En
+            ningún caso se le cuenta como ataque a nadie.</td></tr>
+    <tr><td><strong>Error en juego</strong><br>
+            <span class="nota">dobles, cuatro toques, invasión, rotación mal,
+            cualquier falta</span></td>
+        <td>El botón <strong>f · error en juego</strong>, en la fila «Rápido»</td>
+        <td>Le da el punto directo al equipo contrario. No hay que cargar jugador
+            ni zona. Sirve en cualquier momento del punto.</td></tr>
+  </tbody>
+</table>
+
+<div class="caja">
+  <div class="titulo">Una duda que aparece siempre</div>
+  <p>La <strong>pasada de segunda no lleva armado antes</strong>. Si cargaste un
+  armado y después querés poner la segunda, estás contando un toque de más:
+  deshacé el armado con <strong>◀ Deshacer el paso</strong> y elegí
+  «la manda de segunda» en el lugar del armador.</p>
+</div>
+
+<h2 style="margin-top:20px">9 · Cambios y líberos</h2>
+
+<h3>Un cambio</h3>
+<p>Los cambios se cargan con la <strong>pelota muerta</strong>, o sea cuando la
+app te está pidiendo el saque de un punto nuevo.</p>
+<ol class="pasos">
+  <li>Tocá <strong>C · cambio</strong>.</li>
+  <li>Tocá al jugador <strong>que sale</strong> en la cancha. Los líberos, que no
+      ocupan zona, están listados aparte abajo.</li>
+  <li>Marcá el dorsal del <strong>que entra</strong> y tocá OK.</li>
+  <li>Si el que entra pasa a ser el armador del equipo, tocá
+      <strong>queda como armador</strong>.</li>
+  <li><strong>Hacer el cambio</strong>.</li>
+</ol>
+<p>El que entra ocupa la misma zona del que salió, así que el orden de saque no
+se altera. No hace falta decir de qué equipo es: la app lo deduce. Sólo si el
+mismo dorsal existe en los dos equipos te va a preguntar de cuál sale.</p>
+
+<h3>El líbero</h3>
+<p>Se declara al cargar la rotación y no se toca más: la app ya sabe que entra
+por el jugador que cubre cuando ése pasa al fondo. Durante el partido sólo hay
+que hacer algo en dos casos:</p>
+<ul>
+  <li><strong>Se cambia un líbero por el otro</strong>: es un cambio común
+      (tocás al líbero en la lista y ponés el que entra).</li>
+  <li><strong>Un jugador que el líbero cubre sale por cambio</strong>: cargá el
+      cambio normal; el líbero sigue cubriendo al que entró en esa zona.</li>
+</ul>
+</section>
+
+<!-- ================= 10 ================= -->
+<section class="hoja">
+<h2>10 · Equivocarse, cerrar el set y terminar</h2>
+
+<h3>Deshacer</h3>
+<p>El botón <strong>x</strong> de la fila «Rápido» deshace lo último que hiciste,
+y <strong>el botón te dice qué va a deshacer</strong> antes de apretarlo:</p>
+<table class="tabla-chica">
+  <thead><tr><th style="width:34%">Si el botón dice</th><th>Deshace</th></tr></thead>
+  <tbody>
+    <tr><td><code>x · deshacer jugada</code></td>
+        <td>La última jugada de un punto que está abierto, y te la vuelve a pedir.</td></tr>
+    <tr><td><code>x · sacar el cambio</code></td>
+        <td>El cambio que acabás de cargar.</td></tr>
+    <tr><td><code>x · deshacer punto</code></td>
+        <td>El último punto cerrado: se lo resta al marcador y te vuelve a pedir
+            ese punto desde el saque.</td></tr>
+    <tr><td><code>x · reabrir el set N</code></td>
+        <td>Vuelve a abrir el set anterior tal como estaba. Es la única forma de
+            arreglar un set cerrado de más o una rotación mal cargada al empezar
+            el siguiente.</td></tr>
+  </tbody>
+</table>
+<p>Se puede apretar varias veces seguidas para ir para atrás punto por punto.
+Dentro de una jugada a medio armar, lo que se usa es
+<strong>◀ Deshacer el paso</strong>, que es más fino.</p>
+
+<div class="caja">
+  <div class="titulo">Mejor deshacer que dejarlo mal</div>
+  <p>Si te diste cuenta tres puntos después de que cargaste mal uno, no pasa nada
+  grave: el marcador queda bien igual. Pero si podés volver atrás, hacelo, porque
+  esas jugadas son las estadísticas del jugador.</p>
+</div>
+
+<h3>Cerrar el set</h3>
+<p>Cuando termina el set, con la app pidiéndote el saque de un punto nuevo, tocá
+<strong>w · cerrar set</strong>. La app guarda el parcial, le suma el set al que
+iba arriba, pone el marcador en 0-0 y pregunta dos cosas:</p>
+<ul>
+  <li><strong>¿Mantener la misma rotación?</strong> Si el equipo arranca el set
+      siguiente con otra formación, contestá «No, cargar otra» y volvés a cargar
+      las dos rotaciones.</li>
+  <li><strong>¿Quién saca?</strong></li>
+</ul>
+<p class="nota">Las estadísticas de los jugadores siguen siendo del partido
+completo: cerrar el set no reinicia nada de eso.</p>
+
+<h3>Terminar el partido</h3>
+<ol class="pasos">
+  <li>Cerrá el último set con <strong>w</strong>.</li>
+  <li>Tocá <strong>Guardar .txt</strong>. Eso deja el partido guardado y
+      aparece el enlace para descargarlo.</li>
+  <li>Tocá <strong>Excel</strong> y elegí de qué equipo querés el informe.
+      El informe queda listo y aparece en la pestaña <strong>Partidos</strong>.</li>
+  <li>Recién ahí, si vas a cargar otro partido, tocá
+      <strong>Reiniciar</strong>.</li>
+</ol>
+
+<div class="caja ojo">
+  <div class="titulo">Lo único que se puede perder</div>
+  <p>Mientras haya algo cargado sin guardar, la pestaña <strong>Cargar</strong>
+  muestra un número al lado del nombre: son los puntos que todavía no están en un
+  archivo. Guardá <strong>antes</strong> de reiniciar, y guardá también entre set
+  y set si el partido es largo: guardar dos veces no rompe nada, simplemente
+  pisa el mismo archivo.</p>
+</div>
+
+<h3>Después de guardar</h3>
+<p>En la pestaña <strong>Partidos</strong> vas a ver el partido en la lista. Ahí
+se puede, sin tocar el archivo:</p>
+<ul>
+  <li>Poner las <strong>etiquetas</strong> del campeonato
+      (<code>#nacional2026</code>, <code>#semifinal</code>) para después filtrar.</li>
+  <li>Corregir la fecha, la hora, los nombres o los parciales si algo salió mal.</li>
+  <li>Volver a generar el informe.</li>
+</ul>
+</section>
+
+<!-- ================= 11 ================= -->
+<section class="hoja">
+<h2>11 · Escribiendo, para los rápidos</h2>
+
+<p>El otro modo es tipear la jugada en el campo de texto. Es exactamente la misma
+carga —la línea que sale de tocar y la que se escribe son idénticas— pero cuando
+le agarrás la mano es más rápido. Se puede <strong>alternar punto a punto</strong>
+sin perder nada. Y en la pantalla, el panel <em>«Cómo se escribe una jugada»</em>
+tiene este mismo resumen siempre a mano.</p>
+
+<h3>Anatomía de una jugada completa</h3>
+<div class="linea"><b>1_5</b>_X<b>/3_3</b><b>/2_4</b><b>/4_1_P</b></div>
+<table class="tabla-chica evitar">
+  <tbody>
+    <tr><td class="c" style="width:16%">1_5</td>
+        <td>saca desde la zona 1 hacia la zona 5</td></tr>
+    <tr><td class="c">_X</td><td>el saque no fue punto: la jugada sigue</td></tr>
+    <tr><td class="c">/3_3</td><td>recibe el 3, con calidad 3</td></tr>
+    <tr><td class="c">/2_4</td><td>arma el 2 hacia la zona 4</td></tr>
+    <tr><td class="c">/4_1_P</td><td>ataca el 4 hacia la zona 1 y es punto</td></tr>
+  </tbody>
+</table>
+<p>Con la rotación cargada el número del sacador es opcional:
+<code>28_1_5_X/…</code> y <code>1_5_X/…</code> son lo mismo (y poner otro número
+da error). Sin rotación, el dorsal va siempre adelante.</p>
+
+<h3>Las jugadas</h3>
+<table class="tabla-chica">
+  <tbody>
+    <tr><td class="c" style="width:32%">5_1_6_A</td><td>as</td></tr>
+    <tr><td class="c">5_1_6_E</td><td>error de saque</td></tr>
+    <tr><td class="c">5_1_6_X/3_3/2_4/4_1_P</td><td>saque · recepción · armado · ataque punto</td></tr>
+    <tr><td class="c">…/4_1_D</td><td>lo defienden, sigue el punto</td></tr>
+    <tr><td class="c">…/4_1_O &nbsp; …/4_1_M</td><td>afuera / a la malla</td></tr>
+    <tr><td class="c">…/4_1_B_7_P</td><td>lo bloquea el 7: punto del bloqueo</td></tr>
+    <tr><td class="c">…/4_1_U_7</td><td>usa el bloqueo del 7: punto del ataque</td></tr>
+    <tr><td class="c">…/4_1_R_7</td><td>bloqueo rejugable: sigue el mismo equipo</td></tr>
+    <tr><td class="c">…/9_F_3 &nbsp; …/9_T_3</td><td>libre / toque del 9 hacia la zona 3</td></tr>
+    <tr><td class="c">…/9_F_0 &nbsp; …/9_T_0</td><td>el libre / el toque del 9 se erró:
+        el punto es del contrario (la zona 0 es «no llegó a ninguna»)</td></tr>
+    <tr><td class="c">…/9_S_6_P</td><td>pasada de segunda del 9 a la zona 6, punto</td></tr>
+    <tr><td class="c">…/3_-1</td><td>recepción que se va sola al otro lado</td></tr>
+    <tr><td class="c">3_0</td><td>defensa de calidad 0 que no se pudo jugar:
+        el punto es del contrario (la línea termina ahí)</td></tr>
+    <tr><td class="c">…/2_-1 &nbsp; …/2_-2</td><td>armada que se pasa / armada mala</td></tr>
+    <tr><td class="c">…/2_4_X/…</td><td>ese segundo toque no cuenta como armado</td></tr>
+    <tr><td class="c">7_2/1_4/9_5_D</td><td>continuación: defensa · armado · ataque</td></tr>
+    <tr><td class="c">9_A_1_P</td><td>ataque de primera, sin armado</td></tr>
+  </tbody>
+</table>
+
+<h3>Los comandos</h3>
+<table class="tabla-chica">
+  <tbody>
+    <tr><td class="c" style="width:32%">f</td><td>error en juego: punto para el contrario</td></tr>
+    <tr><td class="c">x</td><td>deshacer (jugada / cambio / punto / set)</td></tr>
+    <tr><td class="c">w</td><td>cerrar el set</td></tr>
+    <tr><td class="c">C_7_28</td><td>entra el 7, sale el 28</td></tr>
+    <tr><td class="c">C_7_S_28</td><td>lo mismo, y el 7 pasa a ser armador</td></tr>
+    <tr><td class="c">28_S 5 13 88 3 40</td><td>rotación: zonas 1 a 6, armador con <code>_S</code></td></tr>
+    <tr><td class="c">… 9_L_15_10</td><td>al final de la rotación: el líbero 9 juega por el 15 y el 10</td></tr>
+  </tbody>
+</table>
+
+<div class="caja">
+  <div class="titulo">Cargar un partido que ya está escrito en papel</div>
+  <p>Si alguien anotó el partido a mano y después lo pasó a texto, no hace falta
+  cargarlo jugada por jugada: abrí el panel <em>«Cargar un partido ya escrito»</em>,
+  pegá todo (desde el nombre del equipo A hasta la última jugada) y tocá
+  <strong>Cargar todo</strong>. Si alguna línea está mal, la app te dice cuál y
+  se corta ahí.</p>
+  <p style="margin-bottom:0"><strong>Ojo:</strong> pegar un partido
+  <strong>borra lo que haya cargado en ese momento</strong>, así que se hace con
+  la app vacía, nunca en el medio de un partido.</p>
+</div>
+</section>
+
+<!-- ================= 12 ================= -->
+<section class="hoja">
+<h2>12 · Si pasa esto, hacé esto</h2>
+
+<table>
+  <thead><tr><th style="width:38%">Pasa que…</th><th>Hacés</th></tr></thead>
+  <tbody>
+    <tr><td><strong>No viste quién tocó la pelota.</strong></td>
+        <td>Cargá al que estaba en esa zona y seguí. La zona y el resultado del
+            punto pesan más que el dorsal exacto: lo que no hay que hacer es
+            dejar el punto sin cargar.</td></tr>
+    <tr><td><strong>El jugador que tocó la pelota no está dibujado en la
+            cancha.</strong></td>
+        <td>Tocá <strong>otro</strong>, marcá el dorsal y OK. Pasa con líberos no
+            declarados y con jugadores que entraron sin que cargaras el cambio.</td></tr>
+    <tr><td><strong>Te perdiste en medio de un punto largo.</strong></td>
+        <td><strong>Cancelar la jugada</strong> y cargá la última pelota como la
+            recordás, con el resultado que de verdad cerró el punto. El marcador
+            tiene que quedar bien sí o sí.</td></tr>
+    <tr><td><strong>El marcador de la app no coincide con el de la mesa.</strong></td>
+        <td>Parás y lo arreglás ahí mismo con <strong>x</strong>, punto por punto,
+            hasta el lugar donde se desfasó. Seguir cargando con el marcador mal
+            arruina el partido entero.</td></tr>
+    <tr><td><strong>Aparece un mensaje en rojo y no se carga la jugada.</strong></td>
+        <td>Leelo: casi siempre es un dorsal que no está en la rotación de ese
+            equipo, o una zona que no corresponde a ese paso. La jugada
+            <strong>no</strong> se guardó, así que no rompiste nada: corregí y
+            mandala de nuevo.</td></tr>
+    <tr><td><strong>Cargaste mal una rotación al empezar un set.</strong></td>
+        <td>Apretá <strong>x</strong> hasta que diga <code>reabrir el set</code>,
+            y volvé a cerrarlo con <strong>w</strong> cargando bien la rotación.</td></tr>
+    <tr><td><strong>Se cerró el navegador, se apagó el celular o se cortó
+            internet.</strong></td>
+        <td>No se perdió: lo cargado queda guardado en ese mismo navegador.
+            Volvés a entrar <em>desde el mismo dispositivo</em>, ponés la
+            contraseña y seguís donde estabas. Desde otro equipo no aparece:
+            para seguir en otro hay que Guardar y después abrirlo desde
+            <strong>Partidos → Cargar este partido</strong>.</td></tr>
+    <tr><td><strong>Abrís Cargar y hay un partido a medio cargar.</strong></td>
+        <td>Es de este mismo dispositivo, de una vez anterior: nadie más puede
+            meterle mano. Si ya lo guardaste, <strong>Reiniciar</strong> y a
+            empezar; si no, revisá antes de tocar nada.</td></tr>
+    <tr><td><strong>Son dos y quieren cargar dos partidos.</strong></td>
+        <td>Se puede, uno en cada celular o tablet: cada dispositivo carga lo
+            suyo y no se pisan. Lo que no se puede es turnarse a mitad de un
+            partido pasándose el trabajo de un dispositivo al otro.</td></tr>
+    <tr><td><strong>Terminó el partido y no sabés si guardaste.</strong></td>
+        <td>Mirá el numerito al lado de la pestaña <strong>Cargar</strong>: si
+            está, hay puntos sin guardar. Tocá <strong>Guardar .txt</strong>.</td></tr>
+    <tr><td><strong>El Excel no sale.</strong></td>
+        <td>El mensaje te dice por qué, y el partido igual quedó guardado como
+            <code>.txt</code>. El informe se puede generar después desde la
+            pestaña Partidos.</td></tr>
+  </tbody>
+</table>
+
+<div class="caja bien">
+  <div class="titulo">La regla que resume todo</div>
+  <p>Si tenés que elegir entre cargar una jugada aproximada o no cargar el punto,
+  <strong>cargá el punto</strong>. Un dorsal dudoso ensucia una estadística; un
+  punto que falta desacomoda el marcador, la rotación y todo lo que viene
+  después.</p>
+</div>
+</section>
+
+<!-- ================= 13 · CHULETA ================= -->
+<section class="hoja chuleta">
+<h2>13 · Chuleta para la cancha</h2>
+<p class="nota" style="margin-top:-4px">Imprimí esta última hoja y llevala. Con
+esto alcanza.</p>
+
+<div class="doscol">
+  <div>
+    <h3>Antes del primer saque</h3>
+    <ol style="margin:0 0 8px;padding-left:16px">
+      <li>Pestaña <strong>Cargar</strong> + contraseña</li>
+      <li>Nombre de A · nombre de B</li>
+      <li>Rotación de A · rotación de B<br>
+          <span class="nota">zonas 1 a 6 · la 1 es la que saca · armador · líbero</span></li>
+      <li>Quién saca primero</li>
+      <li>Modo <strong>Tocando</strong></li>
+    </ol>
+
+    <h3>El recorrido de una pelota</h3>
+    <table>
+      <tbody>
+        <tr><td><strong>Saque</strong></td>
+            <td>desde 1/6/5 → hacia 1 a 9 → <em>As · Error · Sigue</em></td></tr>
+        <tr><td><strong>Recepción</strong></td>
+            <td>quién → calidad 3/2/1/0<br>
+                <span class="nota">o «0 · no se pudo jugar» / «se fue al otro lado»</span></td></tr>
+        <tr><td><strong>Armado</strong></td>
+            <td>quién → zona 1 a 6<br>
+                <span class="nota">o «la manda de segunda» / «se pasó» / «armada mala»</span></td></tr>
+        <tr><td><strong>Ataque</strong></td>
+            <td>quién → Ataque (1/6/5) · Libre · Toque → resultado</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Zonas</h3>
+    <table>
+      <tbody>
+        <tr><td class="c" style="width:30%">1 · 6 · 5</td><td>fondo: se saca y se remata ahí</td></tr>
+        <tr><td class="c">4 · 3 · 2</td><td>red: se arma ahí</td></tr>
+        <tr><td class="c">7 · 8 · 9</td><td>medio: saque, libre y toque</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h3>Cómo termina el ataque</h3>
+    <table>
+      <tbody>
+        <tr><td style="width:48%"><strong>Punto</strong></td><td>cierra · del que atacó</td></tr>
+        <tr><td><strong>Afuera</strong> / <strong>Malla</strong></td><td>cierra · del que defendía</td></tr>
+        <tr><td><strong>Bloqueo punto</strong> + bloqueador</td><td>cierra · del que bloqueó</td></tr>
+        <tr><td><strong>Tocó el bloqueo</strong> + bloqueador</td><td>cierra · del que atacó</td></tr>
+        <tr><td><strong>Defendido</strong></td><td>sigue · del que defendió</td></tr>
+        <tr><td><strong>Bloqueo rejugable</strong> + bloqueador</td><td>sigue · del mismo lado</td></tr>
+        <tr><td><strong>Libre</strong> / <strong>Toque</strong></td><td>sigue · del otro lado</td></tr>
+        <tr><td><strong>Libre</strong> / <strong>Toque</strong> → <strong>salió mal</strong></td>
+            <td>cierra · del otro lado</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Botones que salvan</h3>
+    <table>
+      <tbody>
+        <tr><td style="width:44%"><strong>◀ Deshacer el paso</strong></td>
+            <td>saca el último toque</td></tr>
+        <tr><td><strong>Cancelar la jugada</strong></td><td>tira la jugada entera</td></tr>
+        <tr><td><strong>f</strong></td><td>error en juego: punto del contrario</td></tr>
+        <tr><td><strong>x</strong></td><td>deshacer — el botón dice qué</td></tr>
+        <tr><td><strong>w</strong></td><td>cerrar el set</td></tr>
+        <tr><td><strong>C</strong></td><td>cambio (con la pelota muerta)</td></tr>
+        <tr><td><strong>Bloquear</strong></td><td>si dejás el equipo solo</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Al terminar, en este orden</h3>
+    <ol style="margin:0;padding-left:16px">
+      <li><strong>w</strong> para cerrar el último set</li>
+      <li><strong>Guardar .txt</strong></li>
+      <li><strong>Excel</strong> y elegir el equipo</li>
+      <li><strong>Reiniciar</strong> sólo después de guardar</li>
+    </ol>
+
+    <div class="caja ojo" style="margin-top:10px">
+      <div class="titulo">Nunca</div>
+      <p style="margin:0">Reiniciar sin haber guardado. Ni tocar un partido en
+      curso que no es tuyo.</p>
+    </div>
+  </div>
+</div>
+
+<div class="tijera">Guía de carga · Estadísticas de vóley · Club Palestino · v1 · septiembre 2026</div>
+</section>
+
+</body>
+</html>

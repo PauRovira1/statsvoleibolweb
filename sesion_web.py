@@ -74,11 +74,15 @@ def _reproducir(lineas: list[str]) -> tuple[dict, str]:
 
 
 class SesionPartido:
-    """Un partido en curso. Se le mandan lineas y responde con el estado."""
+    """Un partido en curso. Se le mandan lineas y responde con el estado.
 
-    def __init__(self):
-        self.lineas: list[str] = []
-        self.estado, self.log = _reproducir([])
+    Se puede arrancar con las lineas ya cargadas, que es como la usa el
+    servidor: el partido lo guarda la pantalla que lo esta cargando y cada
+    pedido trae su copia, asi que la sesion se arma, contesta y se tira."""
+
+    def __init__(self, lineas: list[str] | None = None):
+        self.lineas: list[str] = [str(linea) for linea in (lineas or [])]
+        self.estado, self.log = _reproducir(self.lineas)
 
     # ------------------------------------------------------------------
     def enviar(self, linea: str) -> dict:

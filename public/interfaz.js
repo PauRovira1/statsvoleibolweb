@@ -5,8 +5,9 @@
  * Sin dependencias y sin nada remoto: al costado de la cancha puede no haber
  * internet, asi que hasta el grafico esta dibujado a mano.
  *
- * La fuente de verdad del partido en curso es el servidor. Aca no se guarda
- * estado del partido: se pinta lo que devuelve /api/estado.
+ * El partido en curso es de esta pantalla y no del servidor (ver 2a): las
+ * lineas viven en el navegador y viajan en cada pedido. El servidor las corre
+ * por el motor y contesta como quedo el partido; eso es lo que se pinta.
  */
 
 // ======================================================================
@@ -33,6 +34,52 @@ async function api(ruta, datos){
   return respuesta;
 }
 
+// ======================================================================
+// 1b) Claro u oscuro
+// ======================================================================
+// Tres estados y no dos. "Auto" no es lo mismo que elegir oscuro: sigue al
+// navegador y cambia CON el, que en un celular que se pasa a oscuro de noche
+// es lo que la mayoria quiere. Con dos estados, la primera vez que tocas el
+// boton quedas fijo para siempre y no hay forma de volver.
+const TEMA = "voley.tema";
+const TEMAS = ["auto", "claro", "oscuro"];
+const ICONO_TEMA = {auto: "🌗", claro: "☀", oscuro: "☾"};
+const COMO_TEMA = {
+  auto: "Tema: el del navegador. Tocar para el claro.",
+  claro: "Tema: claro. Tocar para el oscuro.",
+  oscuro: "Tema: oscuro. Tocar para seguir al navegador.",
+};
+const prefiereClaro = window.matchMedia("(prefers-color-scheme: light)");
+
+let tema = "auto";
+try{ tema = localStorage.getItem(TEMA) || "auto"; }catch(_){ /* sin storage */ }
+if(!TEMAS.includes(tema)) tema = "auto";
+
+// La hoja de estilos tiene UNA lista de colores por tema y elige por
+// data-tema. En "auto" se copia aca la del navegador en vez de repetir la
+// paleta adentro de una media query: dos listas que hay que tocar juntas es
+// como se termina con un tema al dia y el otro no.
+function aplicarTema(){
+  document.documentElement.dataset.tema =
+    tema !== "auto" ? tema : (prefiereClaro.matches ? "claro" : "oscuro");
+  const boton = $("#btnTema");
+  if(boton){
+    boton.textContent = ICONO_TEMA[tema];
+    boton.title = COMO_TEMA[tema];
+  }
+}
+
+// En "auto", que cambiarlo en el sistema se vea sin recargar la pagina.
+prefiereClaro.addEventListener("change", () => { if(tema === "auto") aplicarTema(); });
+
+$("#btnTema").addEventListener("click", () => {
+  tema = TEMAS[(TEMAS.indexOf(tema) + 1) % TEMAS.length];
+  try{ localStorage.setItem(TEMA, tema); }catch(_){ /* sin storage, vale para esta visita */ }
+  aplicarTema();
+});
+
+aplicarTema();
+
 // Casi todo el HTML de esta pagina se arma con plantillas, y los nombres
 // vienen de archivos con apostrofos y acentos (O'sommer): sin escapar, un
 // nombre asi rompe el atributo o el texto.
@@ -45,6 +92,10 @@ function esc(valor){
 const num = v => (v == null || v === "" ? 0 : Number(v));
 const pct = (parte, total) => total ? (100 * parte / total).toFixed(1) + "%" : "—";
 const pctDe = fraccion => (fraccion == null ? "—" : (100 * fraccion).toFixed(1) + "%");
+// "10 · 38%": el numero suelto no dice si es mucho o poco sin ir a buscar el
+// total a otra columna y dividir de cabeza.
+const conParte = (cantidad, total) =>
+  !num(total) ? num(cantidad) : `${num(cantidad)} · ${pct(num(cantidad), num(total))}`;
 
 // El orden de las zonas de armado es el del volcado, no el numerico: 6-5 es
 // una zona propia y va en el medio.
@@ -139,6 +190,60 @@ function foco(){
 }
 
 // ======================================================================
+// 2a) El partido en curso vive en esta pantalla
+// ======================================================================
+// Antes el partido era uno solo y vivia en el servidor: dos personas cargando
+// al mismo tiempo escribian sobre el mismo partido y se pisaban. Ahora las
+// lineas son de este navegador y viajan en cada pedido; el servidor las corre
+// por el motor y contesta como quedo, sin guardarse nada. Cada pantalla carga
+// lo suyo.
+//
+// Van en localStorage y no en sessionStorage como el token: recargar la
+// pagina, cerrar la pestana sin querer o que se apague la tablet no tienen por
+// que costar un partido a medio cargar. Ojo que es por navegador, no por
+// pestana: dos pestanas del mismo navegador comparten el partido. Dos personas
+// es dos dispositivos (o dos navegadores), que es como se usa.
+const PARTIDO_GUARDADO = "voley.partido";
+let lineas = [];
+
+// El almacenamiento puede estar bloqueado (modo privado) o lleno: si falla se
+// sigue cargando igual, solo que el partido vive en memoria y se pierde al
+// recargar. Lo que no puede pasar es que se caiga la pagina.
+function recordarLineas(){
+  try{ localStorage.setItem(PARTIDO_GUARDADO, JSON.stringify(lineas)); }
+  catch(_){ /* sin almacenamiento el partido vive solo en memoria */ }
+}
+
+// null es "este navegador nunca cargo nada aca", que no es lo mismo que "no
+// hay nada cargado": con null se mira si el servidor tenia un partido a medio
+// cargar del modelo viejo (ver arrancarPartido).
+function lineasGuardadas(){
+  try{
+    const crudo = localStorage.getItem(PARTIDO_GUARDADO);
+    if(crudo === null) return null;
+    const lista = JSON.parse(crudo);
+    return Array.isArray(lista) ? lista.map(String) : [];
+  }catch(_){ return []; }
+}
+
+// Las lineas que valen son las que devuelve el motor, no las que se mandaron:
+// una linea que rechaza no entra, y pegar un .txt entero puede cortarse en la
+// primera que no entiende.
+function anotarLineas(estado){
+  if(!estado || !Array.isArray(estado.lineas)) return;
+  lineas = estado.lineas.map(String);
+  recordarLineas();
+}
+
+// Todo lo que toca el partido en curso va por aca: manda la copia de esta
+// pantalla y se queda con la que contesta el motor.
+async function apiPartido(ruta, datos){
+  const r = await api(ruta, Object.assign({lineas}, datos || {}));
+  if(r && r.estado) anotarLineas(r.estado);
+  return r;
+}
+
+// ======================================================================
 // 2b) El candado de la carga
 // ======================================================================
 // Cargar es lo unico que escribe sobre el partido, asi que es lo unico que
@@ -199,8 +304,9 @@ async function pedirContraseña(clave){
   if(!r.ok || !r.token) return avisoDeClave(r.mensaje || "Contraseña incorrecta.", false);
   guardarToken(r.token);
   avisoDeClave("", true);
-  // el partido pudo avanzar desde otra pantalla mientras este estaba bloqueado
-  const estado = await api("/api/estado");
+  // el partido es de esta pantalla y el candado no lo toca, pero la pantalla
+  // se repinta igual: bloquear y desbloquear no puede dejarla desactualizada
+  const estado = await apiPartido("/api/estado");
   if(estado.estado) pintar(estado.estado);
   mostrarMensaje(r.mensaje, true);
   foco();
@@ -341,7 +447,7 @@ function pintar(e){
 
 async function enviar(linea){
   if(!linea && linea !== "") return;
-  const r = await api("/api/enviar", {linea});
+  const r = await apiPartido("/api/enviar", {linea});
   if(r.estado) pintar(r.estado);
   mostrarMensaje(r.mensaje, r.ok);
   if(r.ok) campo.value = "";
@@ -368,7 +474,7 @@ $("#btnCambio").addEventListener("click", () => {
 });
 
 async function accion(ruta, datos){
-  const r = await api(ruta, datos || {});
+  const r = await apiPartido(ruta, datos || {});
   if(r.estado) pintar(r.estado);
   mostrarMensaje(r.mensaje, r.ok);
   mostrarEnlaces(r);
@@ -408,12 +514,153 @@ $("#btnBloquear").addEventListener("click", () => {
 $("#btnReiniciar").addEventListener("click", () => {
   if(!confirm("Se pierde todo lo cargado. Seguro?")) return;
   campo.value = "";        // reiniciar tambien borra lo que quedo a medio tipear
+  otroPartido();           // lo que se guarde ahora es otro partido, no este
   accion("/api/reiniciar");
 });
-$("#btnPegar").addEventListener("click", () => accion("/api/cargar", {texto: $("#pegar").value}));
+$("#btnPegar").addEventListener("click", () => {
+  otroPartido();
+  accion("/api/cargar", {texto: $("#pegar").value});
+});
 $("#btnStats").addEventListener("click", async () => {
-  const r = await api("/api/estadisticas");
+  const r = await apiPartido("/api/estadisticas");
   $("#stats").textContent = r.texto || "—";
+});
+
+// ======================================================================
+// 3b) Guardar un partido en privado
+// ======================================================================
+// Guardar el .txt PUBLICA el partido: queda en Partidos y entra en las
+// estadisticas de todos. Un partido a medio cargar no se puede publicar
+// (faltan sets, los promedios quedarian mal) pero tampoco se puede dejar
+// donde esta: mientras se carga vive solo en el localStorage de ESTE
+// navegador. Apagar la PC no lo pierde; formatearla, limpiar el navegador o
+// que se caiga la tablet, si.
+//
+// Esto lo sube al mismo lugar que todo lo demas pero aparte de Datos, asi que
+// no lo ve nadie y se vuelve a abrir desde aca.
+//
+// El id: identifica al PARTIDO, no al guardado. Guardar dos veces el mismo
+// partido pisa su propia copia en vez de dejar dos, y guardar uno distinto no
+// puede pisar al anterior -- que es lo que pasaria con el nombre, porque dos
+// partidos contra el mismo rival el mismo dia se llaman igual.
+const ID_PARTIDO = "voley.partido.id";
+let idPartido = "";
+
+function recordarId(nuevo){
+  idPartido = nuevo;
+  try{ localStorage.setItem(ID_PARTIDO, nuevo); }catch(_){ /* vive en memoria */ }
+  return nuevo;
+}
+
+function idDelPartido(){
+  if(idPartido) return idPartido;
+  try{ idPartido = localStorage.getItem(ID_PARTIDO) || ""; }catch(_){ /* sin storage */ }
+  return idPartido || recordarId(Date.now().toString(36) + "-" +
+                                 Math.random().toString(36).slice(2, 8));
+}
+
+// Lo que se empieza a cargar ahora es otro partido: reiniciar, pegar un .txt o
+// abrir uno de Partidos. Sin esto, el guardado siguiente pisaria el privado
+// del partido anterior, que es justo lo que no puede pasar.
+function otroPartido(){
+  recordarId(Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8));
+}
+
+let privados = [];
+
+function cuandoSeGuardo(segundos){
+  if(!segundos) return "";
+  const fecha = new Date(segundos * 1000);
+  const hoy = new Date();
+  const mismodia = fecha.toDateString() === hoy.toDateString();
+  const hora = fecha.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  return mismodia ? `hoy ${hora}` : `${fecha.toLocaleDateString()} ${hora}`;
+}
+
+function pintarPrivados(lista){
+  privados = Array.isArray(lista) ? lista : [];
+  const chip = $("#chipPrivados");
+  chip.hidden = !privados.length;
+  chip.textContent = privados.length;
+
+  const caja = $("#listaPrivados");
+  if(!privados.length){
+    caja.innerHTML = `<p class="nota">No hay ninguno guardado en privado.</p>`;
+    return;
+  }
+  caja.innerHTML = privados.map(g => {
+    const r = g.resumen || {};
+    // el marcador y el set dicen mas que la cantidad de lineas: es como se
+    // reconoce cual de dos partidos empezados es el que se estaba cargando
+    const donde = [r.sets ? `sets ${r.sets}` : "", r.set ? `set ${r.set}` : "",
+                   r.marcador ? r.marcador : "", `${g.lineas} lineas`]
+      .filter(Boolean).join(" · ");
+    return `<div class="privado" data-id="${esc(g.id)}">
+      <div class="que">
+        <div class="nombre">${esc(g.nombre)}</div>
+        <div class="cuando">${esc(donde)}${g.guardado ? " — " + esc(cuandoSeGuardo(g.guardado)) : ""}</div>
+      </div>
+      <button data-seguir="${esc(g.id)}">Seguir cargando</button>
+      <button class="peligro" data-olvidar="${esc(g.id)}">Borrar</button>
+    </div>`;
+  }).join("");
+}
+
+async function pedirPrivados(){
+  // POST aunque solo lea: la contraseña se exige por POST (ver
+  // RUTAS_CON_CLAVE), y que la lista pida la clave es lo unico que la hace
+  // privada -- por GET se podria saber que partidos hay sin saberla
+  const r = await api("/api/privados", {});
+  if(r.ok) pintarPrivados(r.privados);
+  else $("#listaPrivados").innerHTML = `<p class="nota">${esc(r.mensaje || "No se pudo leer la lista.")}</p>`;
+  return r;
+}
+
+async function guardarEnPrivado(){
+  const boton = $("#btnGuardarPrivado");
+  boton.disabled = true;
+  const r = await accion("/api/privado/guardar", {id: idDelPartido()});
+  boton.disabled = false;
+  if(r && r.privados) pintarPrivados(r.privados);
+  $("#panelPrivados").open = true;
+  return r;
+}
+
+// Abrir uno guardado deja esta pantalla cargandolo, y ademas adopta su id:
+// desde ahora "guardar en privado" actualiza ESE guardado y no crea otro.
+async function seguirPrivado(id){
+  const chip = $("#chipCargar");
+  if(!chip.hidden && idPartido !== id &&
+     !confirm("Hay un partido cargado en esta pantalla. Se reemplaza por el guardado?")) return;
+  const r = await accion("/api/privado/abrir", {id});
+  if(r.ok) recordarId(id);
+}
+
+async function olvidarPrivado(id){
+  const guardado = privados.find(g => g.id === id);
+  if(!confirm(`Se borra "${guardado ? guardado.nombre : id}" de los guardados en privado.\n\n` +
+              `No se puede deshacer. Seguro?`)) return;
+  const r = await api("/api/privado/borrar", {id});
+  if(r.privados) pintarPrivados(r.privados);
+  mostrarMensaje(r.mensaje, r.ok);
+}
+
+$("#btnPrivado").addEventListener("click", guardarEnPrivado);
+$("#btnGuardarPrivado").addEventListener("click", guardarEnPrivado);
+$("#btnRefrescarPrivados").addEventListener("click", pedirPrivados);
+
+// La lista se pide al abrir el panel y no al cargar la pagina: es una lectura
+// del almacenamiento y la mayoria de las veces esta pantalla se abre para
+// cargar jugadas, no para buscar un partido viejo.
+$("#panelPrivados").addEventListener("toggle", ev => {
+  if(ev.currentTarget.open) pedirPrivados();
+});
+
+$("#listaPrivados").addEventListener("click", ev => {
+  const seguir = ev.target.closest("[data-seguir]");
+  if(seguir) return seguirPrivado(seguir.dataset.seguir);
+  const olvidar = ev.target.closest("[data-olvidar]");
+  if(olvidar) return olvidarPrivado(olvidar.dataset.olvidar);
 });
 
 // La ayuda de sintaxis se abre y se cierra sin perder lo que se estaba
@@ -1016,7 +1263,22 @@ async function entrarAPartidos(){
   }
   PARTIDOS = r.partidos;
   llenarFiltroEquipos();
+  llenarFiltroTorneos();
   filtrar();
+}
+
+// Las etiquetas que existen, sacadas de los partidos. No hay una lista fija
+// de campeonatos en ningun lado: el que se escribe una vez pasa a estar.
+function llenarFiltroTorneos(){
+  const select = $("#filtroTorneo");
+  if(!select) return;
+  const etiquetas = new Set();
+  PARTIDOS.forEach(p => etiquetasDePartido(p).forEach(e => etiquetas.add(e)));
+  const antes = select.value;
+  select.innerHTML = `<option value="">Todos</option>` +
+    Array.from(etiquetas).sort().map(e =>
+      `<option value="${esc(e)}">${esc(e)}</option>`).join("");
+  select.value = antes;
 }
 
 function llenarFiltroEquipos(){
@@ -1034,9 +1296,13 @@ function filtrar(){
   const equipo = $("#filtroEquipo").value;
   const desde = $("#filtroDesde").value, hasta = $("#filtroHasta").value;
   const soloInforme = $("#filtroInforme").checked;
+  const torneo = $("#filtroTorneo") ? $("#filtroTorneo").value : "";
 
   const filas = PARTIDOS.filter(p => {
-    if(texto && !`${p.equipo} ${p.rival} ${p.fecha}`.toLowerCase().includes(texto)) return false;
+    // el buscador tambien mira las etiquetas: escribir "nacional" alcanza
+    if(texto && !`${p.equipo} ${p.rival} ${p.fecha} ${p.torneo || ""}`
+        .toLowerCase().includes(texto)) return false;
+    if(torneo && !etiquetasDePartido(p).includes(torneo)) return false;
     if(equipo && p.equipo !== equipo && p.rival !== equipo) return false;
     if(desde && p.fecha < desde) return false;
     if(hasta && p.fecha > hasta) return false;
@@ -1052,6 +1318,7 @@ function filtrar(){
     if(equipo) dichos.push(`equipo ${equipo}`);
     if(desde) dichos.push(`desde ${desde}`);
     if(hasta) dichos.push(`hasta ${hasta}`);
+    if(torneo) dichos.push(torneo);
     if(soloInforme) dichos.push("solo con informe");
     caja.innerHTML = `<p class="nota" style="margin:0">Ningun partido coincide con ` +
       esc(dichos.length ? dichos.join(" · ") : "el filtro") +
@@ -1066,6 +1333,8 @@ function filtrar(){
       <span class="equipos">${esc(p.equipo)} <span class="rival">vs ${esc(p.rival)}</span></span>
       <span class="tanteo">${esc(p.sets || "—")}</span>
       <span class="detalles">
+        ${etiquetasDePartido(p).map(e =>
+          `<span class="torneo">${esc(e)}</span>`).join("")}
         <span>${esc(parciales)}</span>
         <span>${p.puntos ? esc(p.puntos) + " puntos" : "puntos sin dato"}</span>
         <span class="marca ${p.volcado ? "si" : "no"}">txt ${p.volcado ? "si" : "no"}</span>
@@ -1080,11 +1349,13 @@ function filtrar(){
 // se escuchan los dos eventos porque el desplegable y el interruptor no
 // disparan "input" en todos los navegadores, y el buscador tiene que filtrar
 // mientras se escribe sin apretar Enter
-["#busca", "#filtroEquipo", "#filtroDesde", "#filtroHasta", "#filtroInforme"]
+["#busca", "#filtroEquipo", "#filtroTorneo", "#filtroDesde", "#filtroHasta",
+ "#filtroInforme"]
   .forEach(sel => ["input", "change"].forEach(ev =>
     $(sel).addEventListener(ev, filtrar)));
 $("#btnLimpiar").addEventListener("click", () => {
   $("#busca").value = ""; $("#filtroEquipo").value = "";
+  if($("#filtroTorneo")) $("#filtroTorneo").value = "";
   $("#filtroDesde").value = ""; $("#filtroHasta").value = "";
   $("#filtroInforme").checked = false;
   filtrar();
@@ -1213,7 +1484,17 @@ const CAMPOS_CORREGIBLES = [
   ["rival", "Rival", "Español"],
   ["sets", "Sets", "0-2"],
   ["puntos", "Puntos cargados", "92"],
+  ["torneo", "Etiquetas", "#nacional2026 #semifinal"],
 ];
+
+// "#apertura" escrito de cinco formas distintas serian cinco campeonatos, asi
+// que se normaliza igual que en el servidor: minusculas y con numeral.
+function etiquetasDePartido(p){
+  return String(p.torneo || "").split(/[\s,]+/)
+    .map(x => x.trim().replace(/^#/, "").toLowerCase())
+    .filter(Boolean).map(x => "#" + x)
+    .filter((x, i, todas) => todas.indexOf(x) === i);
+}
 
 function informesConocidos(){
   const nombres = new Set();
@@ -1311,6 +1592,7 @@ function cablearBotonesPartido(fila){
     avisoDetalle("Leyendo el volcado…", true);
     const respuesta = await fetch(urlDescarga(fila.volcado, "txt"));
     const texto = await respuesta.text();
+    otroPartido();      // es otro partido: no pisa el privado del que estaba
     const r = await accion("/api/cargar", {texto: soloLasJugadas(texto)});
     boton.disabled = false;
     avisoDetalle(r.mensaje, r.ok);
@@ -1354,13 +1636,14 @@ No se puede deshacer. Seguro?`)) return;
 // la seccion siguiente. Las lineas vacias del medio son respuestas validas
 // (una rotacion vacia), por eso se saca solo el blanco del final.
 function soloLasJugadas(texto){
-  const lineas = texto.split(/\r?\n/);
-  const arranque = lineas.findIndex(l => l.trim() === "=== Jugadas cargadas ===");
+  // "renglones" y no "lineas": lineas es el partido de esta pantalla (ver 2a)
+  const renglones = texto.split(/\r?\n/);
+  const arranque = renglones.findIndex(l => l.trim() === "=== Jugadas cargadas ===");
   const desde = arranque < 0 ? 0 : arranque + 1;
   const jugadas = [];
-  for(let i = desde; i < lineas.length; i++){
-    if(lineas[i].startsWith("===")) break;
-    jugadas.push(lineas[i]);
+  for(let i = desde; i < renglones.length; i++){
+    if(renglones[i].startsWith("===")) break;
+    jugadas.push(renglones[i]);
   }
   while(jugadas.length && jugadas[jugadas.length - 1].trim() === "") jugadas.pop();
   return jugadas.join("\n");
@@ -1678,14 +1961,27 @@ let planteles = null;
 let equipoElegido = null;
 let dorsalElegido = null;
 let filtroJugadores = "";       // lo escrito en el buscador
-let filtroEtiqueta = "";        // "" = todas las etiquetas
+let filtroEtiqueta = "";        // "" = todas las posiciones
+// De que campeonato son los numeros: "" = todos los partidos juntos. Es uno
+// solo y no una lista a proposito -- sumar dos ligas elegidas a mano da un
+// promedio que no es de ninguna de las dos y que despues nadie puede volver a
+// encontrar. O es todo, o es un campeonato.
+//
+// Este filtra en el SERVIDOR (cambia que partidos se suman), a diferencia del
+// de posiciones, que solo esconde botones. Y vale para Jugadores Y para
+// Equipo porque las dos salen del mismo "planteles": si valiera para una
+// sola, la otra mostraria el recuento de partidos de una liga con las
+// estadisticas de todas.
+let torneoElegido = "";
+let soloVarios = false;         // mostrar solo a los que juegan en 2+ equipos
 // El resumen del equipo se elige como si fuera un jugador mas: mismo selector,
 // mismo lugar. Asi no hace falta otra pestaña ni otro nivel de navegacion.
 let editandoNombres = false;    // si el panel de nombres esta abierto
 
-// Las cinco etiquetas. "Armador" va primero y no se elige a mano: sale del _S
-// de las rotaciones, o sea del propio partido. Las otras cuatro se anotan en
-// el panel de nombres, porque de que juega alguien no lo dice el volcado.
+// Las cinco etiquetas. "Armador" va primero porque es la unica que el propio
+// partido puede saber: la marca el _S de la rotacion. Tambien se puede poner
+// a mano, para los partidos cargados sin rotacion, y las dos fuentes se suman
+// (ver estadisticas_jugadores.marcado_como_armador).
 const ETIQUETAS = ["Armador", "Libero", "Punta", "Opuesto", "Central"];
 
 // Un jugador puede tener dos: el armador titular tambien es alguien que juega
@@ -1696,6 +1992,7 @@ function etiquetasDe(j){
   if(j.posicion && j.posicion !== "Armador") lista.push(j.posicion);
   return lista;
 }
+
 
 const esLibero = j => j.posicion === "Libero";
 
@@ -1712,10 +2009,10 @@ const sinAcentos = texto => String(texto || "").toLowerCase()
 // de este año puede no ser el del anterior -- asi que los nombres se anotan
 // aparte. No tocan el volcado ni el Excel.
 function editorDeNombres(equipo, jugadores){
-  // El desplegable no ofrece "Armador": ese no se elige, sale del _S de las
-  // rotaciones. Ofrecerlo dejaria poner a mano algo que el partido ya sabe, y
-  // los dos valores podrian discrepar.
-  const opciones = j => [""].concat(ETIQUETAS.filter(e => e !== "Armador")).map(e =>
+  // "Armador" tambien se ofrece: hace falta para los partidos cargados sin
+  // rotacion, donde no hay ningun _S del que sacarlo. Marcarlo a mano suma al
+  // _S, no lo pisa, asi que no puede contradecir al volcado.
+  const opciones = j => [""].concat(ETIQUETAS).map(e =>
     `<option value="${esc(e)}" ${e === (j.posicion || "") ? "selected" : ""}>${
       e || "sin posicion"}</option>`).join("");
   const campos = jugadores.map(j =>
@@ -1725,9 +2022,11 @@ function editorDeNombres(equipo, jugadores){
        <select class="posicionJugador" data-posicion="${esc(j.dorsal)}">${opciones(j)}</select>
      </label>`).join("");
   return `<div class="correccion" id="panelNombres">
-    <p class="nota" style="margin-top:0">Nombres y posiciones de ${esc(equipo.nombre)}. Se usan
-    solo para mirar: el volcado y el Excel siguen guardando el numero. "Armador" no se
-    elige aca -- lo marca el <code>_S</code> de la rotacion.</p>
+    <p class="nota" style="margin-top:0">Nombre y posicion de cada jugador de
+    ${esc(equipo.nombre)}. Se usan solo para mirar: el volcado y el Excel siguen guardando
+    el numero. Al que lleva <code>_S</code> en la rotacion ya se lo marca como armador
+    solo; ponerlo aca sirve para los partidos cargados sin rotacion, y nunca le saca
+    el rol a nadie.</p>
     <div class="camposCorreccion">${campos}</div>
     <div class="fila">
       <button class="primario" id="btnGuardarNombres">Guardar</button>
@@ -1737,12 +2036,7 @@ function editorDeNombres(equipo, jugadores){
 
 async function pintarJugadores(){
   const caja = $("#jugadores");
-  if(planteles === null){
-    caja.innerHTML = `<p class="nota">Leyendo los partidos guardados…</p>`;
-    const r = await api("/api/jugadores");
-    avisarDelServidor(r.almacenamiento);
-    planteles = r.ok ? r : {equipos: [], descartados: []};
-  }
+  await traerPlanteles(caja);
   // Los duplicados se avisan en vez de descartarlos en silencio: contar dos
   // veces el mismo partido duplicaria las cifras de todos sin que se note.
   const aviso = $("#avisoDuplicados");
@@ -1756,8 +2050,12 @@ async function pintarJugadores(){
     aviso.hidden = true;
   }
 
+  // Va arriba de todo porque es el filtro mas ancho: decide QUE partidos se
+  // suman, y todo lo de abajo sale de eso.
+  const selectorTorneo = pintarTorneos("filtroTorneoJugadores");
   if(!planteles.equipos.length){
-    caja.innerHTML = `<p class="nota">Todavia no hay partidos guardados.</p>`;
+    caja.innerHTML = selectorTorneo + sinPartidos();
+    engancharTorneos("filtroTorneoJugadores", pintarJugadores);
     return;
   }
 
@@ -1778,8 +2076,11 @@ async function pintarJugadores(){
     jugadores.map(j =>
       `<button data-dorsal="${esc(j.dorsal)}" data-nombre="${esc(j.nombre || "")}"
         data-etiquetas="${esc(etiquetasDe(j).join(" "))}"
+        data-equipos="${esc(j.equipos || 0)}"
         class="${j.dorsal === dorsalElegido ? "activa" : ""}"
-        title="${esc(j.partidos)} partidos">${esc(j.dorsal)}${
+        title="${esc(j.partidos)} partidos${j.equipos > 1
+          ? " · juega en " + j.equipos + " equipos" : ""}">${esc(j.dorsal)}${
+          j.equipos > 1 ? `<span class="enVarios">${esc(j.equipos)}</span>` : ""}${
           j.nombre ? `<span class="nombreJugador">${esc(j.nombre)}</span>` : ""}${
           etiquetasDe(j).map(etiquetaHTML).join("")}</button>`).join("") +
     `<span class="nota" id="sinCoincidencias" hidden>Ningun jugador con ese nombre o numero.</span>` +
@@ -1791,11 +2092,17 @@ async function pintarJugadores(){
   // Solo se ofrecen las etiquetas que alguien tiene: un filtro que siempre
   // deja la lista vacia no sirve de nada y ocupa lugar en un celular.
   const usadas = ETIQUETAS.filter(e => jugadores.some(j => etiquetasDe(j).includes(e)));
-  const filtroPorEtiqueta = usadas.length ? `<div class="filtroEtiquetas" id="filtroEtiquetas">
+  const hayVarios = jugadores.some(j => j.equipos > 1);
+  const filtroPorEtiqueta = (usadas.length || hayVarios)
+    ? `<div class="filtroEtiquetas" id="filtroEtiquetas">
     <button data-etiqueta="" class="${filtroEtiqueta ? "" : "activa"}">Todos</button>` +
     usadas.map(e => `<button data-etiqueta="${esc(e)}"
       class="etiquetaPos ${e.toLowerCase()} ${filtroEtiqueta === e ? "activa" : ""}"
-      >${esc(e)}</button>`).join("") + `</div>` : "";
+      >${esc(e)}</button>`).join("") +
+    (hayVarios ? `<span class="separadorFiltro"></span>
+      <button data-varios="1" class="enVariosFiltro ${soloVarios ? "activa" : ""}"
+        >En varios equipos</button>` : "") +
+    `</div>` : "";
 
   const buscador = `<div class="buscadorJugadores">
     <input id="buscarJugador" placeholder="Buscar por nombre o numero"
@@ -1803,7 +2110,7 @@ async function pintarJugadores(){
     ${token ? `<button id="btnNombres">${editandoNombres ? "Cerrar" : "Nombres"}</button>` : ""}
   </div>` + filtroPorEtiqueta;
 
-  const cabecera = selectorEquipos + buscador +
+  const cabecera = selectorTorneo + selectorEquipos + buscador +
     (editandoNombres ? editorDeNombres(equipo, jugadores) : "") + selectorDorsales;
   if(dorsalElegido == null){
     caja.innerHTML = cabecera + `<p class="nota">Sin jugadores en este equipo.</p>`;
@@ -1812,7 +2119,8 @@ async function pintarJugadores(){
   }
 
   const r = await api(`/api/jugador?equipo=${encodeURIComponent(equipoElegido)}` +
-                      `&dorsal=${encodeURIComponent(dorsalElegido)}`);
+                      `&dorsal=${encodeURIComponent(dorsalElegido)}` +
+                      `&campeonato=${encodeURIComponent(torneoElegido)}`);
   if(!r.ok){
     caja.innerHTML = cabecera + `<p class="nota">${esc(r.mensaje)}</p>`;
     engancharSelectores();
@@ -1831,20 +2139,75 @@ async function pintarJugadores(){
       </div>
     </div>
     ${indicadoresJugador(j)}
+    ${enCadaEquipo(j)}
     ${tablaPorPartido(j)}
     ${!j.armador && j.indicadores.recepciones ? tablasRecepcion(j) : ""}
+    ${j.defensa ? tablasDefensa(j) : ""}
     ${!esLibero(j) && j.indicadores.ataques ? tablasAtaque(j) : ""}
     ${j.armador ? tablasArmado(j) : ""}
     ${j.evolucion.length > 1 ? `<div class="sub-titulo">Partido a partido</div>` +
                                graficoEvolucion(j) : ""}
-    <div class="sub-titulo">El jugador contra el promedio del equipo</div>
     ${tablaComparacion(j)}
     ${notaAlPie(j)}`;
 
   engancharSelectores();
 }
 
+// Los planteles se piden una vez y los comparten Jugadores y Equipo. Con el
+// filtro de campeonato puesto, ese pedido deja de ser siempre el mismo: por
+// eso se centralizo aca en vez de repetirlo en las dos pantallas.
+async function traerPlanteles(caja){
+  if(planteles !== null) return planteles;
+  caja.innerHTML = `<p class="nota">Leyendo los partidos guardados…</p>`;
+  const r = await api("/api/jugadores?campeonato=" + encodeURIComponent(torneoElegido));
+  avisarDelServidor(r.almacenamiento);
+  planteles = r.ok ? r : {equipos: [], descartados: [], campeonatos: []};
+  return planteles;
+}
+
+const sinPartidos = () => `<p class="nota">${torneoElegido
+  ? "No hay partidos de " + esc(torneoElegido) + ". Las etiquetas se ponen en Partidos."
+  : "Todavia no hay partidos guardados."}</p>`;
+
+// Los campeonatos salen de TODOS los partidos, no de los que quedan despues
+// de filtrar: si salieran de los filtrados, elegir uno borraria los demas del
+// selector y no habria como volver.
+// El id lo pone el que llama: Jugadores y Equipo estan las dos en el DOM al
+// mismo tiempo (una escondida), asi que si compartieran id habria dos
+// elementos con el mismo y engancharTorneos cablearia los botones de la otra.
+function pintarTorneos(id){
+  const torneos = (planteles && planteles.campeonatos) || [];
+  if(!torneos.length) return "";
+  const boton = (valor, texto) =>
+    `<button data-torneo="${esc(valor)}" class="${
+      valor === torneoElegido ? "activa" : ""}">${esc(texto)}</button>`;
+  return `<div class="filtroEtiquetas torneos" id="${id}">` +
+    boton("", "#todos") + torneos.map(t => boton(t, t)).join("") +
+    `</div>`;
+}
+
+// Cambiar de campeonato cambia que partidos se suman, asi que hay que volver
+// a pedirlos: no alcanza con esconder botones, como hace el de posiciones.
+// Uno solo a la vez -- volver a tocar el que ya esta puesto no hace nada, que
+// es como se evita el "ninguno elegido" sin explicarlo.
+function engancharTorneos(id, repintar){
+  $$(`#${id} button`).forEach(b =>
+    b.addEventListener("click", () => {
+      if((b.dataset.torneo || "") === torneoElegido) return;
+      torneoElegido = b.dataset.torneo || "";
+      planteles = null;   // cambio que partidos se suman: hay que pedirlos
+      repintar();
+    }));
+}
+
 function engancharSelectores(){
+  engancharTorneos("filtroTorneoJugadores", pintarJugadores);
+  $$("[data-otro-equipo]").forEach(b => b.addEventListener("click", () => {
+    equipoElegido = b.dataset.otroEquipo;
+    dorsalElegido = b.dataset.otroDorsal;
+    filtroJugadores = "";
+    pintarJugadores();
+  }));
   $$("#selectorEquipo button").forEach(b => b.addEventListener("click", () => {
     equipoElegido = b.dataset.equipo;
     dorsalElegido = null;
@@ -1868,9 +2231,14 @@ function engancharSelectores(){
   // El filtro por etiqueta esconde botones, igual que el buscador: repintar
   // pediria la ficha de nuevo y perderia el foco del campo de busqueda.
   $$("#filtroEtiquetas button").forEach(b => b.addEventListener("click", () => {
-    filtroEtiqueta = b.dataset.etiqueta === filtroEtiqueta ? "" : b.dataset.etiqueta;
-    $$("#filtroEtiquetas button").forEach(o =>
-      o.classList.toggle("activa", (o.dataset.etiqueta || "") === filtroEtiqueta));
+    if(b.dataset.varios !== undefined){
+      soloVarios = !soloVarios;
+      b.classList.toggle("activa", soloVarios);
+    } else {
+      filtroEtiqueta = b.dataset.etiqueta === filtroEtiqueta ? "" : b.dataset.etiqueta;
+      $$("#filtroEtiquetas button[data-etiqueta]").forEach(o =>
+        o.classList.toggle("activa", (o.dataset.etiqueta || "") === filtroEtiqueta));
+    }
     aplicarFiltroJugadores();
   }));
 
@@ -1914,14 +2282,17 @@ function aplicarFiltroJugadores(){
     // los dos filtros se suman: buscar "Sofia" entre los punteros
     const porEtiqueta = !filtroEtiqueta ||
       (b.dataset.etiquetas || "").split(" ").includes(filtroEtiqueta);
-    const entra = porNombre && porEtiqueta;
+    const porVarios = !soloVarios || Number(b.dataset.equipos || 0) > 1;
+    const entra = porNombre && porEtiqueta && porVarios;
     b.hidden = !entra;
     if(entra) visibles++;
   });
   const aviso = $("#sinCoincidencias");
   if(aviso){
-    aviso.textContent = filtroEtiqueta && !buscado
-      ? `Ningun jugador marcado como ${filtroEtiqueta}.`
+    const puestos = [filtroEtiqueta, soloVarios && "en varios equipos"]
+      .filter(Boolean).join(" + ");
+    aviso.textContent = puestos && !buscado
+      ? `Ningun jugador ${puestos}.`
       : "Ningun jugador con ese nombre o numero.";
     aviso.hidden = visibles > 0;
   }
@@ -1966,14 +2337,11 @@ function tablaPorPartido(j){
 // hablando del mismo equipo.
 async function pintarEquipo(){
   const caja = $("#equipo");
-  if(planteles === null){
-    caja.innerHTML = `<p class="nota">Leyendo los partidos guardados…</p>`;
-    const r = await api("/api/jugadores");
-    avisarDelServidor(r.almacenamiento);
-    planteles = r.ok ? r : {equipos: [], descartados: []};
-  }
+  await traerPlanteles(caja);
+  const selectorTorneo = pintarTorneos("filtroTorneoEquipo");
   if(!planteles.equipos.length){
-    caja.innerHTML = `<p class="nota">Todavia no hay partidos guardados.</p>`;
+    caja.innerHTML = selectorTorneo + sinPartidos();
+    engancharTorneos("filtroTorneoEquipo", pintarEquipo);
     return;
   }
 
@@ -1988,9 +2356,11 @@ async function pintarEquipo(){
         ${esc(e.nombre)}<span class="chip">${esc(e.partidos)}</span></button>`).join("") +
     `</div>`;
 
-  const r = await api(`/api/equipo?equipo=${encodeURIComponent(equipoElegido)}`);
-  caja.innerHTML = selector + (r.ok ? resumenEquipoHTML(r.equipo)
-                                    : `<p class="nota">${esc(r.mensaje)}</p>`);
+  const r = await api(`/api/equipo?equipo=${encodeURIComponent(equipoElegido)}` +
+                      `&campeonato=${encodeURIComponent(torneoElegido)}`);
+  caja.innerHTML = selectorTorneo + selector +
+    (r.ok ? resumenEquipoHTML(r.equipo) : `<p class="nota">${esc(r.mensaje)}</p>`);
+  engancharTorneos("filtroTorneoEquipo", pintarEquipo);
 
   $$("#selectorEquipoResumen button").forEach(b => b.addEventListener("click", () => {
     equipoElegido = b.dataset.equipo;
@@ -2012,6 +2382,8 @@ function resumenEquipoHTML(e){
     ["Puntos recibidos", i.recibidos, ""],
     ["Recepciones", i.recepciones, ""],
     ["% Positiva", pctDe(i.positiva), "calidad 2+3"],
+    ["Defensas", i.defensas, ""],
+    ["% Def. positiva", pctDe(i.defensa_positiva), "calidad 2+3"],
     ["Ataques", i.ataques, ""],
     ["% Punto", pctDe(i.punto), "de sus ataques"],
     ["Eficacia", pctDe(i.eficacia), "(puntos - errores) / ataques"],
@@ -2030,7 +2402,7 @@ function resumenEquipoHTML(e){
        <div class="titulo">${esc(titulo)}</div>
        ${base ? `<div class="base">${esc(base)}</div>` : ""}</div>`).join("") + `</div>` +
     fasesHTML(e) + causasHTML(e) + distribucionHTML(e) + direccionHTML(e) +
-    recepcionEquipoHTML(e) + porPartidoEquipoHTML(e);
+    recepcionEquipoHTML(e) + defensaEquipoHTML(e) + porPartidoEquipoHTML(e);
 }
 
 // En que fase del rally se ganan y se pierden los puntos. El saldo es lo que
@@ -2079,13 +2451,17 @@ function direccionHTML(e){
   const d = e.direccion.direcciones;
   if(!e.direccion.filas.length) return "";
   const filas = e.direccion.filas.map(f => ({
-    celdas: [`Zona ${f.zona}`, f.ataques, pctDe(f.del_total)].concat(
+    celdas: [`Zona ${f.zona}`, `${f.ataques} · ${pctDe(f.punto)}`, pctDe(f.del_total)].concat(
       f.hacia.map(h => h.ataques ? `${h.ataques} · ${pctDe(h.reparto)} · ${pctDe(h.punto)} pt`
                                  : "—")),
   }));
   return `<div class="sub-titulo">Hacia donde se ataca, por zona de origen</div>` +
-    tabla(["Desde", "Ataques", "% del total"].concat(d.map(x => "Hacia " + x)), filas,
-          "En cada celda: ataques · que parte de los de esa zona · que parte fueron punto.");
+    tabla(["Desde", "Ataques · % punto", "% del total"].concat(d.map(x => "Hacia " + x)),
+          filas,
+          "\"Ataques · % punto\": cuantos salieron de esa zona y que parte fueron " +
+          "punto. \"% del total\" es cuanto se usa la zona, que es otra cosa: la mas " +
+          "usada puede ser la menos efectiva. En las columnas Hacia: ataques · que " +
+          "parte de los de esa zona · que parte fueron punto.");
 }
 
 function recepcionEquipoHTML(e){
@@ -2102,6 +2478,17 @@ function recepcionEquipoHTML(e){
     tabla(cabeza, filas, "La ruta es de que zona salio el saque a cual cayo.");
 }
 
+function defensaEquipoHTML(e){
+  const d = e.defensa;
+  if(!d || !d.defensas) return "";
+  return `<div class="sub-titulo">Defensa del equipo</div>` + tabla(
+    ["", "Defensas", "Cal. 3", "Cal. 2", "Cal. 1", "Cal. 0", "Pase al otro lado",
+     "% Positiva"],
+    [{total: true, celdas: ["Todas", d.defensas, d.cal3, d.cal2, d.cal1, d.cal0,
+                            d.pase, pct(d.cal3 + d.cal2, d.defensas)]}],
+    "La calidad 0 incluye la pelota que nadie llego a levantar.");
+}
+
 function porPartidoEquipoHTML(e){
   const filas = e.por_partido.map(p => ({celdas: [
     p.etiqueta, `${p.hechos}-${p.recibidos}`, p.recepciones, pctDe(p.positiva),
@@ -2111,19 +2498,51 @@ function porPartidoEquipoHTML(e){
      "Eficacia", "Bloqueos"], filas);
 }
 
+// La misma persona puede jugar en la primera y en la segunda, con numeros
+// distintos en cada una. Sus cifras van separadas y nunca sumadas: el promedio
+// de las dos taparia justamente la diferencia entre jugar en una y en la otra,
+// que es lo que se quiere mirar.
+//
+// El cruce se hace por NOMBRE, no por dorsal: la misma persona puede ser la 13
+// en la A y la 7 en la B. Por eso sin nombre anotado esto no aparece.
+function enCadaEquipo(j){
+  if(!j.tambien_en || !j.tambien_en.length) return "";
+  const cabeza = ["Equipo", "Partidos", "Recepciones", "% Positiva", "Ataques",
+                  "% Punto", "Eficacia", "Armados", "Bloqueos"];
+  const fila = (e, aqui) => ({
+    total: aqui,
+    celdas: [`${e.equipo} · #${e.dorsal}`, e.partidos, e.recepciones,
+             pctDe(e.positiva), e.ataques, pctDe(e.punto), pctDe(e.eficacia),
+             e.armados, e.bloqueos],
+  });
+  const filas = [fila(j.aqui, true)].concat(j.tambien_en.map(e => fila(e, false)));
+  const irA = j.tambien_en.map(e =>
+    `<button class="secundaria" data-otro-equipo="${esc(e.equipo)}"
+       data-otro-dorsal="${esc(e.dorsal)}">Ver en ${esc(e.equipo)}</button>`).join("");
+  return `<div class="sub-titulo">${esc(j.nombre || "El jugador")} en cada equipo</div>` +
+    tabla(cabeza, filas, "Se cruzan por nombre, no por numero: la misma persona " +
+          "puede tener un dorsal distinto en cada equipo.") +
+    `<div class="fila">${irA}</div>`;
+}
+
 function indicadoresJugador(j){
   const i = j.indicadores;
-  // El libero no ataca y el armador no recibe: mostrarles esas casillas en
-  // cero no es informacion, es ruido que ademas hace dudar del dato. Si
-  // igual hay numeros ahi son de una jugada de emergencia, y se ven en el
-  // resumen por partido.
+  // El libero no ataca ni bloquea (las dos son falta) y al armador no se le
+  // miden las recepciones: mostrarles esas casillas en cero no es
+  // informacion, es ruido que ademas hace dudar del dato. Si igual hay
+  // numeros ahi son de una jugada de emergencia, y se ven en el resumen por
+  // partido. Es la misma regla que usa la tabla de comparacion de abajo.
   const casillas = [
     ["Recepciones", i.recepciones, "", !j.armador],
     ["% Positiva", pctDe(i.positiva), "calidad 2+3", !j.armador],
     ["% Perfecta", pctDe(i.perfecta), "calidad 3", !j.armador],
+    // la defensa la hacen todos, tambien el armador: es la unica casilla que
+    // no se esconde por rol
+    ["Defensas", i.defensas, "", true],
+    ["% Def. positiva", pctDe(i.defensa_positiva), "calidad 2+3", true],
     ["Ataques", i.ataques, "", !esLibero(j)],
     ["% Punto", pctDe(i.punto), "de sus ataques", !esLibero(j)],
-    ["Bloqueos punto", i.bloqueos_punto, "", true]
+    ["Bloqueos punto", i.bloqueos_punto, "", !esLibero(j)]
   ].filter(c => c[3]);
   return `<div class="indicadores">` + casillas.map(([titulo, valor, base]) =>
     `<div class="indicador"><div class="valor">${esc(valor)}</div>
@@ -2131,18 +2550,35 @@ function indicadoresJugador(j){
      ${base ? `<div class="base">${esc(base)}</div>` : ""}</div>`).join("") + `</div>`;
 }
 
-function filaRecepcion(etiqueta, r){
-  const t = num(r.recepciones);
-  return {celdas: [etiqueta, t, num(r.cal3), num(r.cal2), num(r.cal1), num(r.cal0),
-                   num(r.pase), pct(num(r.cal3) + num(r.cal2), t), pct(num(r.cal3), t)]};
+
+// El desglose set por set de un jugador suelto no dice nada: son tres o
+// cuatro recepciones por set y el porcentaje salta de 0 a 100 con una sola
+// pelota. Queda el total del partido, y cada calidad dice que parte es.
+function tablasRecepcion(j){
+  const r = j.recepcion.total, t = num(r.recepciones);
+  const cabeza = ["Recepciones", "Cal. 3", "Cal. 2", "Cal. 1", "Cal. 0",
+                  "Pase al otro lado", "% Positiva (2+3)", "% Perfecta (3)"];
+  const fila = {total: true, celdas: [t,
+    conParte(r.cal3, t), conParte(r.cal2, t), conParte(r.cal1, t), conParte(r.cal0, t),
+    conParte(r.pase, t), pct(num(r.cal3) + num(r.cal2), t), pct(num(r.cal3), t)]};
+  return `<div class="sub-titulo">Recepcion</div>` + tabla(cabeza, [fila]);
 }
 
-function tablasRecepcion(j){
-  const cabeza = ["", "Recepciones", "Cal. 3", "Cal. 2", "Cal. 1", "Cal. 0",
+// Defender un ataque no es recibir un saque, aunque se anoten igual: se
+// entrenan aparte y un mismo jugador puede ser bueno en una y malo en la otra.
+// Por eso va en su propia tabla y no como una fila mas de la de recepcion.
+
+function tablasDefensa(j){
+  const d = j.defensa.total, t = num(d.defensas);
+  const cabeza = ["Defensas", "Cal. 3", "Cal. 2", "Cal. 1", "Cal. 0",
                   "Pase al otro lado", "% Positiva (2+3)", "% Perfecta (3)"];
-  const filas = [Object.assign(filaRecepcion("Partido", j.recepcion.total), {total:true})]
-    .concat(j.recepcion.por_set.map(s => filaRecepcion("Set " + s.set, s)));
-  return `<div class="sub-titulo">Recepcion</div>` + tabla(cabeza, filas);
+  const filas = [{total: true, celdas: [t,
+    conParte(d.cal3, t), conParte(d.cal2, t), conParte(d.cal1, t), conParte(d.cal0, t),
+    conParte(d.pase, t),
+    pct(num(d.cal3) + num(d.cal2), t), pct(num(d.cal3), t)]}];
+  return `<div class="sub-titulo">Defensa</div>` + tabla(cabeza, filas,
+    "La calidad 0 incluye la pelota que no se pudo jugar, que es punto para el " +
+    "rival; un pase al otro lado deja la pelota del otro lado y el punto sigue.");
 }
 
 function tablasAtaque(j){
@@ -2183,9 +2619,13 @@ function tablasAtaque(j){
 }
 
 function tablasArmado(j){
+  // Aca se llega estando marcado como armador (por el _S o a mano) pero sin
+  // haber armado nada en lo cargado. Antes decia "este jugador no es
+  // armador", que contradice a la etiqueta que se ve dos lineas mas arriba.
   if(!j.armado) return `<div class="sub-titulo">Armado
-    <span class="aclara">este jugador no es armador</span></div>
-    <p class="nota" style="margin-top:0">Sin armados registrados.</p>`;
+    <span class="aclara">sin armados en lo cargado</span></div>
+    <p class="nota" style="margin-top:0">Esta marcado como armador, pero no armo
+    ninguna pelota en los partidos que hay cargados.</p>`;
 
   const a = j.armado;
   const filas = a.por_zona.map(z => ({celdas: ["Zona " + z.zona, z.armados,
@@ -2249,22 +2689,81 @@ function graficoEvolucion(j){
     </div></div>`;
 }
 
+// Contra que se compara a alguien. Dos reglas, las dos por el mismo motivo:
+// que la comparacion sea entre pares.
+//
+//   1) El promedio de cada cosa sale SOLO de los que la hacen. Lo calcula el
+//      servidor (ver estadisticas_jugadores._promedio_equipo) y viene con
+//      cuantos jugadores lo componen.
+//
+//   2) Las filas dependen de que juega. Un libero no ataca ni bloquea -- no
+//      es que le vaya mal, es que no puede, es falta -- y al armador no se le
+//      miden recepciones. Ponerles un 0 ahi no es un dato, es ruido que
+//      ademas los hace ver peor de lo que son.
+const GRUPOS_COMPARACION = [
+  {clave: "recepciones", quienes: "reciben",
+   filas: [["Recepciones", "recepciones", false],
+           ["% Positiva (2+3)", "positiva", true],
+           ["% Perfecta (3)", "perfecta", true]]},
+  {clave: "defensas", quienes: "defienden",
+   filas: [["Defensas", "defensas", false],
+           ["% Defensa positiva", "defensa_positiva", true]]},
+  {clave: "ataques", quienes: "atacan",
+   filas: [["Ataques", "ataques", false],
+           ["% Punto de ataque", "punto", true]]},
+  {clave: "bloqueos_punto", quienes: "bloquean",
+   filas: [["Bloqueos punto", "bloqueos_punto", false]]},
+  {clave: "armados", quienes: "arman",
+   filas: [["Armados", "armados", false]]},
+];
+
+function leAplica(grupo, j){
+  if(grupo.clave === "recepciones") return !j.armador;
+  if(grupo.clave === "ataques" || grupo.clave === "bloqueos_punto") return !esLibero(j);
+  if(grupo.clave === "armados") return !!j.armador;
+  return true;      // defender lo hacen todos, tambien el libero
+}
+
 function tablaComparacion(j){
-  const i = j.indicadores, e = j.promedio_equipo;
-  const filas = [
-    ["Recepciones", i.recepciones, e.recepciones, false],
-    ["% Positiva (2+3)", i.positiva, e.positiva, true],
-    ["% Perfecta (3)", i.perfecta, e.perfecta, true],
-    ["Ataques", i.ataques, e.ataques, false],
-    ["% Punto de ataque", i.punto, e.punto, true],
-    ["Bloqueos punto", i.bloqueos_punto, e.bloqueos_punto, false]
-  ].map(([titulo, propio, equipo, esPct]) => ({celdas: [titulo,
-    esPct ? pctDe(propio) : propio,
-    esPct ? pctDe(equipo) : equipo,
-    esPct ? ((propio - equipo) * 100).toFixed(1) + " pp"
-          : (propio - equipo > 0 ? "+" : "") + (propio - equipo)]}));
-  return tabla(["Metrica", "Jugador", "Promedio del equipo", "Diferencia"], filas,
-    "Promedio del equipo: el mismo calculo sobre todos los jugadores del equipo.");
+  const i = j.indicadores, e = j.promedio_equipo || {};
+  const grupos = GRUPOS_COMPARACION.filter(g => {
+    if(!leAplica(g, j)) return false;
+    const cuantos = (e[g.clave] || {}).jugadores || 0;
+    if(!cuantos) return false;              // nadie del equipo la hace: 0 contra 0
+    // si el unico que la hace es el, el promedio ES el: no hay con quien
+    // compararlo y la fila solo diria "+0.0"
+    return !(cuantos === 1 && (i[g.clave] || 0) > 0);
+  });
+  if(!grupos.length) return "";
+
+  const filas = grupos.flatMap(g => g.filas
+    // un porcentaje sobre cero intentos no es un rendimiento, es una
+    // ausencia: "0% de efectividad, -30 pp" de alguien que no ataco nunca se
+    // lee como que ataca mal. El conteo si queda, que es lo que lo dice.
+    .filter(([, , esPct]) => !esPct || (i[g.clave] || 0) > 0)
+  ).map(([titulo, clave, esPct]) => {
+    const propio = i[clave] || 0, equipo = (e[clave] || {}).valor || 0;
+    return {celdas: [titulo,
+      esPct ? pctDe(propio) : propio,
+      esPct ? pctDe(equipo) : equipo,
+      // sin redondear, 27 - 17.1 sale "9.899999999999999"
+      esPct ? ((propio - equipo) * 100).toFixed(1) + " pp"
+            : (propio - equipo > 0 ? "+" : "") + (propio - equipo).toFixed(1)]};
+  });
+
+  const cuantos = grupos.map(g => `${e[g.clave].jugadores} ${g.quienes}`).join(", ");
+  // solo lo que NO PUEDE hacer por su posicion. El armado de los que no son
+  // armadores tambien se esconde, pero por otro motivo (no tiene sentido
+  // medirle el armado a un central), y meterlo en la misma frase mentiria.
+  const nopuede = esLibero(j)
+    ? " A un libero no se le listan ataques ni bloqueos: no es que le vayan mal, es que no los hace."
+    : (j.armador ? " Al armador no se le listan las recepciones." : "");
+  return `<div class="sub-titulo">El jugador contra los que hacen lo mismo</div>` +
+    tabla(["Metrica", "Jugador", "Promedio del equipo", "Diferencia"], filas,
+      `Cada promedio sale solo de los que hacen esa accion (${cuantos}), no de todo ` +
+      `el plantel: repartido entre los que nunca reciben, el promedio de recepcion ` +
+      `da la mitad y cualquier receptor parece estar muy por encima del equipo.` +
+      nopuede);
 }
 
 function notaAlPie(j){
@@ -2302,11 +2801,36 @@ function notaAlPie(j){
 // La tabla de la notacion se baja antes de pintar: sin ella el modo visual no
 // sabe que ofrecer. Es un archivo fijo, asi que se pide una sola vez.
 Promise.all([revisarCandado(), traerNotacion()])
-  .then(() => api("/api/estado")).then(r => {
+  .then(arrancarPartido).then(r => {
     avisarDelServidor(r.almacenamiento);
     pintar(r.estado);
     irA(location.hash.replace("#", "") || "equipo", false);
   });
+
+// El partido lo guarda este navegador (ver 2a), asi que al abrir la pagina se
+// manda lo guardado y el motor lo rearma. Es el mismo camino de siempre: el
+// partido se rehace desde la primera linea en cada pedido, aca tambien.
+//
+// La primera vez que se abre la pagina despues del cambio todavia no hay nada
+// guardado en este navegador. Ahi se mira la sesion compartida, que es donde
+// vivia el partido antes: si habia uno a medio cargar se lo trae en vez de
+// perderlo. Pasa una sola vez, porque desde ese momento ya hay algo guardado
+// aca, aunque sea una lista vacia.
+async function arrancarPartido(){
+  const guardadas = lineasGuardadas();
+  if(guardadas !== null){
+    lineas = guardadas;
+    return apiPartido("/api/estado");
+  }
+  const r = await api("/api/estado");       // GET: la sesion compartida
+  anotarLineas(r.estado);
+  recordarLineas();                          // desde ahora el partido es de aca
+  if(lineas.length){
+    mostrarMensaje("Este partido estaba a medio cargar en el servidor y se paso a "
+                   + "esta pantalla. Ahora cada pantalla carga el suyo.", true);
+  }
+  return r;
+}
 
 // Alojado, la carpeta del proyecto es de solo lectura y lo unico escribible es
 // un /tmp que se borra solo: si no hay un almacenamiento de verdad detras, lo

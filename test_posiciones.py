@@ -86,12 +86,17 @@ class TestLoQueSeAcepta(BasePosiciones):
         alm.guardar_posiciones("Palestino", {"9": "Libero", "13": "Wing Spiker"})
         self.assertEqual(alm.posiciones_del_equipo("Palestino"), {"9": "Libero"})
 
-    def test_armador_no_es_una_posicion_de_esta_lista(self):
-        # sale del _S de la rotacion; ponerlo a mano seria tener el dato en dos
-        # lugares que pueden discrepar
-        self.assertNotIn("Armador", alm.POSICIONES)
-        alm.guardar_posiciones("Palestino", {"3": "Armador"})
-        self.assertEqual(alm.posiciones_del_equipo("Palestino"), {})
+    def test_armador_tambien_se_puede_poner_a_mano(self):
+        """Antes no se podia: se sacaba solo del _S de la rotacion. Pero un
+        partido cargado sin rotacion no tiene ningun _S, y ahi el armador no
+        figuraba como tal por mas que hubiera armado los tres sets.
+
+        Que las dos fuentes no se contradigan lo cuida
+        estadisticas_jugadores.marcado_como_armador: la etiqueta suma, nunca
+        le saca el rol a quien el volcado marco."""
+        self.assertIn("Armador", alm.POSICIONES)
+        alm.guardar_posiciones("Palestino", {"3": "armador"})
+        self.assertEqual(alm.posiciones_del_equipo("Palestino"), {"3": "Armador"})
 
 
 class TestDesdeElServidor(BasePosiciones):
@@ -155,6 +160,62 @@ class TestLaFichaLasPublica(BasePosiciones):
             self.skipTest("ningun armador marcado en los volcados")
         self.assertEqual(armador["posicion"], "")   # nadie lo anoto a mano
         self.assertTrue(armador["armador"])         # y aun asi es armador
+
+
+class TestElTagArmador(unittest.TestCase):
+    """El armador tiene dos fuentes y tienen que sumarse, no competir.
+
+    El _S de la rotacion lo dice el propio partido. La etiqueta a mano existe
+    porque un partido cargado SIN rotacion no tiene ningun _S: ahi el armador
+    no figuraba como tal por mas que hubiera armado los tres sets.
+
+    La regla que hace que no se contradigan: la etiqueta solo puede agregar el
+    rol. Nunca se lo quita a quien el volcado marco."""
+
+    # el 28 lleva _S; el 13 y el 3 no
+    PARTIDO = ["Palestino", "UVC", "28_S 5 13 88 3 40", "", "B",
+               "9_1_5_X/3_3/28_4/13_1_P", "1_5_E",
+               "9_1_5_X/3_3/28_4/13_1_P"]
+
+    def setUp(self):
+        self.carpeta = Path(tempfile.mkdtemp())
+        for objeto, nombre, valor in ((alm, "CARPETA_ESCRITURA", self.carpeta),
+                                      (alm, "_ES_LOCAL", True),
+                                      (alm, "_plantel", None),
+                                      (alm, "_momento_plantel", 0.0),
+                                      (srv.av, "CARPETA_DATOS", self.carpeta / "Datos")):
+            parche = mock.patch.object(objeto, nombre, valor)
+            parche.start()
+            self.addCleanup(parche.stop)
+        import sesion_web
+        sesion_web.SesionPartido(self.PARTIDO).guardar()
+
+    def armador(self, dorsal) -> bool:
+        return ej.ficha("Palestino", dorsal)["armador"]
+
+    def test_sin_etiquetas_manda_el_S_de_la_rotacion(self):
+        self.assertTrue(self.armador("28"))
+        self.assertFalse(self.armador("13"))
+
+    def test_la_etiqueta_a_mano_tambien_lo_marca(self):
+        alm.guardar_posiciones("Palestino", {"13": "Armador"})
+        self.assertTrue(self.armador("13"))
+        self.assertEqual(ej.ficha("Palestino", "13")["posicion"], "Armador")
+
+    def test_la_etiqueta_no_le_saca_el_rol_a_quien_lo_tiene_por_el_volcado(self):
+        """Lo que hace imposible que las dos fuentes se contradigan."""
+        alm.guardar_posiciones("Palestino", {"28": "Punta"})
+        self.assertTrue(self.armador("28"))
+        self.assertEqual(ej.ficha("Palestino", "28")["posicion"], "Punta")
+
+    def test_el_listado_lo_marca_igual_que_la_ficha(self):
+        """Las dos pantallas leen lo mismo: si discreparan, el selector
+        mostraria la etiqueta y la ficha de al lado no."""
+        alm.guardar_posiciones("Palestino", {"13": "Armador"})
+        jugadores = {j["dorsal"]: j for j in ej.listado()["equipos"][0]["jugadores"]}
+        self.assertTrue(jugadores["13"]["armador"])
+        self.assertTrue(jugadores["28"]["armador"])
+        self.assertFalse(jugadores["3"]["armador"])
 
 
 if __name__ == "__main__":

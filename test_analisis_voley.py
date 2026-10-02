@@ -125,9 +125,9 @@ class TestParsearBloqueSaque(unittest.TestCase):
 
 class TestParsearBloqueDefensa(unittest.TestCase):
 
-    def test_defensa_calidad_0_no_termina_el_punto(self):
-        # antes "7_0" solo (sin armado/ataque) significaba defensa perdida;
-        # ahora la calidad 0 es solo informativa y hace falta la cadena completa.
+    def test_defensa_calidad_0_con_armado_y_ataque_sigue_el_punto(self):
+        # el mismo 0 puede seguir la jugada o cerrarla: lo que lo dice es si la
+        # linea sigue o termina ahi, no la calidad
         bloque = parsear_bloque_defensa("7_0/1_5/9_5_D")
         self.assertIsNotNone(bloque)
         self.assertEqual(bloque["defensor"], 7)
@@ -149,7 +149,7 @@ class TestParsearBloqueDefensa(unittest.TestCase):
         self.assertEqual(bloque["resultado"], "D")
 
     def test_formato_invalido(self):
-        self.assertIsNone(parsear_bloque_defensa("7_0"))  # ya no existe el atajo de "defensa perdida"
+        self.assertIsNone(parsear_bloque_defensa("7_3"))  # solo el 0 cierra la linea solo
         self.assertIsNone(parsear_bloque_defensa("7_4/1_5/9_5_D"))  # calidad fuera de rango (0-3)
         self.assertIsNone(parsear_bloque_defensa("7_2/1_5/9_5"))  # falta resultado
 
@@ -263,10 +263,10 @@ class TestBolaLibre(unittest.TestCase):
         self.assertEqual(bloque["zona_ataque"], "1")
 
     def test_libre_invalido(self):
-        self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_F_0"))   # zona 0 no existe
         self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_F"))     # falta la zona
+        self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_F_12"))  # no hay zona 12
 
-    def test_libre_siempre_cambia_de_equipo_y_sigue_el_punto(self):
+    def test_el_libre_que_llega_cambia_de_equipo_y_sigue_el_punto(self):
         entradas = [
             "5_1_6_X/3_3/2_4/9_F_8",   # B no puede atacar, hace libre
             "7_2/1_5/9_1_P",            # A recibe el libre y hace punto
@@ -278,6 +278,32 @@ class TestBolaLibre(unittest.TestCase):
         self.assertEqual(secuencia[0]["resultado"], "F")
         # el libre pasa el control al otro equipo (A), igual que una defensa
         self.assertEqual(secuencia[1]["equipo_set"], "A")
+
+    def test_el_libre_errado_termina_el_punto_y_lo_pierde(self):
+        """Un libre tambien se puede errar: se va, queda en la red o no pasa.
+
+        La zona es "0" porque no llego a ninguna -- el mismo 0 que ya quiere
+        decir "salio mal" en la recepcion y en la defensa."""
+        entradas = ["5_1_6_X/3_3/2_4/9_F_0"]   # B intenta el libre y lo erra
+        with patch("builtins.input", side_effect=entradas):
+            ganador, secuencia, _ = jugar_punto("A")
+        self.assertEqual(ganador, "A")         # el punto es del otro lado
+        self.assertEqual(len(secuencia), 1)    # y no se pide ninguna jugada mas
+        self.assertEqual(secuencia[0]["resultado"], "FE")
+        self.assertIsNone(secuencia[0]["zona_ataque"])
+
+    def test_el_libre_errado_no_es_un_ataque_fallado(self):
+        """Se cuenta aparte de "Ataque afuera" a proposito: el que hace un
+        libre no esta rematando, y meterlo ahi le subiria el error de ataque a
+        alguien que no ataco."""
+        punto = _punto("A", "A", [
+            {**parsear_bloque_saque("5_1_6_X/3_3/2_4/9_F_0"), "equipo_atacante": "B"},
+        ])
+        self.assertEqual(causa_del_punto(punto), "FE")
+        self.assertEqual(CAUSAS_ERROR["FE"], "Libre malo")
+        self.assertNotIn("FE", CAUSAS_GANADAS)
+        # el 9 no aparece entre los atacantes de B: no ataco
+        self.assertEqual(calcular_estadisticas_ataque([punto])["B"], {})
 
     def test_libre_encadenado_con_otro_libre(self):
         entradas = [
@@ -324,8 +350,25 @@ class TestToque(unittest.TestCase):
         self.assertEqual(ataque["resultado"], "P")
 
     def test_formato_invalido(self):
-        self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_T_0"))  # zona 0 no existe
         self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_T"))    # falta la zona
+        self.assertIsNone(parsear_bloque_saque("5_1_6_X/3_3/2_4/9_T_12"))  # no hay zona 12
+
+    def test_el_toque_errado_termina_el_punto_y_lo_pierde(self):
+        entradas = ["5_1_6_X/3_3/2_4/9_T_0"]
+        with patch("builtins.input", side_effect=entradas):
+            ganador, secuencia, _ = jugar_punto("A")
+        self.assertEqual(ganador, "A")
+        self.assertEqual(len(secuencia), 1)
+        self.assertEqual(secuencia[0]["resultado"], "TE")
+
+    def test_el_toque_errado_tiene_su_propia_causa(self):
+        """Separado del libre: son dos jugadas distintas y ya se guardaban
+        aparte cuando salen bien."""
+        punto = _punto("A", "A", [
+            {**parsear_bloque_saque("5_1_6_X/3_3/2_4/9_T_0"), "equipo_atacante": "B"},
+        ])
+        self.assertEqual(causa_del_punto(punto), "TE")
+        self.assertEqual(CAUSAS_ERROR["TE"], "Toque malo")
 
     def test_toque_cambia_de_equipo_y_sigue_el_punto(self):
         entradas = [
@@ -658,24 +701,34 @@ class TestEntradasCrudasYReporte(unittest.TestCase):
             os.remove(nombre_archivo)
 
 
-class TestDefensaPerdida(unittest.TestCase):
+class TestDefensaCeroQueCierra(unittest.TestCase):
+    """La pelota que no se llega a jugar es una defensa de calidad 0 mas: lo
+    unico que la separa de las otras es que la linea termina ahi."""
 
-    def test_parseo_defensa_perdida(self):
-        bloque = parsear_bloque_defensa("7_-2")
+    def test_parseo_de_la_defensa_que_no_se_pudo_jugar(self):
+        bloque = parsear_bloque_defensa("7_0")
         self.assertIsNotNone(bloque)
         self.assertEqual(bloque["defensor"], 7)
-        self.assertEqual(bloque["calidad_defensa"], -2)
+        self.assertEqual(bloque["calidad_defensa"], 0)
         self.assertEqual(bloque["resultado"], "L")
         self.assertIsNone(bloque["colocador"])
         self.assertIsNone(bloque["atacante"])
 
-    def test_defensa_perdida_no_admite_continuacion(self):
-        self.assertIsNone(parsear_bloque_defensa("7_-2/1_5/9_5_P"))
+    def test_el_menos_dos_viejo_se_lee_igual(self):
+        # asi se escribia antes y esta en los volcados ya guardados: tiene que
+        # rehacerse como lo que es, un 0 que cierra el punto
+        viejo = parsear_bloque_defensa("7_-2")
+        self.assertEqual(viejo, parsear_bloque_defensa("7_0"))
 
-    def test_defensa_perdida_da_el_punto_al_equipo_contrario(self):
+    def test_el_menos_dos_viejo_no_admite_continuacion(self):
+        # el 0 nuevo si: "7_0/1_5/9_5_P" es una defensa floja que se jugo igual
+        self.assertIsNone(parsear_bloque_defensa("7_-2/1_5/9_5_P"))
+        self.assertIsNotNone(parsear_bloque_defensa("7_0/1_5/9_5_P"))
+
+    def test_le_da_el_punto_al_equipo_contrario(self):
         entradas = [
             "5_1_6_X/3_3/2_4/4_1_D",  # B ataca, A defiende
-            "7_-2",                     # la defensa de A se pierde por completo
+            "7_0",                      # la defensa de A no se pudo jugar
         ]
         with patch("builtins.input", side_effect=entradas):
             ganador, secuencia, _ = jugar_punto("A")
@@ -1011,8 +1064,9 @@ class TestEstadisticasArmado(unittest.TestCase):
                 self.assertEqual(porcentaje, 0.0)
 
     def test_defensa_calidad_0_cuenta_como_armado(self):
-        # al sacarse la regla de "defensa perdida", una defensa de calidad 0
-        # sigue teniendo armado y ataque, y por lo tanto debe contar.
+        # una defensa de calidad 0 que igual se jugo tiene armado y ataque
+        # atras, y por lo tanto cuenta: el 0 que cierra el punto es el que no
+        # los tiene.
         puntos = [
             _punto("A", "B", [
                 {**parsear_bloque_saque("3_5_4_X/1_3/2_4/9_1_D"), "equipo_set": "B"},
@@ -2751,8 +2805,8 @@ class TestPuntoPendiente(unittest.TestCase):
                 self.assertEqual(pendiente["espera"], "continuacion")
                 self.assertEqual(pendiente["equipo_con_la_pelota"], "B")
 
-    def test_la_defensa_perdida_cierra_el_punto(self):
-        pendiente = self._pendiente(self.SAQUE + "D", "5_-2")
+    def test_la_defensa_cero_que_no_se_jugo_cierra_el_punto(self):
+        pendiente = self._pendiente(self.SAQUE + "D", "5_0")
         self.assertEqual(pendiente["espera"], "saque")
 
     def test_cinco_intercambios_van_alternando_el_lado(self):
@@ -2903,7 +2957,10 @@ class TestNombresEnElInforme(unittest.TestCase):
 
     def _datos(self):
         import generar_informe_volley as gi
-        return gi.parse_volcado(self.VOLCADO.read_text(encoding="utf-8"))["teams"]["Palestino"]
+        # el nombre del equipo sale del volcado y no escrito a mano:
+        # renombrarlo en los .txt es algo que pasa de verdad
+        volcado = gi.parse_volcado(self.VOLCADO.read_text(encoding="utf-8"))
+        return volcado["teams"][next(iter(volcado["teams"]))]
 
     def test_le_pone_el_nombre_al_jugador(self):
         import generar_informe_volley as gi
@@ -2958,7 +3015,8 @@ class TestElInformeConNombres(unittest.TestCase):
         import generar_informe_volley as gi
         import valores_excel
         parsed = gi.parse_volcado(Path(self.VOLCADO).read_text(encoding="utf-8"))
-        libro, _ = gi.build_workbook("Palestino", "O'sommer", parsed, nombres)
+        equipo, rival = list(parsed["teams"])[:2]
+        libro, _ = gi.build_workbook(equipo, rival, parsed, nombres)
         valores_excel.convertir_a_valores(libro)
         hoja = libro["Ataque jugador"]
         return [[hoja.cell(row=f, column=c).value for c in range(1, 10)]
@@ -3143,7 +3201,8 @@ class TestValoresExcel(unittest.TestCase):
         # y no contra un caso armado a mano
         with open("Datos/partido_20260908_141454.txt", encoding="utf-8") as archivo:
             volcado = gi.parse_volcado(archivo.read())
-        libro, _ = gi.build_workbook("Palestino", "O'sommer", volcado)
+        equipo, rival = list(volcado["teams"])[:2]
+        libro, _ = gi.build_workbook(equipo, rival, volcado)
 
         with tempfile.TemporaryDirectory() as carpeta:
             destino = os.path.join(carpeta, "informe.xlsx")
@@ -3161,7 +3220,7 @@ class TestValoresExcel(unittest.TestCase):
             # y los numeros del archivo guardado son los del volcado
             fila = next(f for f in guardado["Fases y armador"].iter_rows()
                         if str(f[0].value).strip() == "K1")
-            esperado = volcado["teams"]["Palestino"]["fases"]["hechos"]["K1"]
+            esperado = volcado["teams"][equipo]["fases"]["hechos"]["K1"]
             self.assertEqual((fila[1].value, fila[3].value, fila[4].value),
                              (esperado["total"], esperado["ganados"], esperado["error"]))
 
@@ -3170,7 +3229,7 @@ class TestValoresExcel(unittest.TestCase):
                            if str(f[0].value).strip() == "Ataques registrados")
             self.assertEqual(
                 totales[1].value,
-                sum(v["totales"] for v in volcado["teams"]["Palestino"]["ataques_jugador"].values()),
+                sum(v["totales"] for v in volcado["teams"][equipo]["ataques_jugador"].values()),
             )
 
 

@@ -552,9 +552,13 @@ class TestEndpointsDeLectura(unittest.TestCase):
         for fila in datos["partidos"]:
             self.assertEqual(sorted(fila), sorted(
                 # "corregido" dice que campos de esta fila no salen del .txt
-                # sino de un arreglo hecho a mano
+                # sino de un arreglo hecho a mano. "torneo" es lo que se
+                # escribio a mano y "etiquetas" lo mismo ya normalizado a
+                # "#algo", partido una sola vez para no repetirlo en la
+                # pantalla y en el servidor.
                 ["id", "fecha", "hora", "equipo", "rival", "sets", "parciales",
-                 "puntos", "volcado", "informe", "corregido"]))
+                 "puntos", "volcado", "informe", "corregido",
+                 "torneo", "etiquetas"]))
 
     def test_descargar_fuera_de_la_carpeta_da_400_y_no_lee_nada(self):
         for ruta in ["/api/descargar?archivo=../../algo",

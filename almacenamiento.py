@@ -718,10 +718,18 @@ def guardar_plantel(equipo: str, nombres: dict) -> bool:
 # lo mismo: datos del jugador que el volcado no guarda. El volcado anota el
 # numero, que es lo que se grita, y quien es y de que juega se anota aparte.
 #
-# "Armador" no esta aca y no se pone a mano: sale del _S de las rotaciones, o
-# sea del propio partido. Anotarlo tambien seria tener el mismo dato en dos
-# lugares que pueden discrepar.
-POSICIONES = ("Libero", "Punta", "Opuesto", "Central")
+# "Armador" tiene DOS fuentes y por eso es distinto de las otras cuatro: el
+# _S de las rotaciones (lo dice el propio partido) y esta etiqueta, puesta a
+# mano. Hace falta la segunda porque un partido cargado sin rotacion no tiene
+# _S en ningun lado: ahi el armador no figura como tal por mas que haya armado
+# los tres sets.
+#
+# Las dos se SUMAN, no compiten: la etiqueta solo puede agregar el rol, nunca
+# sacarselo a alguien que el volcado marco con _S (ver
+# estadisticas_jugadores.marcado_como_armador). Asi no hay forma de que las
+# dos fuentes se contradigan, que era el motivo por el que antes esta no
+# existia.
+POSICIONES = ("Libero", "Punta", "Opuesto", "Central", "Armador")
 
 
 def _limpiar_posiciones(posiciones: dict) -> dict:
@@ -782,6 +790,151 @@ def guardar_nombres_de_partido(volcado: str, equipo: str, nombres: dict) -> bool
     if not delpartido:
         partidos.pop(volcado, None)
     return _guardar_todo_el_plantel({**datos, "partidos": partidos})
+
+
+# ----------------------------------------------------------------------
+# Los partidos guardados en privado.
+#
+# Guardar el .txt PUBLICA el partido: queda en Datos, aparece en la pestana
+# Partidos y entra en las estadisticas de todos. Eso esta bien cuando el
+# partido termino, pero un partido a medio cargar todavia no es un partido --
+# le faltan sets -- y publicarlo ensucia los promedios de todo el mundo.
+#
+# Mientras tanto ese partido a medio cargar vive en un solo lugar: el
+# localStorage del navegador que lo esta cargando (ver public/interfaz.js).
+# Ahi se pierde si se formatea la maquina, si se limpia el navegador o si la
+# tablet se cae al piso. "Apagar la PC" no lo pierde, pero apagar la PC
+# equivocada si.
+#
+# Esto es el lugar del medio: el partido sube al mismo almacenamiento que todo
+# lo demas, con su propio prefijo, que no es Datos. Nada que lea Datos lo ve,
+# y para volver a abrirlo hay que saber la contraseña de carga.
+RUTA_PRIVADOS = "privados/partidos.json"
+
+# Cuantos se pueden tener a la vez. Van todos en un unico JSON (como el
+# plantel) que se lee entero cada vez, asi que dejarlo crecer sin limite es
+# dejar que la lectura se haga cada vez mas cara. Y ademas es un buzon de
+# paso, no un archivo: lo que ya termino se guarda como .txt.
+MAXIMO_PRIVADOS = 20
+
+
+def _archivo_privados() -> Path:
+    return CARPETA_ESCRITURA / "privados" / "partidos.json"
+
+
+def _privados_locales() -> dict:
+    try:
+        return json.loads(_archivo_privados().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _leer_privados(*, estricto: bool = False) -> dict:
+    """Todos los partidos privados, como {id: {...}}.
+
+    Sin cache a proposito: esto se lee cuando alguien abre el panel o guarda,
+    no una vez por jugada. Contestar con una copia de hace unos segundos seria
+    decir que un partido no esta cuando esta, justo en el momento en que se lo
+    va a buscar.
+
+    Con estricto=True una falla de red se propaga en vez de caer a la copia
+    local. Lo usa el que va a ESCRIBIR: guardar sobre un listado que no se
+    pudo leer borraria los partidos de los demas."""
+    if not hay_blob():
+        return _privados_locales()
+    try:
+        blob = _blob_puntual(RUTA_PRIVADOS, estricto=estricto)
+        datos = _bajar_json(blob) if blob else {}
+    except FALLAS_DE_RED as error:
+        if estricto:
+            raise
+        _anotar_error(f"no se pudieron leer los partidos privados: {error}")
+        return _privados_locales()
+    return datos if isinstance(datos, dict) else {}
+
+
+def _guardar_privados(datos: dict) -> bool:
+    crudo = json.dumps(datos, ensure_ascii=False).encode("utf-8")
+    local = _archivo_privados()
+    carpeta_lista(local.parent)
+    escrito = False
+    try:
+        local.write_bytes(crudo)
+        escrito = True
+    except OSError as error:
+        _anotar_error(f"no se pudo escribir {local}: {error}")
+
+    if not hay_blob():
+        # sin almacenamiento remoto el archivo local es todo lo que hay, asi
+        # que si tampoco se pudo escribir, no se guardo nada
+        return escrito
+    try:
+        subir_blob(RUTA_PRIVADOS, crudo, TIPO_POR_EXTENSION[".json"])
+    except FALLAS_DE_RED as error:
+        _anotar_error(f"no se pudo guardar el partido privado: {error}")
+        return False
+    with _candado_blob:
+        _ultimo_listado.pop("privados/", None)
+    return True
+
+
+def guardar_privado(id_: str, nombre: str, lineas: list, resumen: dict) -> bool:
+    """Guarda (o pisa) un partido a medio cargar.
+
+    El id lo pone la pantalla y no el nombre de los equipos: dos partidos del
+    mismo torneo contra el mismo rival el mismo dia tienen el mismo nombre, y
+    el segundo pisaria al primero sin avisar -- que es justo lo que esto
+    tiene que evitar."""
+    id_ = str(id_ or "").strip()
+    if not id_:
+        raise ValueError("Falta el identificador del partido.")
+    datos = _leer_privados(estricto=True)
+    if id_ not in datos and len(datos) >= MAXIMO_PRIVADOS:
+        raise ValueError(f"Ya hay {MAXIMO_PRIVADOS} partidos guardados en privado. "
+                         f"Borra alguno antes de guardar este.")
+    datos[id_] = {
+        "nombre": str(nombre or "").strip() or id_,
+        "lineas": [str(linea) for linea in (lineas or [])],
+        "resumen": dict(resumen or {}),
+        "guardado": time.time(),
+    }
+    return _guardar_privados(datos)
+
+
+def leer_privado(id_: str) -> dict | None:
+    """El partido entero, con sus lineas, o None si ya no esta."""
+    dato = _leer_privados().get(str(id_ or "").strip())
+    return dato if isinstance(dato, dict) else None
+
+
+def borrar_privado(id_: str) -> bool:
+    """Lo saca de la lista. False es "no estaba"."""
+    datos = _leer_privados(estricto=True)
+    if str(id_ or "").strip() not in datos:
+        return False
+    datos.pop(str(id_).strip())
+    _guardar_privados(datos)
+    return True
+
+
+def listar_privados() -> list[dict]:
+    """Lo que hace falta para pintar la lista, sin las lineas de cada partido.
+
+    Las lineas no van: son la mayor parte del archivo y la lista no las usa.
+    Se bajan recien cuando se abre uno."""
+    salida = []
+    for id_, dato in (_leer_privados() or {}).items():
+        if not isinstance(dato, dict):
+            continue
+        salida.append({
+            "id": id_,
+            "nombre": dato.get("nombre") or id_,
+            "guardado": dato.get("guardado") or 0,
+            "lineas": len(dato.get("lineas") or []),
+            "resumen": dato.get("resumen") or {},
+        })
+    salida.sort(key=lambda d: d["guardado"], reverse=True)
+    return salida
 
 
 def _anotar_borrado(logica: str, nombre: str) -> bool:

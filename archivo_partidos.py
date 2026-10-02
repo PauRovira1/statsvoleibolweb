@@ -202,9 +202,14 @@ def _instalar_openpyxl_de_juguete():
 
 CORTE_CABECERA = "=== Estadisticas por equipo ==="
 
+# El "_2" del final es el desempate de dos partidos guardados en el mismo
+# segundo (ver analisis_voley.nombre_de_volcado_libre): no cambia la fecha ni
+# la hora del partido, pero sin contemplarlo el volcado quedaria sin ninguna
+# de las dos en el listado.
 RE_NOMBRE_VOLCADO = re.compile(
     r"^partido_(?P<anio>\d{4})(?P<mes>\d{2})(?P<dia>\d{2})"
-    r"_(?P<hora>\d{2})(?P<minuto>\d{2})(?P<segundo>\d{2})\.txt$", re.IGNORECASE)
+    r"_(?P<hora>\d{2})(?P<minuto>\d{2})(?P<segundo>\d{2})"
+    r"(?P<repeticion>_\d+)?\.txt$", re.IGNORECASE)
 
 RE_NOMBRE_INFORME = re.compile(
     r"^Informe_(?P<equipo>.+?)_vs_(?P<rival>.+?)"
@@ -403,8 +408,29 @@ def archivos_de(carpetas, patron: str, logica: str | None = None) -> list[Path]:
 # leido del .txt, que es lo correcto mientras el .txt diga la verdad; esto es
 # para lo que el archivo no puede saber, como cual de varios informes del
 # mismo dia le corresponde.
+# "torneo" son las etiquetas del partido (#nacional2026, #apertura). No sale
+# del .txt -- el volcado no sabe en que campeonato se jugo -- asi que entra por
+# el mismo lado que el resto de los arreglos a mano.
 CAMPOS_CORREGIBLES = ("fecha", "hora", "equipo", "rival", "sets", "parciales",
-                      "puntos", "informe")
+                      "puntos", "informe", "torneo")
+
+
+def etiquetas_de(texto) -> list[str]:
+    """Las etiquetas de un partido, normalizadas a "#algo".
+
+    Se escriben sueltas y separadas por espacios o comas: un partido puede ser
+    del nacional Y una semifinal. El numeral se agrega si falta, porque nadie
+    lo tipea igual dos veces y sin eso "#apertura" y "apertura" serian dos
+    campeonatos distintos."""
+    partes = re.split(r"[\s,]+", str(texto or "").strip())
+    vistas = []
+    for parte in partes:
+        # en minusculas para que agrupen: nadie tipea "#Apertura" igual las
+        # cinco veces, y con mayusculas serian campeonatos distintos
+        limpia = parte.strip().lstrip("#").strip().lower()
+        if limpia and f"#{limpia}" not in vistas:
+            vistas.append(f"#{limpia}")
+    return vistas
 
 
 def aplicar_correccion(fila: dict, correcciones: dict) -> dict:
@@ -419,6 +445,9 @@ def aplicar_correccion(fila: dict, correcciones: dict) -> dict:
             fila[campo] = arreglo[campo]
             corregidos.append(campo)
     fila["corregido"] = corregidos
+    # partidas una sola vez aca: la pantalla las usa para pintar y para
+    # filtrar, y el servidor para agrupar
+    fila["etiquetas"] = etiquetas_de(fila.get("torneo"))
     return fila
 
 
@@ -462,6 +491,7 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
             "puntos": resumen["puntos"] or 0,
             "volcado": ruta.name,
             "informe": None,
+            "torneo": "",
         }
         aplicar_correccion(fila, correcciones)
         filas.append(fila)
@@ -506,7 +536,13 @@ def listar_partidos(carpeta_datos=None, carpeta_informes=None) -> list[dict]:
             "puntos": 0,
             "volcado": None,
             "informe": ruta.name,
+            "torneo": "",
         })
+        # tambien a estas: un informe cuyo .txt se borro (o se renombro) sigue
+        # siendo una fila de la pantalla, y tiene que poder corregirse y
+        # etiquetarse igual que las demas. Sin esto le faltaban campos y la
+        # pantalla recibia undefined en la mitad de las filas.
+        aplicar_correccion(filas[-1], correcciones)
 
     filas.sort(key=lambda f: (f["fecha"], f["hora"], f["id"]), reverse=True)
     return filas

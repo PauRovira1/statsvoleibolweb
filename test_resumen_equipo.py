@@ -151,6 +151,19 @@ class TestLaDireccion(BaseResumen):
         hacia6 = next(h for h in z4["hacia"] if h["direccion"] == "6")
         self.assertAlmostEqual(hacia6["punto"], 3 / 6)
 
+    def test_dice_que_tan_efectiva_es_cada_zona(self):
+        # es distinto de "del_total": una zona puede llevarse la mayoria de
+        # los ataques y ser la menos rentable, y eso es justo lo que se mira
+        z4 = next(f for f in self.resumen(1)["direccion"]["filas"] if f["zona"] == "4")
+        self.assertEqual(z4["ataques"], 10)     # 3+2+1 + 1+2+1
+        self.assertEqual(z4["puntos"], 4)       # 3 + 1
+        self.assertAlmostEqual(z4["punto"], 4 / 10)
+
+    def test_los_puntos_de_la_zona_son_la_suma_de_sus_direcciones(self):
+        for fila in self.resumen(2)["direccion"]["filas"]:
+            self.assertEqual(fila["puntos"], sum(h["puntos"] for h in fila["hacia"]))
+            self.assertEqual(fila["ataques"], sum(h["ataques"] for h in fila["hacia"]))
+
     def test_una_zona_sin_un_solo_ataque_no_es_una_fila(self):
         # el volcado lista zonas que nadie ataco nunca
         # en el fixture la zona 2 tiene 0-0-0: esa es la que no tiene que salir

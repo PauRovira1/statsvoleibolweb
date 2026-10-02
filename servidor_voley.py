@@ -14,8 +14,10 @@ API sino donde estan los archivos y donde vive el estado:
 
   - la carpeta del proyecto es de solo lectura, asi que Datos/ e Informes/ se
     escriben en otro lado y se publican en Vercel Blob (ver almacenamiento.py);
-  - dos pedidos seguidos pueden caer en dos procesos distintos, asi que ni el
-    partido en curso ni los tokens pueden vivir en una variable de modulo.
+  - dos pedidos seguidos pueden caer en dos procesos distintos, asi que los
+    tokens no pueden vivir en una variable de modulo (se firman, ver abajo).
+    El partido en curso ya no vive aca en absoluto: lo manda la pantalla en
+    cada pedido, asi que le da igual en que instancia cae.
 
 Usa solo la biblioteca estandar; el motor es el mismo analisis_voley.py que la
 consola. openpyxl hace falta unicamente para el Excel: generarlo o mirarlo
@@ -34,9 +36,15 @@ guardado.
     POST /api/clave                 valida la contraseña y da el token
     GET  /api/sesion                dice si el token que mando sigue valiendo
 
-Endpoints del partido en curso, que si toman el candado de la sesion. Los
-POST piden el token de /api/clave:
-    GET  /api/estado /api/estadisticas
+Endpoints del partido en curso. El partido no vive aca: vive en la pantalla
+que lo esta cargando, que manda en cada pedido la lista entera de lineas
+("lineas" en el cuerpo). El servidor las corre por el motor, contesta como
+quedo y no se guarda nada, que es lo que deja que dos personas carguen dos
+partidos al mismo tiempo sin pisarse. Un pedido sin "lineas" cae en la sesion
+compartida de siempre, que sigue ahi para las pantallas viejas y los tests.
+Los POST piden el token de /api/clave:
+    GET  /api/estado /api/estadisticas      la sesion compartida
+    POST /api/estado /api/estadisticas      el partido que trae la pantalla
     POST /api/enviar /api/deshacer /api/reiniciar /api/cargar
          /api/guardar /api/excel
 
@@ -90,10 +98,15 @@ ESTATICOS = {
     "/interfaz.css": (PUBLICO / "interfaz.css", "text/css"),
     "/interfaz.js": (PUBLICO / "interfaz.js", "application/javascript"),
     "/armador.js": (PUBLICO / "armador.js", "application/javascript"),
+    # la guia de como cargar un partido, enlazada desde la pantalla de carga
+    "/guia.html": (PUBLICO / "guia.html", "text/html"),
 }
 
-# Una sola partida a la vez: es una herramienta de escritorio, no un servicio.
-# El lock alcanza porque cada pedido rehace el partido entero y es cortito.
+# La sesion compartida: la de antes, cuando el partido en curso era uno solo y
+# vivia aca. Hoy cada pantalla trae el suyo en el pedido y esta no se toca;
+# queda para el pedido que no manda sus lineas (una pantalla con el .js viejo
+# en cache, los tests) y para no perder un partido a medio cargar justo en el
+# momento del cambio. El lock es de ella sola.
 sesion = SesionPartido()
 candado = threading.Lock()
 
@@ -111,6 +124,11 @@ RUTAS_CON_CLAVE = {
     "/api/enviar", "/api/deshacer", "/api/reiniciar",
     "/api/cargar", "/api/guardar", "/api/excel", "/api/borrar",
     "/api/corregir", "/api/plantel",
+    # los partidos guardados en privado piden la clave TAMBIEN para leerlos,
+    # que es lo unico que los hace privados: no estan en Datos, no salen en la
+    # pestana Partidos y no se pueden listar sin la contraseña
+    "/api/privados", "/api/privado/guardar", "/api/privado/abrir",
+    "/api/privado/borrar",
 }
 
 
@@ -186,6 +204,27 @@ def anotar_sesion() -> None:
     # la version la trae la propia subida; solo se pregunta si no vino, que es
     # lo que hacia siempre y costaba una operacion advanced por jugada
     version_de_la_sesion = alm.guardar_sesion(sesion.lineas) or alm.version_de_sesion()
+
+
+def sesion_del_pedido(datos) -> SesionPartido | None:
+    """El partido que trae el navegador en el pedido, si lo trae.
+
+    Cargar una jugada siempre costo rehacer el partido entero desde la primera
+    linea (ver sesion_web), asi que guardarlo aca entre pedidos no ahorraba
+    nada y en cambio obligaba a que hubiera uno solo: dos personas cargando a
+    la vez escribian sobre el mismo partido. Ahora las lineas son de la
+    pantalla y viajan con cada pedido; el servidor arma una sesion con ellas,
+    contesta y la tira. Sin nada compartido que tocar, tampoco hacen falta el
+    candado ni la copia en el blob.
+
+    Devolver None es decir "este pedido no trae partido": ahi contesta la
+    sesion compartida, como antes."""
+    lineas = (datos or {}).get("lineas")
+    if lineas is None:
+        return None
+    if not isinstance(lineas, list):
+        raise ValueError("Las lineas del partido tienen que ser una lista.")
+    return SesionPartido(lineas)
 
 
 def guardar_nombres(equipo, nombres, volcado=None, posiciones=None) -> dict:
@@ -337,12 +376,14 @@ def generar_excel(nombre_txt: str, equipo: str) -> str:
 # vivo, que es lo unico que tiene que ser rapido.
 # ----------------------------------------------------------------------
 
-def responder_jugadores() -> dict:
+def responder_jugadores(campeonato: str = "") -> dict:
     """Los equipos con su plantel. Se recalcula en cada pedido a partir de los
     volcados: son milisegundos, y asi no hay numeros guardados que se puedan
-    desactualizar cuando se borra o se recarga un partido."""
+    desactualizar cuando se borra o se recarga un partido.
+
+    Con "campeonato" se cuentan solo los partidos de ese campeonato."""
     import estadisticas_jugadores as ej
-    datos = ej.listado()
+    datos = ej.listado(campeonato=campeonato)
     # Los nombres no salen de los volcados (ahi solo hay numeros): se anotan
     # aparte y se pegan aca. El modulo de estadisticas sigue leyendo archivos
     # y nada mas; ponerle los nombres adentro lo ataria a donde se guardan.
@@ -358,22 +399,25 @@ def responder_jugadores() -> dict:
     return {"ok": True, **datos, "plantel": plantel, "almacenamiento": alm.estado()}
 
 
-def responder_jugador(equipo: str, dorsal: str) -> dict:
+def responder_jugador(equipo: str, dorsal: str, campeonato: str = "") -> dict:
     import estadisticas_jugadores as ej
-    ficha = ej.ficha(equipo, dorsal)
+    # el agregado se arma aca y no adentro de ficha() para que el campeonato
+    # entre por un solo lugar: ficha() ya recibia el agregado hecho
+    ficha = ej.ficha(equipo, dorsal, ej.agregar(campeonato=campeonato))
     if ficha is None:
         return {"ok": False, "mensaje": f"No hay datos del {dorsal} en {equipo}."}
     ficha["nombre"] = alm.nombres_del_equipo(equipo).get(str(dorsal), "")
     return {"ok": True, "jugador": ficha}
 
 
-def responder_equipo(equipo: str) -> dict:
+def responder_equipo(equipo: str, campeonato: str = "") -> dict:
     """El resumen del equipo entero: las mismas metricas que una ficha, pero
     del juego y no de una persona."""
     import estadisticas_jugadores as ej
-    resumen = ej.resumen_equipo(equipo)
+    resumen = ej.resumen_equipo(equipo, ej.agregar(campeonato=campeonato))
     if resumen is None:
-        return {"ok": False, "mensaje": f"No hay partidos cargados de {equipo}."}
+        falta = f" en {campeonato}" if campeonato else ""
+        return {"ok": False, "mensaje": f"No hay partidos cargados de {equipo}{falta}."}
     return {"ok": True, "equipo": resumen}
 
 
@@ -424,6 +468,101 @@ def donde_quedo(ruta) -> str:
     En casa la ruta si sirve, que es para ir a buscar el archivo."""
     ruta = Path(ruta)
     return ruta.name if alm.hay_blob() else str(ruta)
+
+
+# ----------------------------------------------------------------------
+# Partidos guardados en privado (ver almacenamiento.RUTA_PRIVADOS).
+#
+# Guardar el .txt publica el partido. Esto no: sube las mismas lineas a un
+# lugar aparte, para poder apagar la maquina en el entretiempo y seguir
+# manana (o desde otra maquina) sin que el partido a medias le aparezca a
+# nadie ni cuente en las estadisticas.
+# ----------------------------------------------------------------------
+
+def resumen_del_privado(estado: dict) -> dict:
+    """Con que se reconoce un partido en la lista de guardados.
+
+    Se guarda armado y no se recalcula al listar: recalcularlo obligaria a
+    bajar las lineas de todos los partidos y correr el motor sobre cada uno
+    solo para pintar un renglon."""
+    nombres = estado["nombres"]
+    sets, marcador = estado["sets_ganados"], estado["marcador"]
+    return {
+        "A": nombres["A"], "B": nombres["B"],
+        "sets": f"{sets['A']} - {sets['B']}",
+        "marcador": f"{marcador['A']} - {marcador['B']}",
+        "set": estado["set"],
+        "puntos": estado["puntos_cargados"],
+    }
+
+
+def aviso_de_privado() -> str:
+    """Lo que hay que agregarle al mensaje si esto no se guardo de verdad.
+
+    Alojado y sin almacenamiento remoto, el archivo queda en /tmp y se borra
+    solo: decir "guardado" ahi seria mentir justo en lo unico que este boton
+    promete."""
+    if not alm.EN_SERVERLESS or alm.hay_blob():
+        return ""
+    return ("  [OJO: este servidor no tiene almacenamiento configurado, asi que "
+            "el partido quedo en una carpeta que se borra sola. No cierres esta "
+            "pantalla.]")
+
+
+def guardar_en_privado(sesion, id_, nombre) -> dict:
+    """Sube el partido a medio cargar sin publicarlo."""
+    estado = sesion.instantanea()
+    if not sesion.lineas:
+        return {"ok": False, "mensaje": "No hay nada cargado para guardar.",
+                "estado": estado}
+    resumen = resumen_del_privado(estado)
+    nombre = str(nombre or "").strip() or f"{resumen['A']} vs {resumen['B']}"
+    try:
+        pudo = alm.guardar_privado(id_, nombre, sesion.lineas, resumen)
+    except ValueError as error:
+        return {"ok": False, "mensaje": str(error), "estado": estado}
+    except alm.FALLAS_DE_RED as error:
+        # no se pudo leer lo que ya habia: guardar igual pisaria los partidos
+        # guardados de los demas, asi que no se guarda nada
+        return {"ok": False, "estado": estado,
+                "mensaje": f"No se pudo guardar en privado: {error}. "
+                           f"El partido sigue cargado aca, proba de nuevo."}
+    if not pudo:
+        motivo = alm.ultimo_error()
+        return {"ok": False, "estado": estado,
+                "mensaje": ("No se pudo guardar en privado. El partido sigue "
+                            "cargado aca, proba de nuevo."
+                            + (f" Motivo: {motivo}" if motivo else ""))}
+    return {"ok": True, "estado": estado, "privados": alm.listar_privados(),
+            "mensaje": (f"Guardado en privado: {nombre} ({len(sesion.lineas)} lineas). "
+                        f"No aparece en Partidos ni en las estadisticas; se vuelve "
+                        f"a abrir desde aca." + aviso_de_privado())}
+
+
+def abrir_privado(sesion, id_) -> dict:
+    """Deja la pantalla cargando ese partido, donde habia quedado."""
+    try:
+        guardado = alm.leer_privado(id_)
+    except alm.FALLAS_DE_RED as error:
+        return {"ok": False, "mensaje": f"No se pudo leer el partido guardado: {error}.",
+                "estado": sesion.instantanea()}
+    if guardado is None:
+        return {"ok": False, "mensaje": "Ese partido ya no esta guardado en privado.",
+                "estado": sesion.instantanea()}
+    sesion.reemplazar([str(linea) for linea in (guardado.get("lineas") or [])])
+    return {"ok": True, "estado": sesion.instantanea(),
+            "mensaje": (f"Seguis cargando {guardado.get('nombre') or id_}: "
+                        f"{len(sesion.lineas)} lineas. Sigue guardado en privado "
+                        f"hasta que lo borres.")}
+
+
+def olvidar_privado(id_) -> dict:
+    """Saca un partido de los guardados en privado."""
+    if not alm.borrar_privado(id_):
+        return {"ok": False, "mensaje": "Ese partido ya no estaba guardado.",
+                "privados": alm.listar_privados()}
+    return {"ok": True, "mensaje": "Se borro de los guardados en privado.",
+            "privados": alm.listar_privados()}
 
 
 def borrar_partido(volcado, informe) -> dict:
@@ -532,7 +671,7 @@ class Manejador(BaseHTTPRequestHandler):
             "/api/partidos": lambda: responder_partidos(),
             "/api/partido": lambda: responder_partido(consulta.get("archivo", "")),
             "/api/informe": lambda: responder_informe(consulta.get("archivo", "")),
-            "/api/jugadores": lambda: responder_jugadores(),
+            "/api/jugadores": lambda: responder_jugadores(consulta.get("campeonato", "")),
             # solo lectura y sin clave: los nombres se muestran en las tablas
             # de cualquier partido, no solo en la pestana Jugadores
             "/api/plantel": lambda: {"ok": True, "plantel": alm.leer_plantel(),
@@ -540,8 +679,10 @@ class Manejador(BaseHTTPRequestHandler):
                                      "posiciones": alm.leer_posiciones(),
                                      "opciones_posicion": list(alm.POSICIONES)},
             "/api/jugador": lambda: responder_jugador(consulta.get("equipo", ""),
-                                                      consulta.get("dorsal", "")),
-            "/api/equipo": lambda: responder_equipo(consulta.get("equipo", "")),
+                                                      consulta.get("dorsal", ""),
+                                                      consulta.get("campeonato", "")),
+            "/api/equipo": lambda: responder_equipo(consulta.get("equipo", ""),
+                                                    consulta.get("campeonato", "")),
         }
         if ruta in lecturas:
             datos, codigo = self._leer_de_disco(lecturas[ruta])
@@ -603,6 +744,18 @@ class Manejador(BaseHTTPRequestHandler):
                 lambda: borrar_partido(datos.get("volcado"), datos.get("informe")))
             return self._responder(respuesta, codigo)
 
+        if ruta == "/api/privados":
+            # la lista de partidos guardados en privado. No toca la sesion:
+            # mirarla mientras se carga un punto no puede frenar la carga
+            respuesta, codigo = self._leer_de_disco(
+                lambda: {"ok": True, "privados": alm.listar_privados()})
+            return self._responder(respuesta, codigo)
+
+        if ruta == "/api/privado/borrar":
+            respuesta, codigo = self._leer_de_disco(
+                lambda: olvidar_privado(datos.get("id", "")))
+            return self._responder(respuesta, codigo)
+
         if ruta == "/api/plantel":
             # los nombres de un equipo. Como /api/corregir: toca archivos pero
             # no la sesion, asi que no toma el candado
@@ -627,10 +780,27 @@ class Manejador(BaseHTTPRequestHandler):
                 lambda: abrir_en_el_escritorio(datos.get("archivo", ""), datos.get("tipo")))
             return self._responder(respuesta, codigo)
 
+        # El caso normal: el partido lo trae la pantalla. No hay nada
+        # compartido que tocar, asi que no se toma el candado (el que carga no
+        # espera al que guarda un Excel) ni se escribe la sesion afuera.
+        try:
+            propia = sesion_del_pedido(datos)
+        except ValueError as error:
+            return self._responder({"ok": False, "mensaje": str(error)}, 400)
+        if propia is not None:
+            try:
+                respuesta = self._despachar(ruta, datos, propia)
+            except Exception as error:      # que un error no tumbe el servidor
+                respuesta = {"ok": False, "mensaje": f"{type(error).__name__}: {error}",
+                             "estado": propia.instantanea()}
+            if respuesta is None:
+                return self._responder({"ok": False, "mensaje": "No existe"}, 404)
+            return self._responder(respuesta)
+
         with candado:
             try:
                 antes = list(sesion_al_dia().lineas)
-                respuesta = self._despachar(ruta, datos)
+                respuesta = self._despachar(ruta, datos, sesion)
                 # se compara contra las lineas de antes y no contra el "ok" de
                 # la respuesta: una carga que se corta a la mitad deja la
                 # sesion cambiada aunque conteste que no, y una linea que el
@@ -644,7 +814,18 @@ class Manejador(BaseHTTPRequestHandler):
             return self._responder({"ok": False, "mensaje": "No existe"}, 404)
         self._responder(respuesta)
 
-    def _despachar(self, ruta: str, datos: dict):
+    def _despachar(self, ruta: str, datos: dict, sesion: SesionPartido):
+        """Atiende una ruta del partido en curso contra la sesion que toque:
+        la que trajo la pantalla, o la compartida si el pedido no trajo
+        ninguna. Las dos son una SesionPartido, asi que el codigo es uno."""
+        # estado y estadisticas son de solo lectura y por eso tambien atienden
+        # por GET (ver do_GET). Por POST es como se pregunta por un partido que
+        # el servidor no conoce: el de la pantalla, que viene en el cuerpo.
+        if ruta == "/api/estado":
+            return {"ok": True, "estado": sesion.instantanea(),
+                    "almacenamiento": alm.estado()}
+        if ruta == "/api/estadisticas":
+            return {"ok": True, "texto": sesion.estadisticas()}
         if ruta == "/api/enviar":
             return sesion.enviar(datos.get("linea", ""))
         if ruta == "/api/deshacer":
@@ -653,6 +834,10 @@ class Manejador(BaseHTTPRequestHandler):
             return sesion.reiniciar()
         if ruta == "/api/cargar":
             return sesion.cargar_lineas(datos.get("texto", ""))
+        if ruta == "/api/privado/guardar":
+            return guardar_en_privado(sesion, datos.get("id", ""), datos.get("nombre"))
+        if ruta == "/api/privado/abrir":
+            return abrir_privado(sesion, datos.get("id", ""))
         if ruta == "/api/guardar":
             nombre = sesion.guardar()
             return {"ok": True,

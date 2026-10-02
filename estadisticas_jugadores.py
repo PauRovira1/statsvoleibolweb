@@ -47,6 +47,17 @@ def _cero_recepcion():
     return {"cal3": 0, "cal2": 0, "cal1": 0, "cal0": 0, "pase": 0}
 
 
+def _cero_defensa():
+    """Las mismas calidades que la recepcion.
+
+    La pelota que no se llega a jugar es una defensa de calidad 0 y se cuenta
+    en "cal0" como cualquier otra: lo que la distingue es que cierra el punto,
+    y eso se ve en las causas del punto, no aca. Los volcados viejos traen esas
+    pelotas en una fila propia ("Defensa perdida") y el parser las suma a
+    "cal0" al leerlas."""
+    return {"cal3": 0, "cal2": 0, "cal1": 0, "cal0": 0, "pase": 0}
+
+
 def _cero_ataque():
     return {"totales": 0, "puntos": 0, "defendidos": 0, "fuera": 0}
 
@@ -143,6 +154,26 @@ def _riqueza(volcado: dict) -> int:
             if datos.get("fases", {}).get(c))
 
 
+def etiquetas_por_volcado() -> dict:
+    """Las etiquetas (#nacional2026, #apertura) de cada volcado.
+
+    No salen del .txt: el volcado no sabe en que campeonato se jugo. Se
+    anotan a mano sobre la fila del partido y viven con el resto de los
+    arreglos, asi que se leen de ahi."""
+    return {nombre: archivo_partidos.etiquetas_de((arreglo or {}).get("torneo"))
+            for nombre, arreglo in (alm.leer_correcciones() or {}).items()}
+
+
+def como_campeonato(texto) -> str:
+    """Lo que eligio la pantalla, normalizado igual que las del partido.
+
+    Se dice "campeonato" y no "etiqueta" en todo lo que filtra porque adentro
+    de agregar() ya hay una "etiqueta": la de cada partido ("vs UVC
+    (2026-09-14)"), que es otra cosa."""
+    etiquetas = archivo_partidos.etiquetas_de(texto)
+    return etiquetas[0] if etiquetas else ""
+
+
 def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
     """Lee los volcados y descarta las recargas del mismo partido.
 
@@ -157,6 +188,7 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
     else:
         carpetas = [Path(carpeta)]
     gi = _parser()
+    por_volcado = etiquetas_por_volcado()
 
     leidos = []
     for ruta in archivo_partidos.archivos_de(carpetas, "*.txt",
@@ -180,6 +212,7 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
 
         leidos.append({
             "archivo": ruta.name,
+            "etiquetas": por_volcado.get(ruta.name, []),
             "jugadas": _jugadas_cargadas(texto),
             "armadores": marcados,
             "fecha": _fecha_de(ruta.name),
@@ -230,6 +263,8 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
         return destino.setdefault(_dorsal(clave), {
             "recepcion": _cero_recepcion(),
             "recepcion_set": {},
+            "defensa": _cero_defensa(),
+            "defensa_set": {},
             "ataque": _cero_ataque(),
             "detalle": {},
             "bloqueos": 0,
@@ -246,6 +281,14 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
         for clave, valores in jugadores.items():
             j = ficha(clave); vistos.add(_dorsal(clave))
             _sumar(j["recepcion_set"].setdefault(numero_set_base + numero, _cero_recepcion()), valores)
+    for clave, valores in (datos.get("defensas") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        _sumar(j["defensa"], valores)
+    for numero, jugadores in (datos.get("defensas_por_set") or {}).items():
+        for clave, valores in jugadores.items():
+            j = ficha(clave); vistos.add(_dorsal(clave))
+            _sumar(j["defensa_set"].setdefault(numero_set_base + numero, _cero_defensa()),
+                   valores)
     for clave, valores in datos["ataques_jugador"].items():
         j = ficha(clave); vistos.add(_dorsal(clave))
         j["ataque"]["totales"] += valores["totales"]
@@ -297,6 +340,7 @@ SECCIONES_DE_EQUIPO = ("fases", "causas", "zona_armador", "armado_zona",
 def _cero_equipo() -> dict:
     return {seccion: {} for seccion in SECCIONES_DE_EQUIPO} | {
         "recepcion": _cero_recepcion(),
+        "defensa": _cero_defensa(),
         "ataque": _cero_ataque(),
         # (zona de origen, direccion) -> ataques, para la matriz de tendencia
         "direccion": {},
@@ -316,6 +360,10 @@ def _acumular_equipo(destino: dict, datos: dict, etiqueta: str, sets: int) -> No
         _sumar_hondo(destino[seccion], datos.get(seccion) or {})
 
     recepcion, ataque = _cero_recepcion(), _cero_ataque()
+    defensa = _cero_defensa()
+    for valores in (datos.get("defensas") or {}).values():
+        _sumar(defensa, valores)
+    _sumar(destino["defensa"], defensa)
     for valores in (datos.get("recepciones") or {}).values():
         _sumar(recepcion, valores)
     for valores in (datos.get("ataques_jugador") or {}).values():
@@ -350,11 +398,22 @@ def _acumular_equipo(destino: dict, datos: dict, etiqueta: str, sets: int) -> No
     })
 
 
-def agregar(carpeta=None) -> dict:
+def agregar(carpeta=None, campeonato="") -> dict:
 
 
-    """Junta todos los partidos. Devuelve {equipo: {dorsal: ficha cruda}}."""
+    """Junta todos los partidos. Devuelve {equipo: {dorsal: ficha cruda}}.
+
+    Con "campeonato" se suman solo los partidos de ese campeonato. Es de a uno
+    y no una lista a proposito: sumar dos ligas elegidas a mano da un numero
+    que no es de ninguna de las dos y que nadie puede volver a encontrar. O
+    es todo, o es un campeonato."""
     elegidos, descartados = partidos_unicos(carpeta)
+    # las de TODOS los partidos, no las de los que quedan despues de filtrar:
+    # si no, elegir una liga borraria del selector a las demas
+    disponibles = sorted({e for p in elegidos for e in p["etiquetas"]})
+    campeonato = como_campeonato(campeonato)
+    if campeonato:
+        elegidos = [p for p in elegidos if campeonato in p["etiquetas"]]
     equipos: dict = {}
     partidos_por_equipo: dict = {}
     marcados_como_armador: dict = {}
@@ -390,12 +449,24 @@ def agregar(carpeta=None) -> dict:
     return {"equipos": equipos, "partidos": partidos_por_equipo,
             "por_equipo": por_equipo,
             "armadores": marcados_como_armador, "otros_equipos": sorted(otros),
-            "descartados": descartados, "elegidos": elegidos}
+            "descartados": descartados, "elegidos": elegidos,
+            "campeonatos": disponibles, "campeonato": campeonato}
 
 
 # ----------------------------------------------------------------------
 def _porcentaje(parte, total):
     return (parte / total) if total else 0.0
+
+
+def marcado_como_armador(dorsal, marcados, posiciones) -> bool:
+    """Si a este jugador se le miden las cosas de armador.
+
+    Las dos fuentes se suman (ver almacenamiento.POSICIONES): el _S de las
+    rotaciones, que sale del partido, y la etiqueta puesta a mano, que existe
+    para los partidos cargados sin rotacion. La etiqueta agrega el rol y no
+    puede quitarlo, asi que nunca contradice al volcado."""
+    dorsal = str(dorsal)
+    return dorsal in (marcados or set()) or (posiciones or {}).get(dorsal) == "Armador"
 
 
 def _resumen_recepcion(r: dict) -> dict:
@@ -416,8 +487,11 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
         return None
 
     rec, atk = crudo["recepcion"], crudo["ataque"]
+    defensa = crudo["defensa"]
     armados = sum(crudo["armado"].values())
-    es_armador = str(dorsal) in agregado.get("armadores", {}).get(equipo, set())
+    posiciones = alm.posiciones_del_equipo(equipo)
+    es_armador = marcado_como_armador(
+        dorsal, agregado.get("armadores", {}).get(equipo, set()), posiciones)
     partidos_equipo = agregado["partidos"].get(equipo, [])
 
     zonas_atacadas = sorted(
@@ -441,13 +515,21 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
         "equipo": equipo,
         "dorsal": dorsal,
         "armador": es_armador,
-        # De que juega, si se anoto. "Armador" no vive aca: sale del _S de las
-        # rotaciones, o sea del partido, y por eso va en su propio campo.
-        "posicion": alm.posiciones_del_equipo(equipo).get(str(dorsal), ""),
+        # De que juega, si se anoto. "Armador" puede estar aca Y en "armador":
+        # la pantalla no lo muestra dos veces (ver etiquetasDe en interfaz.js).
+        "posicion": posiciones.get(str(dorsal), ""),
+        # si la misma persona juega en otro equipo del club, sus cifras de alla
+        # van aparte: sumarlas taparia la diferencia entre una y otra
+        "tambien_en": [resumen_de(e["equipo"], e["dorsal"], agregado)
+                       for e in tambien_juega_en(equipo, dorsal, agregado)],
+        "aqui": resumen_de(equipo, dorsal, agregado),
         "partidos": len(crudo["partidos"]),
         "sets": sum(p["sets"] for p in partidos_equipo),
         "indicadores": {
             "recepciones": sum(rec.values()),
+            "defensas": sum(defensa.values()),
+            "defensa_positiva": _porcentaje(defensa["cal3"] + defensa["cal2"],
+                                            sum(defensa.values())),
             "positiva": _porcentaje(rec["cal3"] + rec["cal2"], sum(rec.values())),
             "perfecta": _porcentaje(rec["cal3"], sum(rec.values())),
             "ataques": atk["totales"],
@@ -491,6 +573,14 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
                 for zona in zonas_atacadas
             ],
         },
+        # Aparte de la recepcion a proposito: defender un ataque y recibir un
+        # saque son dos habilidades distintas, y juntarlas taparia a alguien
+        # que hace bien una y mal la otra.
+        "defensa": None if not sum(defensa.values()) else {
+            "total": dict(defensa, defensas=sum(defensa.values())),
+            "por_set": [dict(v, set=n, defensas=sum(v.values()))
+                        for n, v in sorted(crudo["defensa_set"].items())],
+        },
         "armado": None if not armados else {
             "total": armados,
             "zonas": zonas_armadas,
@@ -513,33 +603,143 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
 
 
 def _promedio_equipo(agregado: dict, equipo: str) -> dict:
-    jugadores = agregado["equipos"].get(equipo, {})
+    """Con que se compara a un jugador en cada cosa que hace.
+
+    Cada promedio sale SOLO de los que hacen esa accion. Promediar sobre todos
+    no describe a nadie: en un equipo de doce, el promedio de recepcion se
+    reparte entre los cuatro que reciben y los ocho que no, asi que da la
+    mitad de lo que recibe un receptor de verdad y cualquiera que reciba
+    aparece "muy por encima del equipo" sin haber hecho nada especial. Con los
+    porcentajes es peor todavia: el que nunca ataco entra al promedio de
+    efectividad como un 0%.
+
+    Cada metrica viaja con cuantos jugadores la componen, porque un promedio
+    "entre 2" y uno "entre 9" no se leen igual y desde afuera no hay como
+    saberlo.
+    """
+    jugadores = list(agregado["equipos"].get(equipo, {}).values())
     if not jugadores:
         return {}
-    def media(f):
-        valores = [f(j) for j in jugadores.values()]
-        return sum(valores) / len(valores) if valores else 0
+
+    def entre(quienes, calcular, decimales=None):
+        valores = [calcular(j) for j in quienes]
+        media = sum(valores) / len(valores) if valores else 0.0
+        return {"valor": round(media, decimales) if decimales is not None else media,
+                "jugadores": len(valores)}
+
+    recibe = [j for j in jugadores if sum(j["recepcion"].values())]
+    defiende = [j for j in jugadores if sum(j["defensa"].values())]
+    ataca = [j for j in jugadores if j["ataque"]["totales"]]
+    bloquea = [j for j in jugadores if j["bloqueos"]]
+    arma = [j for j in jugadores if sum(j["armado"].values())]
+
     return {
-        "recepciones": round(media(lambda j: sum(j["recepcion"].values())), 1),
-        "positiva": media(lambda j: _porcentaje(j["recepcion"]["cal3"] + j["recepcion"]["cal2"],
-                                                sum(j["recepcion"].values()))),
-        "perfecta": media(lambda j: _porcentaje(j["recepcion"]["cal3"], sum(j["recepcion"].values()))),
-        "ataques": round(media(lambda j: j["ataque"]["totales"]), 1),
-        "punto": media(lambda j: _porcentaje(j["ataque"]["puntos"], j["ataque"]["totales"])),
-        "bloqueos_punto": round(media(lambda j: j["bloqueos"]), 1),
+        "recepciones": entre(recibe, lambda j: sum(j["recepcion"].values()), 1),
+        "positiva": entre(recibe, lambda j: _porcentaje(
+            j["recepcion"]["cal3"] + j["recepcion"]["cal2"], sum(j["recepcion"].values()))),
+        "perfecta": entre(recibe, lambda j: _porcentaje(
+            j["recepcion"]["cal3"], sum(j["recepcion"].values()))),
+        "defensas": entre(defiende, lambda j: sum(j["defensa"].values()), 1),
+        "defensa_positiva": entre(defiende, lambda j: _porcentaje(
+            j["defensa"]["cal3"] + j["defensa"]["cal2"], sum(j["defensa"].values()))),
+        "ataques": entre(ataca, lambda j: j["ataque"]["totales"], 1),
+        "punto": entre(ataca, lambda j: _porcentaje(
+            j["ataque"]["puntos"], j["ataque"]["totales"])),
+        "bloqueos_punto": entre(bloquea, lambda j: j["bloqueos"], 1),
+        "armados": entre(arma, lambda j: sum(j["armado"].values()), 1),
     }
 
 
 FASES = ("K1", "K2", "K3", "Saque", "Sin fase")
 GANADOS = ("Ataque punto", "Ataque usando el bloqueo", "Bloqueo punto", "As de saque")
 ERRORES = ("Ataque afuera", "Ataque a la malla", "Error de saque", "Armado malo",
-           "Defensa perdida", "Error en juego")
+           "Defensa 0", "Error en juego")
 
 
 def _orden_zonas(presentes) -> list:
     """Las zonas en el orden de la cancha, con las raras al final."""
     conocidas = [z for z in ZONAS_ATAQUE if z in presentes]
     return conocidas + sorted(z for z in presentes if z not in ZONAS_ATAQUE)
+
+
+def _mismo_nombre(nombre) -> str:
+    """La forma con la que se comparan dos nombres.
+
+    Sin acentos, sin mayusculas y sin espacios de mas: el mismo nombre escrito
+    en dos equipos distintos casi nunca se tipea igual, y si no se normaliza
+    "Sofia" y "Sofía" serian dos personas."""
+    import unicodedata
+    plano = unicodedata.normalize("NFD", " ".join(str(nombre or "").split()).lower())
+    return "".join(c for c in plano if unicodedata.category(c) != "Mn")
+
+
+def por_nombre(agregado: dict | None = None) -> dict:
+    """Quien juega en que equipos, cruzando por nombre.
+
+    Un club tiene primera, segunda y a veces mas, y el numero no sirve para
+    cruzarlas: la misma persona puede ser la 13 en la A y la 7 en la B. El
+    nombre si, y por eso el cruce se hace por ahi.
+
+    Devuelve {nombre normalizado: {"nombre": como se escribe,
+                                   "equipos": [{equipo, dorsal, partidos}]}}.
+    Los dorsales sin nombre anotado no entran: no hay forma de saber si el 13
+    de la A es el 13 de la B, y suponer que si mezclaria a dos personas."""
+    agregado = agregado or agregar()
+    gente: dict = {}
+    for equipo, jugadores in agregado["equipos"].items():
+        nombres = alm.nombres_del_equipo(equipo)
+        for dorsal, datos in jugadores.items():
+            nombre = nombres.get(str(dorsal), "")
+            clave = _mismo_nombre(nombre)
+            if not clave:
+                continue
+            ficha = gente.setdefault(clave, {"nombre": nombre.strip(), "equipos": []})
+            ficha["equipos"].append({
+                "equipo": equipo,
+                "dorsal": dorsal,
+                "partidos": len(datos["partidos"]),
+            })
+    for ficha in gente.values():
+        ficha["equipos"].sort(key=lambda e: (-e["partidos"], e["equipo"]))
+    return gente
+
+
+def tambien_juega_en(equipo: str, dorsal: str, agregado: dict | None = None) -> list:
+    """Los OTROS equipos donde juega esta misma persona.
+
+    Vacio si no tiene nombre anotado o si solo juega en uno. Es lo que permite
+    mostrar sus numeros separados por equipo, que es la unica forma honesta de
+    mostrarlos: sumar los de la A con los de la B taparia justamente la
+    diferencia entre jugar en una y en la otra."""
+    agregado = agregado or agregar()
+    nombre = alm.nombres_del_equipo(equipo).get(str(dorsal), "")
+    ficha = por_nombre(agregado).get(_mismo_nombre(nombre))
+    if not ficha:
+        return []
+    return [e for e in ficha["equipos"]
+            if not (e["equipo"] == equipo and str(e["dorsal"]) == str(dorsal))]
+
+
+def resumen_de(equipo: str, dorsal: str, agregado: dict | None = None) -> dict:
+    """Las cifras gruesas de un jugador en un equipo, para comparar equipos."""
+    agregado = agregado or agregar()
+    crudo = agregado["equipos"].get(equipo, {}).get(str(dorsal))
+    if crudo is None:
+        return {}
+    rec, atk = crudo["recepcion"], crudo["ataque"]
+    recibidas = sum(rec.values())
+    return {
+        "equipo": equipo,
+        "dorsal": dorsal,
+        "partidos": len(crudo["partidos"]),
+        "recepciones": recibidas,
+        "positiva": _porcentaje(rec["cal3"] + rec["cal2"], recibidas),
+        "ataques": atk["totales"],
+        "punto": _porcentaje(atk["puntos"], atk["totales"]),
+        "eficacia": _porcentaje(atk["puntos"] - atk["fuera"], atk["totales"]),
+        "armados": sum(crudo["armado"].values()),
+        "bloqueos": crudo["bloqueos"],
+    }
 
 
 def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
@@ -557,7 +757,8 @@ def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
         return None
 
     rec, atk = crudo["recepcion"], crudo["ataque"]
-    recibidas = sum(rec.values())
+    defe = crudo["defensa"]
+    recibidas, defendidas = sum(rec.values()), sum(defe.values())
     fases, causas = crudo["fases"], crudo["causas"]
     hechos = sum(f.get("total", 0) for f in (fases.get("hechos") or {}).values())
     recibidos = sum(f.get("total", 0) for f in (fases.get("recibidos") or {}).values())
@@ -596,9 +797,15 @@ def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
         desde = sum(c["totales"] for c in celdas)
         if not desde:
             continue          # el volcado lista zonas que nadie ataco nunca
+        puntos_zona = sum(c["puntos"] for c in celdas)
         direcciones.append({
             "zona": zona,
             "ataques": desde,
+            "puntos": puntos_zona,
+            # que tan rentable es atacar desde esa zona. Es distinto de
+            # "del_total", que solo dice cuanto se usa: una zona puede llevarse
+            # el 40% de los ataques y ser la menos efectiva de todas.
+            "punto": _porcentaje(puntos_zona, desde),
             "del_total": _porcentaje(desde, atk["totales"]),
             "hacia": [{"direccion": d, "ataques": c["totales"],
                        "puntos": c["puntos"],
@@ -620,6 +827,8 @@ def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
             "recepciones": recibidas,
             "positiva": _porcentaje(rec["cal3"] + rec["cal2"], recibidas),
             "perfecta": _porcentaje(rec["cal3"], recibidas),
+            "defensas": defendidas,
+            "defensa_positiva": _porcentaje(defe["cal3"] + defe["cal2"], defendidas),
             "ataques": atk["totales"],
             "punto": _porcentaje(atk["puntos"], atk["totales"]),
             "eficacia": _porcentaje(atk["puntos"] - atk["fuera"], atk["totales"]),
@@ -650,6 +859,7 @@ def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
         "armado_total": armado_total,
         "distribucion": {"zonas": zonas_calidad, "filas": distribucion},
         "direccion": {"direcciones": list(DIRECCIONES), "filas": direcciones},
+        "defensa": dict(defe, defensas=defendidas),
         "recepcion": {
             "total": dict(rec, recepciones=recibidas),
             "por_tipo": sorted(
@@ -671,7 +881,7 @@ def resumen_equipo(equipo: str, agregado: dict | None = None) -> dict | None:
     }
 
 
-def listado(carpeta=None) -> dict:
+def listado(carpeta=None, campeonato="") -> dict:
 
 
     """Los equipos con sus jugadores, para armar los selectores.
@@ -679,18 +889,23 @@ def listado(carpeta=None) -> dict:
     Los equipos van ordenados por cantidad de partidos: el propio queda
     primero sin necesidad de configurarlo, y "Palestino B" aparece solo el dia
     que se cargue un partido suyo."""
-    agregado = agregar(carpeta)
+    agregado = agregar(carpeta, campeonato)
+    gente = por_nombre(agregado)
     equipos = []
     for nombre, jugadores in agregado["equipos"].items():
         filas = []
         marcados = agregado.get("armadores", {}).get(nombre, set())
         posiciones = alm.posiciones_del_equipo(nombre)
+        nombres_equipo = alm.nombres_del_equipo(nombre)
         for dorsal, j in jugadores.items():
             armados = sum(j["armado"].values())
             filas.append({
                 "dorsal": dorsal,
-                "armador": dorsal in marcados,
+                "armador": marcado_como_armador(dorsal, marcados, posiciones),
                 "posicion": posiciones.get(str(dorsal), ""),
+                # en cuantos equipos del club juega esta persona
+                "equipos": len((gente.get(_mismo_nombre(nombres_equipo.get(str(dorsal), "")))
+                                or {"equipos": []})["equipos"]),
                 "partidos": len(j["partidos"]),
                 "recepciones": sum(j["recepcion"].values()),
                 "ataques": j["ataque"]["totales"],
@@ -706,4 +921,6 @@ def listado(carpeta=None) -> dict:
         })
     equipos.sort(key=lambda e: (-e["partidos"], e["nombre"]))
     return {"equipos": equipos, "descartados": agregado["descartados"],
-            "otros_equipos": agregado["otros_equipos"]}
+            "otros_equipos": agregado["otros_equipos"],
+            "campeonatos": agregado["campeonatos"],
+            "campeonato": agregado["campeonato"]}
