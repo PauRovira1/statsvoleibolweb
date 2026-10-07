@@ -60,6 +60,8 @@ informe (o borrar un partido viejo) no interrumpa la carga en la cancha:
                                     tiene sentido corriendo en una PC propia)
 """
 import argparse
+import base64
+import binascii
 import hashlib
 import hmac
 import json
@@ -68,6 +70,7 @@ import socket
 import threading
 import time
 import webbrowser
+import zlib
 from datetime import datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
@@ -598,6 +601,30 @@ def borrar_partido(volcado, informe) -> dict:
     return {"ok": not fallo, "mensaje": " ".join(mensajes)}
 
 
+# El navegador manda el pedido comprimido: {"z": gzip en base64 del JSON de
+# siempre}. Es por el WAF de CloudFront, no por ahorrar datos. Cada pedido
+# lleva el partido entero, asi que el cuerpo crece con cada punto; pasados los
+# 8 KB la regla SizeRestrictions_BODY lo corta con un 403, y antes de eso las
+# reglas que buscan ataques pueden confundir una jugada con uno. Comprimido el
+# cuerpo es chico y opaco. El pedido sin comprimir se sigue aceptando: es el
+# de un navegador sin CompressionStream, o el de la consola y los tests.
+MAXIMO_DESCOMPRIMIDO = 5 * 1024 * 1024   # un partido son decenas de KB
+
+
+def desempaquetar(datos):
+    if not (isinstance(datos, dict) and set(datos) == {"z"} and isinstance(datos["z"], str)):
+        return datos
+    try:
+        comprimido = base64.b64decode(datos["z"], validate=True)
+        descompresor = zlib.decompressobj(wbits=31)          # 31 = formato gzip
+        crudo = descompresor.decompress(comprimido, MAXIMO_DESCOMPRIMIDO)
+        if descompresor.unconsumed_tail:
+            raise ValueError("El pedido descomprimido es demasiado grande.")
+        return json.loads(crudo.decode("utf-8"))
+    except (binascii.Error, zlib.error, UnicodeDecodeError) as error:
+        raise ValueError(f"No se pudo leer el pedido comprimido: {error}") from None
+
+
 class Manejador(BaseHTTPRequestHandler):
 
     def log_message(self, formato, *args):
@@ -629,7 +656,7 @@ class Manejador(BaseHTTPRequestHandler):
         largo = int(self.headers.get("Content-Length") or 0)
         if not largo:
             return {}
-        return json.loads(self.rfile.read(largo).decode("utf-8"))
+        return desempaquetar(json.loads(self.rfile.read(largo).decode("utf-8")))
 
     # ------------------------------------------------------------------
     def do_GET(self):
@@ -725,6 +752,8 @@ class Manejador(BaseHTTPRequestHandler):
             datos = self._leer_json()
         except json.JSONDecodeError:
             return self._responder({"ok": False, "mensaje": "JSON invalido"}, 400)
+        except ValueError as error:   # el comprimido no se pudo abrir
+            return self._responder({"ok": False, "mensaje": str(error)}, 400)
 
         ruta = urlsplit(self.path).path
         if ruta == "/api/clave":

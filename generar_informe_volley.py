@@ -133,6 +133,12 @@ RE_CALARM_ITEM = re.compile(
 CALIDADES_ARMADO = ["A+", "A0", "A-", "AX", "Sin calificar"]
 CALIDADES_ARMADO_ATAQUE = ["A+", "A0", "A-", "Sin calificar"]
 
+RE_CALZONA_HDR = re.compile(r"^Calidad de armado por armador y zona:$")
+RE_CALZONA_ITEM = re.compile(
+    r"^Jugador\s+(\S+)\s+-\s+zona\s+([\w-]+):\s*A\+\s+(\d+),\s*A0\s+(\d+),"
+    r"\s*A-\s+(\d+),\s*sin calificar\s+(\d+)$"
+)
+
 RE_ATKCAL_HDR = re.compile(r"^Ataque segun calidad del armado:$")
 RE_ATKCAL_ITEM = re.compile(
     r"^Jugador\s+(\S+):\s*A\+\s+(\d+)-(\d+)-(\d+),\s*A0\s+(\d+)-(\d+)-(\d+),"
@@ -146,6 +152,41 @@ RE_ATKTIPO_ITEM = re.compile(
 )
 TIPOS_RESOLUCION = ["Potente", "Colocado", "Block out", "Sin tipo"]
 DIRECCIONES_ATAQUE = ["1", "5", "6"]
+
+_N = r"\s+(\d+)"
+RE_ESTR_HDR = re.compile(r"^Saque por jugador y estrategia:$")
+RE_ESTR_ITEM = re.compile(
+    r"^Jugador\s+(\S+)\s+-\s+de\s+(\d)\s+a\s+(\d):\s*(\d+)\s*saques\s*-\s*as" + _N +
+    r",\s*error" + _N + r",\s*rec3" + _N + r",\s*rec2" + _N + r",\s*rec1" + _N +
+    r",\s*rec0" + _N + r",\s*pase" + _N + r",\s*ganados" + _N + r"$"
+)
+CAMPOS_ESTR = ["saques", "as", "error", "rec3", "rec2", "rec1", "rec0", "pase", "ganados"]
+
+RE_RECOBJ_HDR = re.compile(r"^Saque por receptor objetivo:$")
+RE_RECOBJ_ITEM = re.compile(
+    r"^Receptor\s+(\S+):\s*(\d+)\s*saques\s*-\s*as" + _N + r",\s*rec3" + _N +
+    r",\s*rec2" + _N + r",\s*rec1" + _N + r",\s*rec0" + _N + r",\s*pase" + _N +
+    r",\s*ganados" + _N + r"$"
+)
+CAMPOS_RECOBJ = ["saques", "as", "rec3", "rec2", "rec1", "rec0", "pase", "ganados"]
+
+RE_SEXTETO_HDR = re.compile(r"^Sexteto inicial:$")
+RE_SEXTETO_ITEM = re.compile(
+    r"^Set\s+(\d+):\s*Z1\s+(\S+),\s*Z2\s+(\S+),\s*Z3\s+(\S+),\s*Z4\s+(\S+),"
+    r"\s*Z5\s+(\S+),\s*Z6\s+(\S+)\s*\|\s*armador\s+(\S+)(?:\s*\|\s*libero\s+(.+))?$"
+)
+
+RE_ROTFORM_HDR = re.compile(r"^Puntos por rotacion y formacion:$")
+RE_ROTFORM_ITEM = re.compile(
+    r"^Armador en zona\s+(\d)\s*\|\s*([\d ]+?):\s*jugados" + _N + r",\s*ganados" + _N +
+    r",\s*saque\s+(\d+)/(\d+),\s*recepcion\s+(\d+)/(\d+)$"
+)
+
+RE_INTERV_HDR = re.compile(r"^Tiempos y cambios:$")
+RE_INTERV_ITEM = re.compile(
+    r"^Set\s+(\d+)\s*\|\s*(\d+)-(\d+)\s*\|\s*(.+?)\s*\|\s*antes\s+(\d+)-(\d+)"
+    r"\s*\|\s*despues\s+(\d+)-(\d+)$"
+)
 
 RE_TOQBLOQ_HDR = re.compile(r"^Toques de bloqueo por jugador:$")
 RE_JUG_TOQBLOQ = re.compile(r"^Jugador\s+(\S+):\s*(\d+)\s*toques de bloqueo")
@@ -194,10 +235,22 @@ def empty_team_data():
         "saques_jugador": {},
         # "Jugador N" -> {"A+"|"A0"|"A-"|"AX"|"Sin calificar": cantidad}
         "calidad_armado_jugador": {},
+        # [(jugador, zona armada, {"A+"|"A0"|"A-"|"Sin calificar": cantidad})]
+        "calidad_armado_zona": [],
         # "Jugador N" -> {"A+"|"A0"|"A-"|"Sin calificar": (puntos, defendidos, fuera)}
         "ataque_calidad": {},
         # [(jugador, tipo de resolucion, direccion, puntos, defendidos, fuera)]
         "ataque_tipo": [],
+        # [(jugador, "1 a 5", {saques, as, error, rec3..rec0, pase, ganados})]
+        "saque_estrategia": [],
+        # receptor rival -> {saques, as, rec3..rec0, pase, ganados}
+        "saque_receptor": {},
+        # [(set, [z1..z6], armador, liberos)]
+        "sexteto": [],
+        # [(zona del armador, "3 88 15 13 16 21", {jugados, ganados, ...})]
+        "rotacion_formacion": [],
+        # [(set, propio, rival, texto, antes_p, antes_r, despues_p, despues_r)]
+        "intervenciones": [],
     }
 
 
@@ -307,8 +360,26 @@ def parse_team_block(lines):
         if RE_TOQBLOQ_HDR.match(s):
             section = "toques_bloqueo"
             continue
+        if RE_CALZONA_HDR.match(s):
+            section = "calidad_armado_zona"
+            continue
         if RE_CALARM_HDR.match(s):
             section = "calidad_armado"
+            continue
+        if RE_ESTR_HDR.match(s):
+            section = "saque_estrategia"
+            continue
+        if RE_RECOBJ_HDR.match(s):
+            section = "saque_receptor"
+            continue
+        if RE_SEXTETO_HDR.match(s):
+            section = "sexteto"
+            continue
+        if RE_ROTFORM_HDR.match(s):
+            section = "rotacion_formacion"
+            continue
+        if RE_INTERV_HDR.match(s):
+            section = "intervenciones"
             continue
         if RE_ATKCAL_HDR.match(s):
             section = "ataque_calidad"
@@ -541,6 +612,53 @@ def parse_team_block(lines):
             if m:
                 # el volcado trae tambien una linea "Total:", que se ignora
                 data["bloqueos_jugador"][f"Jugador {m.group(1)}"] = int(m.group(2))
+            continue
+
+        if section == "saque_estrategia":
+            m = RE_ESTR_ITEM.match(s)
+            if m:
+                valores = dict(zip(CAMPOS_ESTR, (int(x) for x in m.groups()[3:])))
+                data["saque_estrategia"].append(
+                    (f"Jugador {m.group(1)}", f"{m.group(2)} a {m.group(3)}", valores))
+            continue
+
+        if section == "saque_receptor":
+            m = RE_RECOBJ_ITEM.match(s)
+            if m:
+                data["saque_receptor"][f"Receptor {m.group(1)}"] = dict(
+                    zip(CAMPOS_RECOBJ, (int(x) for x in m.groups()[1:])))
+            continue
+
+        if section == "sexteto":
+            m = RE_SEXTETO_ITEM.match(s)
+            if m:
+                data["sexteto"].append((int(m.group(1)), list(m.groups()[1:7]),
+                                        m.group(8), m.group(9) or ""))
+            continue
+
+        if section == "rotacion_formacion":
+            m = RE_ROTFORM_ITEM.match(s)
+            if m:
+                n = [int(x) for x in m.groups()[2:]]
+                data["rotacion_formacion"].append((int(m.group(1)), m.group(2).strip(), {
+                    "jugados": n[0], "ganados": n[1], "saque_ganados": n[2],
+                    "saque_jugados": n[3], "rec_ganados": n[4], "rec_jugados": n[5]}))
+            continue
+
+        if section == "intervenciones":
+            m = RE_INTERV_ITEM.match(s)
+            if m:
+                g = m.groups()
+                data["intervenciones"].append(
+                    (int(g[0]), int(g[1]), int(g[2]), g[3]) + tuple(int(x) for x in g[4:]))
+            continue
+
+        if section == "calidad_armado_zona":
+            m = RE_CALZONA_ITEM.match(s)
+            if m:
+                data["calidad_armado_zona"].append((f"Jugador {m.group(1)}", m.group(2), {
+                    calidad: int(m.group(i))
+                    for i, calidad in enumerate(CALIDADES_ARMADO_ATAQUE, start=3)}))
             continue
 
         if section == "calidad_armado":
@@ -865,7 +983,7 @@ def poner_nombres(data, nombres):
     for campo in ("armado_armador_por_set", "recepciones_por_set"):
         data[campo] = {s: {etiqueta(j): v for j, v in por.items()}
                        for s, por in data[campo].items()}
-    for campo in ("ataques_detalle", "ataque_tipo"):
+    for campo in ("ataques_detalle", "ataque_tipo", "saque_estrategia", "calidad_armado_zona"):
         data[campo] = [(etiqueta(j),) + tuple(resto) for j, *resto in data[campo]]
     return data
 
@@ -1178,6 +1296,47 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
         for columna, valor in zip(range(123, 129), (j, tipo, dr, p_, d_, f_)):
             db.cell(row=i, column=columna, value=valor)
     ATKTIPO_LAST = 1 + max(len(data["ataque_tipo"]), 1)
+
+    db["DZ1"] = "Jugador"; db["EA1"] = "Estrategia"
+    for i, campo in enumerate(CAMPOS_ESTR):
+        db.cell(row=1, column=132 + i, value=campo)
+    for i, (j, par, v) in enumerate(data["saque_estrategia"], start=2):
+        db.cell(row=i, column=130, value=j)
+        db.cell(row=i, column=131, value=par)
+        for k, campo in enumerate(CAMPOS_ESTR):
+            db.cell(row=i, column=132 + k, value=v[campo])
+    ESTR_LAST = 1 + max(len(data["saque_estrategia"]), 1)
+
+    db["EL1"] = "Receptor"
+    for i, campo in enumerate(CAMPOS_RECOBJ):
+        db.cell(row=1, column=143 + i, value=campo)
+    for i, (rec, v) in enumerate(data["saque_receptor"].items(), start=2):
+        db.cell(row=i, column=142, value=rec)
+        for k, campo in enumerate(CAMPOS_RECOBJ):
+            db.cell(row=i, column=143 + k, value=v[campo])
+    RECOBJ_LAST = 1 + max(len(data["saque_receptor"]), 1)
+
+    db["FE1"] = "Armador"; db["FF1"] = "ZonaArmada"
+    for i, cal in enumerate(CALIDADES_ARMADO_ATAQUE):
+        db.cell(row=1, column=163 + i, value=cal)
+    for i, (j, zona, cals) in enumerate(data["calidad_armado_zona"], start=2):
+        db.cell(row=i, column=161, value=j)
+        db.cell(row=i, column=162, value=zona)
+        for k, cal in enumerate(CALIDADES_ARMADO_ATAQUE):
+            db.cell(row=i, column=163 + k, value=cals[cal])
+    CALZONA_LAST = 1 + max(len(data["calidad_armado_zona"]), 1)
+
+    CAMPOS_ROT = ["jugados", "ganados", "saque_jugados", "saque_ganados",
+                  "rec_jugados", "rec_ganados"]
+    db["EV1"] = "Rotacion"; db["EW1"] = "Formacion"
+    for i, campo in enumerate(CAMPOS_ROT):
+        db.cell(row=1, column=154 + i, value=campo)
+    for i, (zona, formacion, v) in enumerate(data["rotacion_formacion"], start=2):
+        db.cell(row=i, column=152, value=f"Armador en Z{zona}")
+        db.cell(row=i, column=153, value=formacion)
+        for k, campo in enumerate(CAMPOS_ROT):
+            db.cell(row=i, column=154 + k, value=v[campo])
+    ROT_LAST = 1 + max(len(data["rotacion_formacion"]), 1)
 
     for col in ["A", "B", "C", "D", "E", "F", "H", "I", "K", "L", "M", "O", "P", "Q", "R", "S", "U", "V", "W", "X", "Y", "Z",
                 "AB", "AC", "AD", "AE", "AF", "AG", "AH",
@@ -1855,6 +2014,46 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
             "(armada mala, punto del rival). Los % son sobre los armados calificados.",
         )
 
+    row += 1
+    # La misma calidad abierta por la zona hacia donde se armo: un armador
+    # puede dejar servido al 4 y complicar siempre al 1, y el total no lo dice.
+    COLS_CAL = {"A+": "FG", "A0": "FH", "A-": "FI", "Sin calificar": "FJ"}
+    cab_cal = ["A+", "A0", "A-", "Calificados", "% A+", "% A0", "% A-", "Sin calificar"]
+
+    def fila_calidad(r, desde, criterios):
+        vals = ["=" + sumifs_crit(COLS_CAL[c], CALZONA_LAST, criterios) for c in ("A+", "A0", "A-")]
+        a, c = col_letter(desde), col_letter(desde + 2)
+        total = col_letter(desde + 3)
+        vals.append(f"=SUM({a}{r}:{c}{r})")
+        vals += [f'=IFERROR({col_letter(desde + k)}{r}/{total}{r},"")' for k in range(3)]
+        vals.append("=" + sumifs_crit(COLS_CAL["Sin calificar"], CALZONA_LAST, criterios))
+        return vals
+
+    zonas_cal = [g for g in ("1", "2", "6-5", "3", "4")
+                 if any(z == g for _, z, _ in data["calidad_armado_zona"])]
+    row = set_subtitle(ws, row, 1, 10, "Calidad del armado por zona armada")
+    if not zonas_cal:
+        row = set_footnote(ws, row, 1, 10, "Sin armados con zona en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Zona armada"] + cab_cal)
+        for zona in zonas_cal:
+            r = row
+            row = set_data_row(ws, row, 1, [f"Zona {zona}"] + fila_calidad(r, 2, [("FF", zona)]),
+                               formats=[None] + ["0"] * 4 + [PCT_FMT] * 3 + ["0"])
+        row += 1
+        row = set_subtitle(ws, row, 1, 10, "Calidad del armado por armador y zona armada")
+        row = set_headers(ws, row, 1, ["Armador", "Zona armada"] + cab_cal)
+        orden = {g: i for i, g in enumerate(("1", "2", "6-5", "3", "4"))}
+        for j, zona, _ in sorted(data["calidad_armado_zona"],
+                                 key=lambda t: (t[0], orden.get(t[1], 9))):
+            r = row
+            row = set_data_row(ws, row, 1,
+                               [j, f"Zona {zona}"] + fila_calidad(r, 3, [("FE", j), ("FF", zona)]),
+                               formats=[None, None] + ["0"] * 4 + [PCT_FMT] * 3 + ["0"])
+        row = set_footnote(ws, row, 1, 10,
+            "Los % son sobre los armados calificados de esa zona. El AX no tiene zona "
+            "(la armada mala termina el punto) y está solo en la tabla de arriba.")
+
     widths = {"A": 22 if calarm_players else 12}
     for i, z in enumerate(matriz_arm_zonas):
         widths[col_letter(2 + i)] = 10
@@ -2278,14 +2477,172 @@ def build_workbook(equipo_name, rival_name, parsed, nombres=None):
             vals += [f"=IFERROR(F{r}/E{r},\"\")", f"=IFERROR(G{r}/E{r},\"\")"]
             row = set_data_row(ws, row, 1, vals,
                                formats=[None] + ["0"] * 6 + [PCT_FMT, PCT_FMT])
-    autosize(ws, {"A": 22, "B": 11, "C": 12, "D": 12, "E": 11, "F": 12, "G": 13, "H": 13, "I": 15})
+    row += 1
+    # Estrategia = zona de origen -> zona objetivo. "% Puntos ganados" es si el
+    # rally lo termino ganando el que saco: mide cuanto complico el saque,
+    # no solo si fue as.
+    REC = ("EE", "EF", "EG")   # rec3, rec2, rec1 en Datos_Base
+    pares = sorted({par for _, par, _ in data["saque_estrategia"]},
+                   key=lambda par: -sum(v["saques"] for _, p_, v in data["saque_estrategia"]
+                                        if p_ == par))
+    row = set_subtitle(ws, row, 1, 12, "Estrategia de saque (zona de origen → zona objetivo)")
+    if not pares:
+        row = set_footnote(ws, row, 1, 12, "Sin saques con zonas registradas en el volcado.")
+    else:
+        cab = ["Saques", "As", "Errores", "Rec 3", "Rec 2", "Rec 1", "Rec 0 / pase",
+               "% As", "% Error", "% Rec 3 del rival", "% Puntos ganados"]
+        fmt = ["0"] * 7 + [PCT_FMT] * 4
+        row = set_headers(ws, row, 1, ["Estrategia"] + cab)
+        for par in pares:
+            r = row
+            vals = [f"De {par}"]
+            vals += ["=" + sumif(col, ESTR_LAST, "EA", par) for col in ("EB", "EC", "ED") + REC]
+            vals.append("=" + sumif("EH", ESTR_LAST, "EA", par) + "+" + sumif("EI", ESTR_LAST, "EA", par))
+            vals += [f'=IFERROR(C{r}/B{r},"")', f'=IFERROR(D{r}/B{r},"")',
+                     f'=IFERROR(E{r}/(E{r}+F{r}+G{r}+H{r}),"")',
+                     "=IFERROR(" + sumif("EJ", ESTR_LAST, "EA", par) + f'/B{r},"")']
+            row = set_data_row(ws, row, 1, vals, formats=[None] + fmt)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 12, "Estrategia de saque por sacador")
+        row = set_headers(ws, row, 1, ["Jugador", "Estrategia"] + cab[:7]
+                          + ["% Rec 3 del rival", "% Puntos ganados"])
+        filas = sorted(data["saque_estrategia"], key=lambda t: (t[0], -t[2]["saques"]))
+        for j, par, _v in filas:
+            r = row
+            crit = [("DZ", j), ("EA", par)]
+            vals = [j, f"De {par}"]
+            vals += ["=" + sumifs_crit(col, ESTR_LAST, crit) for col in ("EB", "EC", "ED") + REC]
+            vals.append("=" + sumifs_crit("EH", ESTR_LAST, crit) + "+" + sumifs_crit("EI", ESTR_LAST, crit))
+            vals += [f'=IFERROR(F{r}/(F{r}+G{r}+H{r}+I{r}),"")',
+                     "=IFERROR(" + sumifs_crit("EJ", ESTR_LAST, crit) + f'/C{r},"")']
+            row = set_data_row(ws, row, 1, vals, formats=[None, None] + ["0"] * 7 + [PCT_FMT] * 2)
+    row += 1
+
+    row = set_subtitle(ws, row, 1, 10, "Receptor rival objetivo")
+    receptores = sorted(data["saque_receptor"], key=lambda k: -data["saque_receptor"][k]["saques"])
+    if not receptores:
+        row = set_footnote(ws, row, 1, 10, "Sin receptores registrados en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Receptor", "Saques", "As", "Rec 3", "Rec 2", "Rec 1",
+                                       "Rec 0 / pase", "% As", "% Rec 3", "% Puntos ganados"])
+        for rec in receptores:
+            r = row
+            vals = [rec] + ["=" + sumif(col, RECOBJ_LAST, "EL", rec)
+                            for col in ("EM", "EN", "EO", "EP", "EQ")]
+            vals.append("=" + sumif("ER", RECOBJ_LAST, "EL", rec) + "+" + sumif("ES", RECOBJ_LAST, "EL", rec))
+            vals += [f'=IFERROR(C{r}/B{r},"")', f'=IFERROR(D{r}/(D{r}+E{r}+F{r}+G{r}),"")',
+                     "=IFERROR(" + sumif("ET", RECOBJ_LAST, "EL", rec) + f'/B{r},"")']
+            row = set_data_row(ws, row, 1, vals, formats=[None] + ["0"] * 6 + [PCT_FMT] * 3)
+    row = set_footnote(
+        ws, row, 1, 12,
+        "\"% Rec 3 del rival\" bajo = el saque complica la recepción. \"% Puntos ganados\": "
+        "el rally lo ganó el equipo que sacó. El receptor del as solo aparece si se cargó "
+        "(5_1_6_A_7); el error de saque no tiene receptor.",
+    )
+    autosize(ws, {"A": 22, "B": 12, "C": 12, "D": 12, "E": 11, "F": 12, "G": 13, "H": 13,
+                  "I": 15, "J": 13, "K": 15, "L": 15})
+    ws.freeze_panes = "A4"
+
+    # ------------------------------------------------------------------
+    # Hoja: Rotaciones (sexteto inicial, sistema y combinacion de jugadores)
+    # ------------------------------------------------------------------
+    ws = new_sheet(wb, "Rotaciones")
+    row = 1
+    row = set_title(ws, row, 1, 11, f"ROTACIONES — {equipo_name.upper()}")
+    row = set_nota(ws, row, 1, 11,
+        "La rotación se nombra por la zona del armador. Si una rotación rinde mal con "
+        "cualquier formación, el problema es del sistema; si rinde mal solo con una "
+        "combinación de jugadores, es esa combinación (o el match-up).")
+
+    row = set_subtitle(ws, row, 1, 9, "Sexteto inicial por set")
+    if not data["sexteto"]:
+        row = set_footnote(ws, row, 1, 9, "Sin rotación cargada para este equipo.")
+    else:
+        row = set_headers(ws, row, 1, ["Set"] + [f"Zona {z}" for z in range(1, 7)]
+                          + ["Armador", "Líbero (por quién juega)"])
+        for numero, zonas, armador, libero in sorted(data["sexteto"]):
+            row = set_data_row(ws, row, 1, [f"Set {numero}"] + [int(z) for z in zonas]
+                               + [int(armador), libero or "—"])
+    row += 1
+
+    CAB_ROT = ["Puntos", "Ganados", "% Ganados", "En saque", "Ganados en saque",
+               "% Break", "En recepción", "Ganados en recepción", "% Side-out"]
+    FMT_ROT = ["0", "0", PCT_FMT, "0", "0", PCT_FMT, "0", "0", PCT_FMT]
+
+    def fila_rot(r, desde, criterios):
+        vals = []
+        for col_j, col_g in (("EX", "EY"), ("EZ", "FA"), ("FB", "FC")):
+            vals += ["=" + sumifs_crit(col_j, ROT_LAST, criterios),
+                     "=" + sumifs_crit(col_g, ROT_LAST, criterios)]
+            a, b = col_letter(desde + len(vals) - 2), col_letter(desde + len(vals) - 1)
+            vals.append(f'=IFERROR({b}{r}/{a}{r},"")')
+        return vals
+
+    rotaciones_vistas = sorted({z for z, _, _ in data["rotacion_formacion"]})
+    row = set_subtitle(ws, row, 1, 10, "Rendimiento por rotación (sistema)")
+    if not rotaciones_vistas:
+        row = set_footnote(ws, row, 1, 10, "Sin rotación cargada para este equipo.")
+    else:
+        row = set_headers(ws, row, 1, ["Rotación"] + CAB_ROT)
+        for zona in rotaciones_vistas:
+            r = row
+            etiqueta = f"Armador en Z{zona}"
+            row = set_data_row(ws, row, 1, [etiqueta] + fila_rot(r, 2, [("EV", etiqueta)]),
+                               formats=[None] + FMT_ROT)
+        row += 1
+
+        row = set_subtitle(ws, row, 1, 11, "Rendimiento por rotación y formación (jugadores)")
+        row = set_headers(ws, row, 1, ["Rotación", "Formación (Z1 → Z6)"] + CAB_ROT)
+        for zona, formacion, _v in sorted(data["rotacion_formacion"]):
+            r = row
+            etiqueta = f"Armador en Z{zona}"
+            row = set_data_row(
+                ws, row, 1,
+                [etiqueta, formacion] + fila_rot(r, 3, [("EV", etiqueta), ("EW", formacion)]),
+                formats=[None, None] + FMT_ROT)
+        row = set_footnote(
+            ws, row, 1, 11,
+            "Formación: quién estaba en cada zona (1 a 6) en ese momento, sin el líbero. "
+            "Break: puntos ganados sacando. Side-out: puntos ganados recibiendo.",
+        )
+    autosize(ws, {"A": 18, "B": 24, "C": 10, "D": 10, "E": 11, "F": 11, "G": 13,
+                  "H": 11, "I": 13, "J": 14, "K": 12})
+    ws.freeze_panes = "A4"
+
+    # ------------------------------------------------------------------
+    # Hoja: Tiempos y cambios
+    # ------------------------------------------------------------------
+    ws = new_sheet(wb, "Tiempos y cambios")
+    row = 1
+    row = set_title(ws, row, 1, 9, f"TIEMPOS Y CAMBIOS — {equipo_name.upper()}")
+    row = set_nota(ws, row, 1, 9,
+        f"Marcador exacto al momento de cada intervención, desde el lado de {equipo_name} "
+        "(propio-rival). \"Antes\" y \"Después\" son los puntos de cada equipo en los "
+        "5 rallies del mismo set justo antes y justo después.")
+    if not data["intervenciones"]:
+        row = set_footnote(ws, row, 1, 9, "Sin tiempos ni cambios con marcador en el volcado.")
+    else:
+        row = set_headers(ws, row, 1, ["Set", "Marcador", "Intervención",
+                                       f"Antes: {equipo_name}", "Antes: rival",
+                                       f"Después: {equipo_name}", "Después: rival",
+                                       "% ganado antes", "% ganado después"])
+        for numero, propio, rival, texto, ap, ar, dp, dr in data["intervenciones"]:
+            r = row
+            row = set_data_row(ws, row, 1, [
+                f"Set {numero}", f"{propio}-{rival}", texto, ap, ar, dp, dr,
+                f'=IFERROR(D{r}/(D{r}+E{r}),"")', f'=IFERROR(F{r}/(F{r}+G{r}),"")',
+            ], formats=[None, None, None, "0", "0", "0", "0", PCT_FMT, PCT_FMT])
+    autosize(ws, {"A": 8, "B": 10, "C": 40, "D": 14, "E": 12, "F": 15, "G": 13,
+                  "H": 14, "I": 15})
     ws.freeze_panes = "A4"
 
     # ------------------------------------------------------------------
     # Orden de hojas y hoja oculta
     # ------------------------------------------------------------------
     order = ["Partido", "Fases y armador", "Saque", "Recepción", "Defensa", "Armado",
-             "Ataque jugador", "Zona y dirección", "Datos_Base"]
+             "Ataque jugador", "Zona y dirección", "Rotaciones", "Tiempos y cambios",
+             "Datos_Base"]
     wb._sheets = [wb[name] for name in order]
     wb["Datos_Base"].sheet_state = "hidden"
     wb.active = 0

@@ -179,6 +179,8 @@ try{
       <button data-enviar="x">x · deshacer punto</button>
       <button data-enviar="w">w · cerrar set</button>
       <button id="btnCambio">C · cambio</button>
+      <button data-enviar="T_A" id="btnTiempoA">T · tiempo A</button>
+      <button data-enviar="T_B" id="btnTiempoB">T · tiempo B</button>
       <span class="etiqueta" style="margin-left:8px">Sesion</span>
       <button id="btnBorrar">Borrar ultima linea</button>
       <button id="btnGuardar">Guardar .txt</button>
@@ -242,6 +244,8 @@ try{
             <dd>error en juego · cerrar set · deshacer</dd>
             <dt><code>C_7_28</code></dt><dd>entra el 7, sale el 28</dd>
             <dt><code>C_7_S_28</code></dt><dd>lo mismo, y el 7 pasa a ser armador</dd>
+            <dt><code>T_A</code> <code>T_B</code></dt><dd>tiempo tecnico del equipo A / B (el marcador lo pone la app)</dd>
+            <dt><code>5_1_6_A_7</code></dt><dd>as sobre el receptor 7 (opcional)</dd>
           </dl>
         </div>
       </details>
@@ -300,7 +304,7 @@ try{
         </details>
 
         <details class="panel">
-          <summary>Cambios registrados</summary>
+          <summary>Tiempos y cambios registrados</summary>
           <div class="cuerpo" id="cambios"></div>
         </details>
       </div>

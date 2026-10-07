@@ -595,6 +595,7 @@ Los mensajes de error **salen en ingles aunque la consola este en español**.
 | Lambda da `NoSuchBucket` | `VOLEY_S3_BUCKET` mal escrito, o con comillas pegadas |
 | CloudFront da **403** en todo | Falta la politica de solicitudes de origen **`AllViewerExceptHostHeader`** |
 | CloudFront da **403** en una jugada puntual y el resto anda | El WAF la confundio con un ataque. CloudFront -> **Seguridad** -> activar *monitor mode* para ver que regla salto |
+| CloudFront da **403** a mitad de un partido y de ahi en adelante en **todos** los pedidos (en la consola: `Unexpected token '<', "<!DOCTYPE"`) | El cuerpo del pedido lleva el partido entero y paso los 8 KB de la regla `SizeRestrictions_BODY` del WAF (o una jugada activo otra regla). La pantalla ahora manda el pedido comprimido (`{"z": ...}`, ~1-2 KB): redeplegar la Lambda y recargar la pagina. Si igual vuelve: CloudFront -> **Seguridad** -> *monitor mode* para ver la regla |
 | El certificado no aparece en CloudFront | Lo pediste fuera de **us-east-1** |
 | ACM nunca valida | En Namecheap el **Host** lleva el dominio repetido |
 | El dominio no resuelve | Todavia propaga; probá en una ventana de incognito |

@@ -387,7 +387,8 @@ pedir otra jugada.</p>
     <tr><td>Desde qué zona</td><td>Zona 1, 6 o 5 de su propia cancha</td><td>—</td></tr>
     <tr><td>Hacia qué zona</td><td>Cualquier zona de la cancha rival (1 a 9)</td><td>—</td></tr>
     <tr class="cierra"><td rowspan="4">Cómo terminó</td>
-        <td><strong>As</strong></td><td><strong>Punto</strong> para el que saca</td></tr>
+        <td><strong>As</strong> → a quién (el receptor rival) o
+            <strong>No se vio</strong></td><td><strong>Punto</strong> para el que saca</td></tr>
     <tr class="cierra"><td><strong>Error</strong></td><td><strong>Punto</strong> para el que recibe</td></tr>
     <tr><td><strong>Sigue</strong></td><td>La pelota pasa al equipo que recibe</td></tr>
     <tr><td><strong>Potencia</strong> (antes de As / Error / Sigue)</td>
@@ -561,7 +562,17 @@ app te está pidiendo el saque de un punto nuevo.</p>
 </ol>
 <p>El que entra ocupa la misma zona del que salió, así que el orden de saque no
 se altera. No hace falta decir de qué equipo es: la app lo deduce. Sólo si el
-mismo dorsal existe en los dos equipos te va a preguntar de cuál sale.</p>
+mismo dorsal existe en los dos equipos te va a preguntar de cuál sale. La app
+guarda el <strong>marcador exacto</strong> del momento del cambio.</p>
+
+<h3>Un tiempo técnico</h3>
+<p>También con la pelota muerta: tocá <strong>T · tiempo</strong> del equipo que
+lo pide (o escribí <code>T_A</code> / <code>T_B</code>). No hay que cargar el
+marcador: lo pone la app. Si te equivocaste, la <strong>x</strong> lo saca.</p>
+<p>En el Excel, la hoja <em>«Tiempos y cambios»</em> muestra cada intervención
+con su marcador (ej. <code>18-20 | Tiempo Palestino</code>,
+<code>19-22 | Sale #16 / entra #28</code>) y cuántos puntos hizo cada equipo en
+los 5 rallies anteriores y en los 5 posteriores.</p>
 
 <h3>El líbero</h3>
 <p>Se declara al cargar la rotación y no se toca más: la app ya sabe que entra
@@ -684,6 +695,7 @@ da error). Sin rotación, el dorsal va siempre adelante.</p>
   <tbody>
     <tr><td class="c" style="width:32%">5_1_6_A</td><td>as</td></tr>
     <tr><td class="c">5_1_6_E</td><td>error de saque</td></tr>
+    <tr><td class="c">5_1_6_A_7</td><td>as sobre el receptor 7 del rival (opcional)</td></tr>
     <tr><td class="c">5_1_6_P_A &nbsp; 1_6_P_X/…</td><td>saque de potencia (el
         <code>_P</code> va antes del resultado)</td></tr>
     <tr><td class="c">5_1_6_X/3_3/2_4/4_1_P</td><td>saque · recepción · armado · ataque punto</td></tr>
@@ -717,10 +729,11 @@ da error). Sin rotación, el dorsal va siempre adelante.</p>
 <table class="tabla-chica">
   <tbody>
     <tr><td class="c" style="width:32%">f</td><td>error en juego: punto para el contrario</td></tr>
-    <tr><td class="c">x</td><td>deshacer (jugada / cambio / punto / set)</td></tr>
+    <tr><td class="c">x</td><td>deshacer (jugada / cambio / tiempo / punto / set)</td></tr>
     <tr><td class="c">w</td><td>cerrar el set</td></tr>
     <tr><td class="c">C_7_28</td><td>entra el 7, sale el 28</td></tr>
     <tr><td class="c">C_7_S_28</td><td>lo mismo, y el 7 pasa a ser armador</td></tr>
+    <tr><td class="c">T_A &nbsp; T_B</td><td>tiempo técnico del equipo A / B (con la pelota muerta)</td></tr>
     <tr><td class="c">28_S 5 13 88 3 40</td><td>rotación: zonas 1 a 6, armador con <code>_S</code></td></tr>
     <tr><td class="c">… 9_L_15_10</td><td>al final de la rotación: el líbero 9 juega por el 15 y el 10</td></tr>
   </tbody>

@@ -89,9 +89,22 @@ PASOS = {
             # armado" del ataque.
             {"id": "potencia", "etiqueta": "Potencia", "texto": "_P",
              "siguiente": "SAQUE_RESULTADO", "una_vez": True},
-            {"id": "as", "etiqueta": "As", "texto": "_A", "cierra": True, "tono": "bien"},
+            {"id": "as", "etiqueta": "As", "texto": "_A", "siguiente": "AS_RECEPTOR",
+             "tono": "bien"},
             {"id": "error", "etiqueta": "Error", "texto": "_E", "cierra": True, "tono": "mal"},
             {"id": "sigue", "etiqueta": "Sigue", "texto": "_X", "siguiente": "RECIBE_JUGADOR"},
+        ],
+    },
+
+    # El receptor rival al que le hicieron el as: es el receptor objetivo del
+    # saque, y sin el los saques que mejor funcionaron no entran en la
+    # estrategia de saque. "No se vio" no escribe nada (5_1_6_A, como antes).
+    "AS_RECEPTOR": {
+        "titulo": "A quien le hizo el as",
+        "pide": "jugador", "lado": "pelota",
+        "prefijo": "_", "cierra": True,
+        "opciones": [
+            {"id": "as_sin_receptor", "etiqueta": "No se vio", "texto": "", "cierra": True},
         ],
     },
 

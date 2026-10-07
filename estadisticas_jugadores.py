@@ -62,6 +62,38 @@ def _cero_ataque():
     return {"totales": 0, "puntos": 0, "defendidos": 0, "fuera": 0}
 
 
+# Lo que se agrego a la notacion (saque de potencia y estrategia, calidad del
+# armado, tipo de ataque, libres, toques de bloqueo, formacion en cancha,
+# tiempos y cambios). Los volcados viejos no traen estas secciones: todo se
+# lee con .get() y un partido viejo simplemente no suma nada aca.
+CALIDADES_ARMADO = ("A+", "A0", "A-", "AX", "Sin calificar")
+CALIDADES_ARMADO_ATAQUE = ("A+", "A0", "A-", "Sin calificar")
+TIPOS_RESOLUCION = ("Potente", "Colocado", "Block out", "Sin tipo")
+TIPOS_SAQUE = ("Normal", "Potencia")
+TIPOS_LIBRE = ("Libre", "Toque")
+CAMPOS_EN_CANCHA = ("jugados", "ganados", "saque_jugados", "saque_ganados",
+                    "rec_jugados", "rec_ganados")
+RE_CAMBIO_JUGADOR = re.compile(r"^Cambio (.+): sale #(\d+) / entra #(\d+)$")
+
+
+def _cero_pdf():
+    return {"puntos": 0, "defendidos": 0, "fuera": 0}
+
+
+def _en_formacion(formacion: str, dorsal: str) -> bool:
+    return dorsal in str(formacion).split()
+
+
+def _zona_inicial(zonas: list, dorsal: str):
+    return next((i for i, z in enumerate(zonas, start=1) if str(z) == dorsal), None)
+
+
+def _es_libero_en(libero: str, dorsal: str) -> bool:
+    """"9 por 15 y 21; 5 por 3" -> si el dorsal es uno de los liberos."""
+    return any(parte.strip().split(" ")[0] == dorsal
+               for parte in str(libero or "").split(";") if parte.strip())
+
+
 def _sumar(destino: dict, origen: dict) -> None:
     for clave, valor in (origen or {}).items():
         destino[clave] = destino.get(clave, 0) + valor
@@ -254,7 +286,8 @@ def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
 
 
 # ----------------------------------------------------------------------
-def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -> None:
+def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int,
+              nombre_equipo: str = "") -> None:
     """Suma a "destino" (una ficha por dorsal) lo que aporta un partido."""
     gi = _parser()
     gi.reconcile_sin_registrar(datos, [], "")      # completa "Sin registrar"
@@ -270,6 +303,18 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
             "bloqueos": 0,
             "armado": {},
             "armado_calidad": {c: {} for c in CALIDADES},
+            "saque": {t: {"saques": 0, "as": 0, "error": 0} for t in TIPOS_SAQUE},
+            "saque_estrategia": {},
+            "armado_cal": {c: 0 for c in CALIDADES_ARMADO},
+            "armado_cal_zona": {},
+            "ataque_cal": {c: _cero_pdf() for c in CALIDADES_ARMADO_ATAQUE},
+            "ataque_tipo": {},
+            "libres": {t: {"total": 0, "punto": 0, "usado": 0, "sigue": 0, "malo": 0}
+                       for t in TIPOS_LIBRE},
+            "toques_bloqueo": 0,
+            "en_cancha": {c: 0 for c in CAMPOS_EN_CANCHA},
+            "titular": [],
+            "cambios": [],
             "partidos": [],
         })
 
@@ -313,6 +358,67 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
         for calidad, zonas in calidades.items():
             _sumar(j["armado_calidad"].setdefault(calidad, {}), zonas)
 
+    # ---- lo nuevo ----
+    for clave, tipos in (datos.get("saques_jugador") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        for tipo, valores in tipos.items():
+            _sumar(j["saque"].setdefault(tipo, {}), valores)
+    for clave, par, valores in datos.get("saque_estrategia") or []:
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        _sumar(j["saque_estrategia"].setdefault(par, {}), valores)
+    for clave, calidades in (datos.get("calidad_armado_jugador") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        _sumar(j["armado_cal"], calidades)
+    for clave, zona, calidades in datos.get("calidad_armado_zona") or []:
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        _sumar(j["armado_cal_zona"].setdefault(zona, {}), calidades)
+    for clave, calidades in (datos.get("ataque_calidad") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        for calidad, (punto, defendido, fuera) in calidades.items():
+            _sumar(j["ataque_cal"].setdefault(calidad, _cero_pdf()),
+                   {"puntos": punto, "defendidos": defendido, "fuera": fuera})
+    for clave, tipo, direccion, punto, defendido, fuera in datos.get("ataque_tipo") or []:
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        _sumar(j["ataque_tipo"].setdefault((tipo, str(direccion)), _cero_pdf()),
+               {"puntos": punto, "defendidos": defendido, "fuera": fuera})
+    for clave, tipos in (datos.get("libres_jugador") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        for tipo, valores in tipos.items():
+            _sumar(j["libres"].setdefault(tipo, {}), valores)
+    for clave, cantidad in (datos.get("toques_bloqueo_jugador") or {}).items():
+        j = ficha(clave); vistos.add(_dorsal(clave))
+        j["toques_bloqueo"] += cantidad
+
+    # En cancha: cada formacion dice quienes estaban, asi que un jugador suma
+    # los puntos de todas las formaciones en las que aparece.
+    en_cancha_partido = {}
+    for _zona, formacion, valores in datos.get("rotacion_formacion") or []:
+        for dorsal in str(formacion).split():
+            j = ficha(f"Jugador {dorsal}"); vistos.add(dorsal)
+            _sumar(j["en_cancha"], valores)
+            _sumar(en_cancha_partido.setdefault(dorsal, {}), valores)
+    for numero, zonas, _armador, libero in datos.get("sexteto") or []:
+        for dorsal in [str(z) for z in zonas]:
+            j = ficha(f"Jugador {dorsal}"); vistos.add(dorsal)
+            j["titular"].append({"etiqueta": etiqueta, "set": numero,
+                                 "zona": _zona_inicial(zonas, dorsal), "libero": False})
+        for parte in str(libero or "").split(";"):
+            dorsal = parte.strip().split(" ")[0] if parte.strip() else ""
+            if dorsal.isdigit():
+                j = ficha(f"Jugador {dorsal}"); vistos.add(dorsal)
+                j["titular"].append({"etiqueta": etiqueta, "set": numero, "zona": None,
+                                     "libero": True, "cubre": parte.strip()})
+    for numero, propio, rival, texto, ap, ar, dp, dr in datos.get("intervenciones") or []:
+        m = RE_CAMBIO_JUGADOR.match(texto)
+        if not m or (nombre_equipo and m.group(1) != nombre_equipo):
+            continue
+        sale, entra = m.group(2), m.group(3)
+        for dorsal, que, otro in ((sale, "Sale", entra), (entra, "Entra", sale)):
+            j = ficha(f"Jugador {dorsal}"); vistos.add(dorsal)
+            j["cambios"].append({"etiqueta": etiqueta, "set": numero,
+                                 "marcador": f"{propio}-{rival}", "que": que, "otro": otro,
+                                 "antes": [ap, ar], "despues": [dp, dr]})
+
     # una linea por partido, para el resumen y el grafico
     for dorsal in vistos:
         j = destino[dorsal]
@@ -323,13 +429,30 @@ def _acumular(destino: dict, datos: dict, etiqueta: str, numero_set_base: int) -
         if de_ataque:
             atk = {"totales": de_ataque["totales"], "puntos": de_ataque["puntos"],
                    "defendidos": de_ataque["defendidos"], "fuera": de_ataque["fuera"]}
+        clave = f"Jugador {dorsal}"
+        saque = (datos.get("saques_jugador") or {}).get(clave, {})
+        calidad = (datos.get("calidad_armado_jugador") or {}).get(clave, {})
+        cancha = en_cancha_partido.get(dorsal, {})
+        defensa = (datos.get("defensas") or {}).get(clave, {})
         j["partidos"].append({
             "etiqueta": etiqueta,
             "recepcion": rec,
             "ataque": atk,
-            "bloqueos": datos["bloqueos_jugador"].get(f"Jugador {dorsal}", 0),
-            "armados": sum(datos["armado_armador"].get(f"Jugador {dorsal}", {}).values()),
+            "bloqueos": datos["bloqueos_jugador"].get(clave, 0),
+            "armados": sum(datos["armado_armador"].get(clave, {}).values()),
             "armados_equipo": sum(datos["armado_zona"].values()),
+            "defensas": sum(defensa.values()),
+            "defensa_positiva": defensa.get("cal3", 0) + defensa.get("cal2", 0),
+            "saques": sum(t.get("saques", 0) for t in saque.values()),
+            "aces": sum(t.get("as", 0) for t in saque.values()),
+            "errores_saque": sum(t.get("error", 0) for t in saque.values()),
+            "potencia": (saque.get("Potencia") or {}).get("saques", 0),
+            "armado_mas": calidad.get("A+", 0),
+            "armado_ax": calidad.get("AX", 0),
+            "armado_calificados": sum(v for c, v in calidad.items() if c != "Sin calificar"),
+            "toques_bloqueo": (datos.get("toques_bloqueo_jugador") or {}).get(clave, 0),
+            "en_cancha": cancha.get("jugados", 0),
+            "en_cancha_ganados": cancha.get("ganados", 0),
         })
 
 
@@ -436,7 +559,7 @@ def agregar(carpeta=None, campeonato="") -> dict:
             etiqueta = f"vs {rival}"
             if partido["fecha"]:
                 etiqueta += f" ({partido['fecha']})"
-            _acumular(equipos.setdefault(nombre, {}), datos, etiqueta, 0)
+            _acumular(equipos.setdefault(nombre, {}), datos, etiqueta, 0, nombre)
             _acumular_equipo(por_equipo.setdefault(nombre, _cero_equipo()),
                              datos, etiqueta, len(partido["parciales"]))
             for dorsal in partido["armadores"].get(nombre, ()):
@@ -510,6 +633,7 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
         })
 
     zonas_armadas = sorted(crudo["armado"], key=lambda z: -crudo["armado"][z])
+    nuevo = _secciones_nuevas(crudo)
 
     return {
         "equipo": equipo,
@@ -536,6 +660,11 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
             "punto": _porcentaje(atk["puntos"], atk["totales"]),
             "bloqueos_punto": crudo["bloqueos"],
             "armados": armados,
+            "saques": nuevo["saques"],
+            "aces": nuevo["aces"],
+            "errores_saque": nuevo["errores_saque"],
+            "toques_bloqueo": crudo.get("toques_bloqueo", 0),
+            "en_cancha": crudo.get("en_cancha", {}).get("jugados", 0),
         },
         "por_partido": [{
             "etiqueta": p["etiqueta"],
@@ -549,6 +678,11 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
             "bloqueos": p["bloqueos"],
             "armados": p["armados"],
             "armados_equipo": p["armados_equipo"],
+            # los volcados viejos no traen estas: van en 0
+            **{clave: p.get(clave, 0) for clave in (
+                "defensas", "defensa_positiva", "saques", "aces", "errores_saque",
+                "potencia", "armado_mas", "armado_ax", "armado_calificados",
+                "toques_bloqueo", "en_cancha", "en_cancha_ganados")},
         } for p in crudo["partidos"]],
         "recepcion": {
             "total": _resumen_recepcion(rec),
@@ -572,7 +706,14 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
                             for d in DIRECCIONES]}
                 for zona in zonas_atacadas
             ],
+            "por_calidad_armado": nuevo["ataque_por_calidad"],
+            "por_tipo": nuevo["ataque_por_tipo"],
         },
+        "saque": nuevo["saque"],
+        "armado_calidad": nuevo["armado_calidad"],
+        "libres": nuevo["libres"],
+        "rotacion": nuevo["rotacion"],
+        "cambios": crudo.get("cambios", []),
         # Aparte de la recepcion a proposito: defender un ataque y recibir un
         # saque son dos habilidades distintas, y juntarlas taparia a alguien
         # que hace bien una y mal la otra.
@@ -599,6 +740,66 @@ def ficha(equipo: str, dorsal: str, agregado: dict | None = None) -> dict | None
             "ataque_punto": _porcentaje(p["ataque"]["puntos"], p["ataque"]["totales"]),
         } for p in crudo["partidos"]],
         "promedio_equipo": _promedio_equipo(agregado, equipo),
+    }
+
+
+def _secciones_nuevas(crudo: dict) -> dict:
+    """Lo nuevo de la ficha, ya con la forma que espera la pantalla. Cada
+    seccion es None si el jugador no tiene nada de eso en lo cargado."""
+    saque = crudo.get("saque") or {}
+    saques = sum(t.get("saques", 0) for t in saque.values())
+    aces = sum(t.get("as", 0) for t in saque.values())
+    errores = sum(t.get("error", 0) for t in saque.values())
+    estrategias = sorted(
+        ({"par": par, **v, "rec0_pase": v.get("rec0", 0) + v.get("pase", 0)}
+         for par, v in (crudo.get("saque_estrategia") or {}).items()),
+        key=lambda e: -e.get("saques", 0))
+
+    calidad = crudo.get("armado_cal") or {}
+    por_zona_cal = [
+        {"zona": zona, **{c: crudo["armado_cal_zona"][zona].get(c, 0)
+                          for c in CALIDADES_ARMADO_ATAQUE}}
+        for zona in _orden_zonas(crudo.get("armado_cal_zona") or {})]
+
+    ataque_cal = crudo.get("ataque_cal") or {}
+    por_calidad = [
+        {"calidad": c, "punto": v["puntos"], "defendido": v["defendidos"], "fuera": v["fuera"],
+         "ataques": v["puntos"] + v["defendidos"] + v["fuera"]}
+        for c in CALIDADES_ARMADO_ATAQUE for v in [ataque_cal.get(c) or _cero_pdf()]]
+    tipos = crudo.get("ataque_tipo") or {}
+    por_tipo = []
+    for tipo in TIPOS_RESOLUCION:
+        celdas = [tipos.get((tipo, d)) or _cero_pdf() for d in DIRECCIONES]
+        valores = [c["puntos"] + c["defendidos"] + c["fuera"] for c in celdas]
+        if sum(valores):
+            por_tipo.append({"tipo": tipo, "valores": valores,
+                             "puntos": [c["puntos"] for c in celdas],
+                             "fuera": [c["fuera"] for c in celdas]})
+
+    libres = [dict(v, tipo=t) for t, v in (crudo.get("libres") or {}).items() if v.get("total")]
+    cancha = crudo.get("en_cancha") or {}
+    titular = crudo.get("titular") or []
+
+    return {
+        "saques": saques, "aces": aces, "errores_saque": errores,
+        "saque": None if not saques else {
+            "total": {"saques": saques, "as": aces, "error": errores,
+                      "en_juego": saques - aces - errores},
+            "por_tipo": [dict(saque.get(t) or {"saques": 0, "as": 0, "error": 0}, tipo=t)
+                         for t in TIPOS_SAQUE],
+            "estrategias": estrategias,
+        },
+        "armado_calidad": None if not sum(calidad.values()) else {
+            "total": {c: calidad.get(c, 0) for c in CALIDADES_ARMADO},
+            "por_zona": por_zona_cal,
+        },
+        "ataque_por_calidad": por_calidad if any(f["ataques"] for f in por_calidad) else [],
+        "ataque_por_tipo": por_tipo,
+        "libres": libres or None,
+        "rotacion": None if not (cancha.get("jugados") or titular) else {
+            "en_cancha": {c: cancha.get(c, 0) for c in CAMPOS_EN_CANCHA},
+            "titular": titular,
+        },
     }
 
 

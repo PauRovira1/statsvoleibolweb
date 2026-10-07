@@ -68,6 +68,11 @@ toques, rotacion, etc.) del equipo que tenia que jugar en ese momento, y le
 da el punto directo al equipo contrario. No hace falta cargar jugador ni
 zona.
 
+Escribir "T_A" o "T_B" en el prompt "[Saca ...]" registra un tiempo tecnico
+del equipo A o B. El marcador del momento lo guarda el motor; los cambios
+(C_entra_sale) tambien lo guardan. En el informe salen en orden, con los
+rallies de antes y de despues de cada uno.
+
 Al salir del programa se guarda un .txt con todos los inputs cargados y las
 estadisticas finales, y despues se ofrece generar tambien el informe Excel
 (usando generar_informe_volley.py, que necesita openpyxl instalado).
@@ -86,7 +91,8 @@ Cada PUNTO se carga con una o mas jugadas en consola:
     potencia. Ej: 5_1_6_P_A, 5_1_6_P_X/3_3/2_4/4_1_P
     R1 = resultado del saque:
            X -> sigue la jugada (no fue punto directo)
-           A -> as (punto directo para el equipo que saca)
+           A -> as (punto directo para el equipo que saca). Puede llevar
+                el receptor rival al que se lo hicieron: X_Z1_Z2_A_Y
            E -> error de saque (punto para el rival)
 
     Si R1 es "A" o "E" el punto termina ahi. Si R1 es "X", la jugada
@@ -304,9 +310,12 @@ SAQUE_PREFIJO = (
     r"(?:_(?P<saque_potencia>P))?"
 )
 
+# El as puede llevar al receptor rival que no la pudo tomar (5_1_6_A_7): es
+# el "receptor objetivo" del saque, y sin el las estadisticas de estrategia
+# de saque se pierden justo los saques que mejor funcionaron. Es opcional.
 PATRON_SAQUE_TERMINAL = re.compile(
     SAQUE_PREFIJO +
-    r"_(?P<resultado_saque>[AE])$"
+    r"_(?P<resultado_saque>[AE])(?:(?<=A)_(?P<receptor_as>\d+))?$"
 )
 
 # BD_Y: el bloqueador Y toca el ataque y la pelota sigue del lado del que
@@ -465,6 +474,15 @@ PATRON_CAMBIO = re.compile(
 
 NOMBRES_TIPO_ATAQUE = {"PO": "Potente", "CO": "Colocado"}
 
+# Tiempo tecnico: T_A o T_B, la letra del equipo que lo pide. Va en el prompt
+# del saque, como los cambios: con la pelota muerta. El marcador no se
+# escribe: lo pone el motor, que es el que lo sabe exacto.
+PATRON_TIEMPO = re.compile(r"^T_(?P<equipo>[AB])$", re.IGNORECASE)
+
+# Cuantos rallies antes y despues de un tiempo o un cambio se miran para ver
+# que efecto tuvo.
+VENTANA_INTERVENCION = 5
+
 CAMPOS_NUMERICOS = ("sacador", "receptor", "colocador", "atacante", "defensor")
 COMANDOS_SALIDA = {"salir", "fin", "exit", "q"}
 COMANDO_CAMBIO_SET = "w"
@@ -582,6 +600,8 @@ def parsear_bloque_saque(texto: str) -> dict | None:
                       "atacante", "zona_ataque", "resultado", "jugador_bloqueo"):
             datos[campo] = None
         datos["armado_valido"] = None
+        if datos["receptor_as"] is not None:
+            datos["receptor_as"] = int(datos["receptor_as"])
         return _a_enteros(datos)
 
     match = PATRON_SAQUE_OVERPASS.match(texto)
@@ -1371,6 +1391,8 @@ def jugar_punto(
                 return equipo_recibe, [], [entrada]
             if PATRON_CAMBIO.match(entrada):
                 return "CAMBIO", entrada
+            if PATRON_TIEMPO.match(entrada):
+                return "TIEMPO", entrada
             bloque = parsear_bloque_saque(entrada)
             if bloque is None:
                 print("  Formato invalido. Ejemplos: 5_1_6_A | 5_1_6_E | 5_1_6_X/3_3/2_4/4_1_P")
@@ -1430,6 +1452,9 @@ def jugar_punto(
                     break
                 if PATRON_CAMBIO.match(entrada):
                     print("  Los cambios se hacen entre puntos, en el prompt [Saca ...].")
+                    continue
+                if PATRON_TIEMPO.match(entrada):
+                    print("  Los tiempos se piden entre puntos, en el prompt [Saca ...].")
                     continue
                 bloque_defensa = parsear_bloque_defensa(entrada)
                 if bloque_defensa is None:
@@ -2124,6 +2149,44 @@ def calcular_calidad_armado(puntos: list[dict]) -> dict:
     return datos
 
 
+def calcular_calidad_armado_por_zona(puntos: list[dict]) -> dict:
+    """La calidad de los armados de cada armador, abierta por la zona hacia
+    donde armo (los mismos grupos que el armado por zona: 1, 2, 6-5, 3, 4).
+
+    Un armador puede dejar servido al 4 y complicar siempre al 1: el total no
+    lo muestra. El AX no entra porque la armada mala no tiene zona.
+    Devuelve {equipo: {colocador: {grupo: {"+"|"0"|"-"|"sin": cantidad}}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+    for punto in puntos:
+        for bloque in punto["jugadas"]:
+            colocador = bloque.get("colocador")
+            zona = bloque.get("zona_colocacion")
+            equipo = bloque.get("equipo_set")
+            if colocador is None or zona is None or equipo is None:
+                continue
+            if not bloque.get("armado_valido", True):
+                continue
+            por_zona = datos[equipo].setdefault(colocador, {})
+            registro = por_zona.setdefault(ZONA_A_GRUPO[zona],
+                                           {c: 0 for c in CALIDADES_ARMADO_ATAQUE})
+            registro[bloque.get("calidad_armado") or "sin"] += 1
+    return datos
+
+
+def _formatear_calidad_armado_por_zona(datos: dict) -> list[str]:
+    if not datos:
+        return ["    (sin armados)"]
+    lineas = []
+    for jugador in sorted(datos):
+        for grupo in GRUPOS_ZONA_ARMADO:
+            calidades = datos[jugador].get(grupo)
+            if not calidades:
+                continue
+            lineas.append(f"  Jugador {jugador} - zona {grupo}: " + ", ".join(
+                f"{NOMBRES_CALIDAD_ARMADO[c]} {calidades[c]}" for c in CALIDADES_ARMADO_ATAQUE))
+    return lineas
+
+
 def _equipo_con_la_pelota(punto: dict, buscado: dict) -> str | None:
     """De quien era la pelota en ese bloque, repasando el punto desde el saque
     (como defensas_del_punto: el bloque no lo guarda)."""
@@ -2232,6 +2295,210 @@ def _formatear_ataque_por_tipo(por_tipo: dict) -> list[str]:
                 clases = por_tipo[jugador].get(tipo, {}).get(direccion)
                 if clases:
                     lineas.append(f"  Jugador {jugador} - {tipo} - zona {direccion}: {_pdf(clases)}")
+    return lineas
+
+
+# ---------------- estrategia de saque ----------------
+# Lo que le paso al rival con cada saque: as, recepcion de cada calidad, o el
+# saque se erro. "ganados" es si el rally lo termino ganando el que saco: es
+# la medida de cuanto complico el saque, no solo de si fue as.
+CAMPOS_SAQUE_ESTRATEGIA = ("saques", "as", "error", "rec3", "rec2", "rec1", "rec0",
+                           "pase", "ganados")
+
+
+def _cero_estrategia() -> dict:
+    return {campo: 0 for campo in CAMPOS_SAQUE_ESTRATEGIA}
+
+
+def _anotar_saque(registro: dict, punto: dict, bloque: dict) -> None:
+    registro["saques"] += 1
+    if bloque["resultado_saque"] == "A":
+        registro["as"] += 1
+    elif bloque["resultado_saque"] == "E":
+        registro["error"] += 1
+    else:
+        calidad = bloque.get("calidad_recepcion")
+        clave = "pase" if calidad == -1 else f"rec{calidad}"
+        if clave in registro:
+            registro[clave] += 1
+    if punto["equipo_gana"] == punto["equipo_saca"]:
+        registro["ganados"] += 1
+
+
+def _saques(puntos: list[dict]):
+    """(punto, bloque de saque) de cada saque cargado."""
+    for punto in puntos:
+        jugadas = punto.get("jugadas") or []
+        if not jugadas or punto.get("equipo_saca") not in EQUIPOS:
+            continue
+        bloque = jugadas[0]
+        if bloque.get("resultado_saque") is None or bloque.get("sacador") is None:
+            continue
+        yield punto, bloque
+
+
+def calcular_saque_por_estrategia(puntos: list[dict]) -> dict:
+    """Saques por sacador y estrategia (zona de origen -> zona objetivo).
+
+    Devuelve {equipo que saca: {(sacador, "1 a 5"): {saques, as, error, rec3..
+    rec0, pase, ganados}}}. Sumando por estrategia se ve que saque complica mas
+    al rival; sumando por sacador, quien saca mejor."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+    for punto, bloque in _saques(puntos):
+        par = _etiqueta_par_saque(bloque["zona_saque"], bloque["zona_destino_saque"])
+        registro = datos[punto["equipo_saca"]].setdefault(
+            (bloque["sacador"], par), _cero_estrategia())
+        _anotar_saque(registro, punto, bloque)
+    return datos
+
+
+def calcular_saque_por_receptor(puntos: list[dict]) -> dict:
+    """Saques segun el receptor rival que la tomo (o que no pudo, en el as).
+
+    El error de saque no tiene receptor y no entra; el as tampoco si se cargo
+    sin el receptor. Devuelve {equipo que saca: {receptor rival: {...}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+    for punto, bloque in _saques(puntos):
+        receptor = bloque.get("receptor")
+        if receptor is None:
+            receptor = bloque.get("receptor_as")
+        if receptor is None:
+            continue
+        registro = datos[punto["equipo_saca"]].setdefault(receptor, _cero_estrategia())
+        _anotar_saque(registro, punto, bloque)
+    return datos
+
+
+# ---------------- rotacion y formacion ----------------
+def calcular_rotacion_y_formacion(puntos: list[dict]) -> dict:
+    """Puntos por rotacion (donde esta el armador) y por la formacion exacta
+    (quien estaba en cada zona).
+
+    Si una rotacion rinde mal con cualquier formacion, el problema es del
+    sistema; si rinde mal solo con una, es la combinacion de jugadores.
+    Devuelve {equipo: {(zona del armador, "3 88 15 13 16 21"): {jugados,
+    ganados, saque_jugados, saque_ganados, rec_jugados, rec_ganados}}}."""
+    datos = {equipo: {} for equipo in EQUIPOS}
+    for punto in puntos:
+        for equipo in EQUIPOS:
+            zona = (punto.get("zona_armador") or {}).get(equipo)
+            formacion = (punto.get("formacion") or {}).get(equipo)
+            if zona is None or not formacion:
+                continue
+            clave = (zona, " ".join(str(j) for j in formacion))
+            registro = datos[equipo].setdefault(clave, {
+                "jugados": 0, "ganados": 0, "saque_jugados": 0, "saque_ganados": 0,
+                "rec_jugados": 0, "rec_ganados": 0})
+            gano = punto["equipo_gana"] == equipo
+            fase = "saque" if punto["equipo_saca"] == equipo else "rec"
+            registro["jugados"] += 1
+            registro["ganados"] += gano
+            registro[f"{fase}_jugados"] += 1
+            registro[f"{fase}_ganados"] += gano
+    return datos
+
+
+def describir_liberos(liberos: list[dict]) -> str:
+    return "; ".join(
+        f"{l['jugador']} por " + " y ".join(str(c) for c in l["cubre"])
+        for l in liberos or [])
+
+
+# ---------------- tiempos y cambios ----------------
+def intervenciones(cambios: list[dict] | None, tiempos: list[dict] | None,
+                   nombres: dict) -> list[dict]:
+    """Tiempos y cambios en orden, con el marcador del momento.
+
+    Los cambios guardados antes de que se registrara el marcador no lo tienen
+    y quedan afuera: no hay forma honesta de reconstruirlo."""
+    salida = []
+    for tiempo in tiempos or []:
+        salida.append({**tiempo, "tipo": "tiempo",
+                       "texto": f"Tiempo {nombres[tiempo['equipo']]}"})
+    for cambio in cambios or []:
+        if "marcador" not in cambio:
+            continue
+        salida.append({**cambio, "tipo": "cambio",
+                       "texto": f"Cambio {nombres[cambio['equipo']]}: "
+                                f"sale #{cambio['sale']} / entra #{cambio['entra']}"})
+    salida.sort(key=lambda i: (i["set"], i["puntos"], i["tipo"] != "tiempo"))
+    return salida
+
+
+def rallies_alrededor(puntos: list[dict], intervencion: dict) -> tuple[dict, dict]:
+    """Puntos ganados por cada equipo en los rallies del mismo set justo antes
+    y justo despues de un tiempo o un cambio (VENTANA_INTERVENCION de cada
+    lado, o los que haya)."""
+    del_set = [(i, p) for i, p in enumerate(puntos) if p.get("set", 1) == intervencion["set"]]
+    antes = [p for i, p in del_set if i < intervencion["puntos"]][-VENTANA_INTERVENCION:]
+    despues = [p for i, p in del_set if i >= intervencion["puntos"]][:VENTANA_INTERVENCION]
+
+    def contar(lista):
+        return {e: sum(1 for p in lista if p["equipo_gana"] == e) for e in EQUIPOS}
+    return contar(antes), contar(despues)
+
+
+def _formatear_estrategia(estrategia: dict) -> list[str]:
+    if not estrategia:
+        return ["    (sin saques)"]
+    lineas = []
+    for (sacador, par) in sorted(estrategia, key=lambda k: (k[0], k[1])):
+        d = estrategia[(sacador, par)]
+        lineas.append(
+            f"  Jugador {sacador} - de {par}: {d['saques']} saques - as {d['as']}, "
+            f"error {d['error']}, rec3 {d['rec3']}, rec2 {d['rec2']}, rec1 {d['rec1']}, "
+            f"rec0 {d['rec0']}, pase {d['pase']}, ganados {d['ganados']}")
+    return lineas
+
+
+def _formatear_receptores(receptores: dict) -> list[str]:
+    if not receptores:
+        return ["    (sin receptores registrados)"]
+    return [
+        f"  Receptor {receptor}: {d['saques']} saques - as {d['as']}, rec3 {d['rec3']}, "
+        f"rec2 {d['rec2']}, rec1 {d['rec1']}, rec0 {d['rec0']}, pase {d['pase']}, "
+        f"ganados {d['ganados']}"
+        for receptor, d in sorted(receptores.items())
+    ]
+
+
+def _formatear_sexteto(sextetos: dict) -> list[str]:
+    """{set: rotacion} -> "Set 1: Z1 3, Z2 88, ... | armador 3 | libero 9 por 15 y 21"."""
+    if not sextetos:
+        return ["    (sin rotacion cargada)"]
+    lineas = []
+    for numero in sorted(sextetos):
+        rotacion = sextetos[numero]
+        zonas = ", ".join(f"Z{i} {j}" for i, j in enumerate(rotacion["jugadores"], start=1))
+        linea = f"  Set {numero}: {zonas} | armador {rotacion['armador']}"
+        if rotacion.get("liberos"):
+            linea += f" | libero {describir_liberos(rotacion['liberos'])}"
+        lineas.append(linea)
+    return lineas
+
+
+def _formatear_rotacion_formacion(datos: dict) -> list[str]:
+    if not datos:
+        return ["    (sin rotacion cargada)"]
+    return [
+        f"  Armador en zona {zona} | {formacion}: jugados {d['jugados']}, "
+        f"ganados {d['ganados']}, saque {d['saque_ganados']}/{d['saque_jugados']}, "
+        f"recepcion {d['rec_ganados']}/{d['rec_jugados']}"
+        for (zona, formacion), d in sorted(datos.items())
+    ]
+
+
+def _formatear_intervenciones(lista: list[dict], equipo: str, puntos: list[dict]) -> list[str]:
+    """Desde el lado de este equipo: el marcador va propio-rival."""
+    if not lista:
+        return ["    (sin tiempos ni cambios con marcador)"]
+    rival = otro_equipo(equipo)
+    lineas = []
+    for i in lista:
+        antes, despues = rallies_alrededor(puntos, i)
+        lineas.append(
+            f"  Set {i['set']} | {i['marcador'][equipo]}-{i['marcador'][rival]} | {i['texto']} "
+            f"| antes {antes[equipo]}-{antes[rival]} | despues {despues[equipo]}-{despues[rival]}")
     return lineas
 
 
@@ -2534,6 +2801,9 @@ def _formatear_estadisticas_equipo(
     zona_armador: dict, saque: dict | None = None, libres: dict | None = None,
     toques_bloqueo: dict | None = None, calidad_armado: dict | None = None,
     ataque_calidad: dict | None = None, ataque_tipo: dict | None = None,
+    estrategia_saque: dict | None = None, receptores_saque: dict | None = None,
+    sextetos: dict | None = None, rotacion_formacion: dict | None = None,
+    cronologia: list[str] | None = None, calidad_armado_zona: dict | None = None,
 ) -> str:
     lineas = [f"--- {nombre} ---"]
 
@@ -2646,6 +2916,9 @@ def _formatear_estadisticas_equipo(
     lineas.append("Calidad de armado por armador:")
     lineas.extend(_formatear_calidad_armado(calidad_armado or {}))
 
+    lineas.append("Calidad de armado por armador y zona:")
+    lineas.extend(_formatear_calidad_armado_por_zona(calidad_armado_zona or {}))
+
     lineas.append("Ataques por jugador:")
     if not ataque:
         lineas.append("    (sin ataques)")
@@ -2676,11 +2949,30 @@ def _formatear_estadisticas_equipo(
     lineas.append("Saques por jugador:")
     lineas.extend(_formatear_saques(saque or {}))
 
+    # sacador + zona de origen + zona objetivo, y el receptor rival que la
+    # tomo: para ver que estrategia de saque complica mas
+    lineas.append("Saque por jugador y estrategia:")
+    lineas.extend(_formatear_estrategia(estrategia_saque or {}))
+
+    lineas.append("Saque por receptor objetivo:")
+    lineas.extend(_formatear_receptores(receptores_saque or {}))
+
+    lineas.append("Sexteto inicial:")
+    lineas.extend(_formatear_sexteto(sextetos or {}))
+
+    lineas.append("Puntos por rotacion y formacion:")
+    lineas.extend(_formatear_rotacion_formacion(rotacion_formacion or {}))
+
+    lineas.append("Tiempos y cambios:")
+    lineas.extend(cronologia or ["    (sin tiempos ni cambios con marcador)"])
+
     return "\n".join(lineas)
 
 
 def formatear_estadisticas(
-    puntos: list[dict], nombres: dict | None = None, armadores: dict | None = None
+    puntos: list[dict], nombres: dict | None = None, armadores: dict | None = None,
+    rotaciones_por_set: dict | None = None, cambios: list[dict] | None = None,
+    tiempos: list[dict] | None = None,
 ) -> str:
     """Estadisticas de armado, recepcion y ataque agrupadas por equipo: todo el A, despues todo el B.
 
@@ -2705,8 +2997,13 @@ def formatear_estadisticas(
     saque = calcular_estadisticas_saque(puntos)
     libres = calcular_libres_y_toques(puntos)
     calidad_armado = calcular_calidad_armado(puntos)
+    calidad_armado_zona = calcular_calidad_armado_por_zona(puntos)
     ataque_calidad = calcular_ataque_por_calidad_armado(puntos)
     ataque_tipo = calcular_ataque_por_tipo(puntos)
+    estrategia = calcular_saque_por_estrategia(puntos)
+    receptores = calcular_saque_por_receptor(puntos)
+    rotacion_formacion = calcular_rotacion_y_formacion(puntos)
+    lista_intervenciones = intervenciones(cambios, tiempos, nombres)
     armado_por_set = calcular_estadisticas_armado_por_set(puntos)
     por_armador = calcular_armado_por_armador(puntos)
     por_armador_por_set = calcular_armado_por_armador_por_set(puntos)
@@ -2726,6 +3023,12 @@ def formatear_estadisticas(
             fases[equipo], causas[equipo], zona_armador[equipo],
             saque[equipo], libres[equipo], toques_bloqueo[equipo],
             calidad_armado[equipo], ataque_calidad[equipo], ataque_tipo[equipo],
+            estrategia[equipo], receptores[equipo],
+            {numero: rot[equipo] for numero, rot in (rotaciones_por_set or {}).items()
+             if equipo in rot},
+            rotacion_formacion[equipo],
+            _formatear_intervenciones(lista_intervenciones, equipo, puntos),
+            calidad_armado_zona[equipo],
         )
         for equipo in sorted(EQUIPOS)
     ]
@@ -2733,9 +3036,12 @@ def formatear_estadisticas(
 
 
 def imprimir_estadisticas(
-    puntos: list[dict], nombres: dict | None = None, armadores: dict | None = None
+    puntos: list[dict], nombres: dict | None = None, armadores: dict | None = None,
+    rotaciones_por_set: dict | None = None, cambios: list[dict] | None = None,
+    tiempos: list[dict] | None = None,
 ) -> None:
-    print("\n" + formatear_estadisticas(puntos, nombres, armadores))
+    print("\n" + formatear_estadisticas(puntos, nombres, armadores,
+                                        rotaciones_por_set, cambios, tiempos))
 
 
 def nombre_de_volcado_libre() -> Path:
@@ -2767,6 +3073,7 @@ def guardar_reporte_txt(
     rotaciones_por_set: dict | None = None,
     cambios: list[dict] | None = None,
     armadores: dict | None = None,
+    tiempos: list[dict] | None = None,
 ) -> str:
     """Escribe un .txt con todos los inputs cargados (para copiar/pegar) y las stats finales."""
     nombres = nombres or {"A": "A", "B": "B"}
@@ -2788,6 +3095,8 @@ def guardar_reporte_txt(
                     for jugador in rotacion["jugadores"]
                 )
                 lineas.append(f"  {nombres[letra]}: {jugadores}")
+                if rotacion.get("liberos"):
+                    lineas.append(f"    libero {describir_liberos(rotacion['liberos'])}")
         lineas.append("")
     if cambios:
         lineas.append("=== Cambios ===")
@@ -2805,6 +3114,13 @@ def guardar_reporte_txt(
                 f"entra {cambio['entra']}, sale {cambio['sale']} (zona {cambio['zona']}){detalle}"
             )
         lineas.append("")
+    lista_intervenciones = intervenciones(cambios, tiempos, nombres)
+    if lista_intervenciones:
+        # el marcador va siempre en el orden de los nombres del encabezado
+        lineas.append(f"=== Tiempos y cambios ({nombres['A']} - {nombres['B']}) ===")
+        for i in lista_intervenciones:
+            lineas.append(f"Set {i['set']} | {i['marcador']['A']}-{i['marcador']['B']} | {i['texto']}")
+        lineas.append("")
     lineas.append("=== Resultado final ===")
     if historial_sets and len(historial_sets) > 1:
         # hubo al menos un cambio de set (comando "w")
@@ -2816,7 +3132,8 @@ def guardar_reporte_txt(
         lineas.append(f"Marcador final: {nombres['A']} {marcador['A']} - {marcador['B']} {nombres['B']}")
     lineas.append(f"Total de puntos cargados: {len(puntos)}")
     lineas.append("")
-    lineas.append(formatear_estadisticas(puntos, nombres, armadores))
+    lineas.append(formatear_estadisticas(puntos, nombres, armadores,
+                                         rotaciones_por_set, cambios, tiempos))
 
     with open(nombre_archivo, "w", encoding="utf-8") as archivo:
         archivo.write("\n".join(lineas) + "\n")
@@ -2924,6 +3241,7 @@ def ejecutar_partido() -> dict:
     # carga se corte antes de contestar los nombres o la rotacion
     nombres = {"A": "A", "B": "B"}
     rotaciones, rotaciones_por_set, cambios, armadores = {}, {}, [], {}
+    tiempos = []          # tiempos tecnicos, con el marcador del momento
     marcador = {"A": 0, "B": 0}
     equipo_saca = "A"
     esperando = None   # que pregunta quedo sin contestar, si la carga se corto
@@ -2938,13 +3256,17 @@ def ejecutar_partido() -> dict:
         return bool(fotos_de_cambio
                     and fotos_de_cambio[-1]["entradas"] == len(entradas_totales) - 1)
 
+    def el_tiempo_es_lo_ultimo() -> bool:
+        return bool(tiempos and tiempos[-1]["entrada"] == len(entradas_totales) - 1)
+
     print("=== Carga de jugadas ===")
     print(f"Escribi {'/'.join(COMANDOS_SALIDA)} en cualquier momento para terminar.")
     print(f'Escribi "{COMANDO_CAMBIO_SET}" para cerrar el set actual y pasar al siguiente.')
     print(f'Escribi "{COMANDO_DESHACER}" solo (sin cargar nada del punto) para deshacer el punto anterior.')
     print(f'Escribi "{COMANDO_ERROR_JUEGO}" en cualquier momento para un error en juego (punto directo para el rival).')
     print('Escribi "C_entra_sale" en el prompt del saque para registrar un cambio (ej. C_7_28),')
-    print('  con _S sobre el que entra si es cambio de armador (ej. C_7_S_28).\n')
+    print('  con _S sobre el que entra si es cambio de armador (ej. C_7_S_28).')
+    print('Escribi "T_A" o "T_B" en el prompt del saque para registrar un tiempo tecnico.\n')
 
     try:
         nombres, entradas_nombres = preguntar_nombres_equipos()
@@ -2990,6 +3312,7 @@ def ejecutar_partido() -> dict:
                     "entradas": len(entradas_totales),
                     "historial": len(historial_sets),
                     "cambios": len(cambios),
+                    "tiempos": len(tiempos),
                     "fotos_de_cambio": len(fotos_de_cambio),
                     "armadores": {letra: set(quienes)
                                   for letra, quienes in armadores.items()},
@@ -3047,13 +3370,36 @@ def ejecutar_partido() -> dict:
                 )
                 if cambio is not None:
                     entradas_totales.append(resultado[1])
-                    cambios.append({"set": len(historial_sets) + 1, **cambio})
+                    # el marcador y cuantos puntos iban: es lo que permite
+                    # despues mirar los rallies de antes y de despues
+                    cambios.append({"set": len(historial_sets) + 1, **cambio,
+                                    "marcador": dict(marcador), "puntos": len(puntos)})
                     fotos_de_cambio.append(antes)
                     if cambio["armador"]:
                         armadores.setdefault(cambio["equipo"], set()).add(cambio["entra"])
                 continue
 
+            if resultado[0] == "TIEMPO":
+                equipo_tiempo = PATRON_TIEMPO.match(resultado[1]).group("equipo").upper()
+                entradas_totales.append(resultado[1])
+                tiempos.append({
+                    "set": len(historial_sets) + 1, "equipo": equipo_tiempo,
+                    "marcador": dict(marcador), "puntos": len(puntos),
+                    "entrada": len(entradas_totales) - 1,
+                })
+                print(
+                    f"  Tiempo para {nombres[equipo_tiempo]} con "
+                    f"{nombres['A']} {marcador['A']} - {marcador['B']} {nombres['B']}.\n"
+                )
+                continue
+
             if resultado[0] == "DESHACER":
+                if el_tiempo_es_lo_ultimo():
+                    deshecho = tiempos.pop()
+                    del entradas_totales[deshecho["entrada"]:]
+                    print(f"  Deshecho: se saco el tiempo de {nombres[deshecho['equipo']]}.\n")
+                    continue
+
                 # Un cambio no es un punto. Antes la "x" se lo saltaba y
                 # deshacia el punto anterior, pero igual se comia la ultima
                 # linea cargada (la del cambio): el estado y el .txt quedaban
@@ -3097,6 +3443,7 @@ def ejecutar_partido() -> dict:
                     # los cambios del set que se cierra se van con el, si no
                     # seguian saliendo en el informe de un set que ya no existe
                     del cambios[foto["cambios"]:]
+                    del tiempos[foto["tiempos"]:]
                     del fotos_de_cambio[foto["fotos_de_cambio"]:]
                     armadores = {letra: set(quienes)
                                  for letra, quienes in foto["armadores"].items()}
@@ -3138,6 +3485,15 @@ def ejecutar_partido() -> dict:
                     )
                     for letra in EQUIPOS
                 },
+                # quienes estaban en cada zona (rotacion nominal, sin el
+                # libero): con esto una rotacion se puede abrir por la
+                # combinacion de jugadores, no solo por el sistema
+                "formacion": {
+                    letra: rotacion_en_cancha(
+                        rotaciones, puntos, len(historial_sets) + 1, letra
+                    )
+                    for letra in EQUIPOS if letra in rotaciones
+                },
                 "jugadas": secuencia,
             })
 
@@ -3158,11 +3514,12 @@ def ejecutar_partido() -> dict:
         "nombres": nombres, "puntos": puntos, "marcador": marcador,
         "historial_sets": historial_sets, "sets_ganados": sets_ganados,
         "rotaciones": rotaciones, "rotaciones_por_set": rotaciones_por_set,
-        "cambios": cambios, "armadores": armadores,
+        "cambios": cambios, "armadores": armadores, "tiempos": tiempos,
         "entradas_totales": entradas_totales, "equipo_saca": equipo_saca,
         "puntos_al_iniciar_set": puntos_al_iniciar_set,
         "esperando": esperando,
         "deshace_cambio": el_cambio_es_lo_ultimo(),
+        "deshace_tiempo": el_tiempo_es_lo_ultimo(),
     }
 
 
@@ -3188,11 +3545,13 @@ def cargar_jugadas() -> list[dict]:
     else:
         print(f"\nMarcador final: {nombres['A']} {marcador['A']} - {marcador['B']} {nombres['B']}")
     print(f"Total de puntos cargados: {len(puntos)}")
-    imprimir_estadisticas(puntos, nombres, armadores)
+    imprimir_estadisticas(puntos, nombres, armadores, estado["rotaciones_por_set"],
+                          estado["cambios"], estado.get("tiempos"))
 
     nombre_archivo = guardar_reporte_txt(
         estado["entradas_totales"], puntos, marcador, nombres, historial_sets, sets_ganados,
         estado["rotaciones_por_set"], estado["cambios"], armadores,
+        estado.get("tiempos"),
     )
     print(f"\nArchivo generado: {nombre_archivo}")
 

@@ -290,6 +290,7 @@ th{color:var(--suave);font-weight:600;font-size:11px;text-transform:uppercase;
 .saque{background:var(--acento-suave);box-shadow:inset 3px 0 0 var(--acento)}
 .num{text-align:right;font-variant-numeric:tabular-nums}
 th.num{text-align:right}
+th.grupo{text-align:center;color:var(--texto,inherit);border-bottom:2px solid var(--borde)}
 tbody tr.total td{background:var(--realce);font-weight:700}
 
 /* Toda tabla ancha vive dentro de una de estas: el que se mueve para el

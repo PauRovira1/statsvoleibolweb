@@ -36,6 +36,7 @@ MARCAS_DE_RECHAZO = (
     "no puede entrar y salir",
     "No hay rotacion cargada",
     "Los cambios se hacen entre puntos",
+    "Los tiempos se piden entre puntos",
     "No hay ningun punto para deshacer",
     "Tienen que ser",
     "esta repetido",
@@ -185,6 +186,7 @@ class SesionPartido:
                 for letra, r in estado["rotaciones"].items()
             },
             "cambios": estado["cambios"],
+            "tiempos": estado.get("tiempos") or [],
             "puntos_cargados": len(puntos),
             "lineas": self.lineas,
             "ultimos_puntos": self._ultimos_puntos(),
@@ -207,6 +209,8 @@ class SesionPartido:
             return "jugada"
         if estado.get("deshace_cambio"):
             return "cambio"
+        if estado.get("deshace_tiempo"):
+            return "tiempo"
         if len(estado["puntos"]) > estado["puntos_al_iniciar_set"]:
             return "punto"
         if estado["historial_sets"]:
@@ -283,7 +287,8 @@ class SesionPartido:
     def estadisticas(self) -> str:
         estado = self.estado
         return av.formatear_estadisticas(
-            estado["puntos"], estado["nombres"], estado["armadores"]
+            estado["puntos"], estado["nombres"], estado["armadores"],
+            estado["rotaciones_por_set"], estado["cambios"], estado.get("tiempos"),
         )
 
     def guardar(self) -> str:
@@ -294,6 +299,7 @@ class SesionPartido:
             estado["entradas_totales"], estado["puntos"], estado["marcador"],
             estado["nombres"], historial, estado["sets_ganados"],
             estado["rotaciones_por_set"], estado["cambios"], estado["armadores"],
+            estado.get("tiempos"),
         )
 
 

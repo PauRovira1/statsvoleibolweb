@@ -21,14 +21,50 @@ const $$ = s => Array.from(document.querySelectorAll(s));
 // partido si no lo reconoce.
 let token = "";
 
+// Cada pedido lleva el partido entero, asi que el cuerpo crece con cada punto.
+// En AWS, el WAF de CloudFront corta con un 403 los cuerpos de mas de 8 KB, y
+// antes de llegar ahi sus reglas contra ataques pueden confundir una jugada
+// con uno. Por eso viaja comprimido: {"z": gzip en base64}, chico y opaco. El
+// servidor acepta las dos formas, asi que un navegador sin CompressionStream
+// lo sigue mandando como siempre.
+async function empaquetar(datos){
+  const texto = JSON.stringify(datos);
+  if(typeof CompressionStream === "undefined") return texto;
+  try{
+    const flujo = new Blob([texto]).stream().pipeThrough(new CompressionStream("gzip"));
+    const bytes = new Uint8Array(await new Response(flujo).arrayBuffer());
+    let binario = "";
+    for(let i = 0; i < bytes.length; i += 0x8000)
+      binario += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return JSON.stringify({z: btoa(binario)});
+  }catch(_){
+    return texto;
+  }
+}
+
 async function api(ruta, datos){
   const cabeceras = token ? {"X-Clave": token} : {};
   if(datos) cabeceras["Content-Type"] = "application/json";
   const opciones = datos
-    ? {method:"POST", headers:cabeceras, body:JSON.stringify(datos)}
+    ? {method:"POST", headers:cabeceras, body: await empaquetar(datos)}
     : {headers:cabeceras};
-  const r = await fetch(ruta, opciones);
-  const respuesta = await r.json();
+  let r;
+  try{
+    r = await fetch(ruta, opciones);
+  }catch(_){
+    return {ok:false, mensaje:"Sin conexion con el servidor. Lo cargado no se perdio: proba de nuevo."};
+  }
+  let respuesta;
+  try{
+    respuesta = await r.json();
+  }catch(_){
+    // No contesto nuestro servidor sino algo que esta adelante (CloudFront,
+    // el WAF): devuelve una pagina HTML. El partido sigue en esta pantalla.
+    return {ok:false, mensaje: r.status === 403
+      ? "CloudFront rechazo el pedido (403). Lo cargado no se perdio. Si se repite, " +
+        "revisa el WAF (ver DESPLIEGUE_AWS.md)."
+      : `El servidor contesto algo inesperado (${r.status}). Lo cargado no se perdio: proba de nuevo.`};
+  }
   // el servidor se reinicio, o paso el token de otra sesion: vuelve el candado
   if(r.status === 401 || respuesta.clave) olvidarToken();
   return respuesta;
@@ -122,15 +158,21 @@ const ordenJugadores = nombres => nombres.slice().sort((a, b) => {
   return (isNaN(na) ? 1e9 : na) - (isNaN(nb) ? 1e9 : nb);
 });
 
-function tabla(encabezados, filas, notaAlPie){
-  const cabeza = encabezados.map((h, i) =>
-    `<th class="${i ? "num" : ""}">${esc(h)}</th>`).join("");
+// "grupos" es opcional: una fila de encabezado arriba que junta columnas,
+// [{titulo, span}]. Sirve cuando una tabla mezcla cosas (recepcion, ataque,
+// saque...) y los encabezados solos no alcanzan para leerla.
+function tabla(encabezados, filas, notaAlPie, grupos){
+  const arriba = grupos && grupos.length
+    ? `<tr>` + grupos.map(g => `<th class="grupo" colspan="${g.span}">${esc(g.titulo)}</th>`).join("") + `</tr>`
+    : "";
+  const cabeza = arriba + `<tr>` + encabezados.map((h, i) =>
+    `<th class="${i ? "num" : ""}">${esc(h)}</th>`).join("") + `</tr>`;
   const cuerpo = filas.map(fila => {
     const celdas = fila.celdas.map((c, i) =>
       `<td class="${i ? "num" : ""}">${esc(c)}</td>`).join("");
     return `<tr class="${fila.total ? "total" : ""}">${celdas}</tr>`;
   }).join("");
-  return `<div class="tabla"><table><thead><tr>${cabeza}</tr></thead>
+  return `<div class="tabla"><table><thead>${cabeza}</thead>
           <tbody>${cuerpo}</tbody></table></div>` +
          (notaAlPie ? `<p class="nota">${esc(notaAlPie)}</p>` : "");
 }
@@ -397,6 +439,7 @@ function pintar(e){
   if(btnX) btnX.textContent = ({
     jugada: "x · deshacer jugada",
     cambio: "x · sacar el cambio",
+    tiempo: "x · sacar el tiempo",
     punto:  "x · deshacer punto",
     set:    `x · reabrir el set ${e.historial_sets.length}`,
     nada:   "x · deshacer"
@@ -437,12 +480,28 @@ function pintar(e){
 
   pintarVisual(e);
 
-  $("#cambios").innerHTML = e.cambios.length
-    ? `<div class="tabla"><table><tr><th>Set</th><th>Equipo</th><th>Entra</th><th>Sale</th><th>Zona</th></tr>` +
-      e.cambios.map(c => `<tr><td>${esc(c.set)}</td><td>${esc(e.nombres[c.equipo])}</td>
-        <td class="zona ${c.armador ? "armador" : ""}">${esc(c.entra)}${c.armador ? " S" : ""}</td>
-        <td class="zona">${esc(c.sale)}</td><td>${esc(c.zona)}</td></tr>`).join("") + `</table></div>`
-    : `<p class="nota" style="margin:0">Sin cambios.</p>`;
+  // los botones de tiempo llevan el nombre de cada equipo
+  ["A", "B"].forEach(letra => {
+    const boton = $("#btnTiempo" + letra);
+    if(boton) boton.textContent = "T · tiempo " + (e.nombres[letra] || letra);
+  });
+
+  // tiempos y cambios en el orden en que pasaron, con el marcador del momento
+  const marcadorDe = i => i.marcador ? `${i.marcador.A}-${i.marcador.B}` : "—";
+  const intervenciones = [
+    ...(e.tiempos || []).map(t => ({...t, orden: 0})),
+    ...e.cambios.map(c => ({...c, orden: 1})),
+  ].sort((a, b) => (a.set - b.set) || ((a.puntos ?? 0) - (b.puntos ?? 0)) || (a.orden - b.orden));
+  $("#cambios").innerHTML = intervenciones.length
+    ? `<div class="tabla"><table><tr><th>Set</th><th>Marcador<br>${esc(e.nombres.A)}-${esc(e.nombres.B)}</th>
+         <th>Equipo</th><th>Que</th></tr>` +
+      intervenciones.map(i => `<tr><td>${esc(i.set)}</td><td>${esc(marcadorDe(i))}</td>
+        <td>${esc(e.nombres[i.equipo])}</td>
+        <td>${i.orden === 0 ? "Tiempo" :
+          `Sale <span class="zona">#${esc(i.sale)}</span> / entra
+           <span class="zona ${i.armador ? "armador" : ""}">#${esc(i.entra)}${i.armador ? " S" : ""}</span>
+           (zona ${esc(i.zona)})`}</td></tr>`).join("") + `</table></div>`
+    : `<p class="nota" style="margin:0">Sin tiempos ni cambios.</p>`;
 }
 
 async function enviar(linea){
@@ -2144,7 +2203,11 @@ async function pintarJugadores(){
     ${!j.armador && j.indicadores.recepciones ? tablasRecepcion(j) : ""}
     ${j.defensa ? tablasDefensa(j) : ""}
     ${!esLibero(j) && j.indicadores.ataques ? tablasAtaque(j) : ""}
+    ${j.libres ? tablasLibres(j) : ""}
+    ${j.saque ? tablasSaque(j) : ""}
     ${j.armador ? tablasArmado(j) : ""}
+    ${j.armado_calidad ? tablasCalidadArmado(j) : ""}
+    ${j.rotacion ? tablasRotacion(j) : ""}
     ${j.evolucion.length > 1 ? `<div class="sub-titulo">Partido a partido</div>` +
                                graficoEvolucion(j) : ""}
     ${tablaComparacion(j)}
@@ -2309,26 +2372,70 @@ function avisoJugadores(texto, ok){
 
 // Una linea por partido: es lo que deja ver si mejora o empeora, que en un
 // acumulado de varios partidos se pierde.
+// Las columnas van agrupadas por fundamento y solo aparecen los grupos que
+// este jugador hizo en algun partido: al libero no le salen columnas de
+// ataque, a un central que no saca no le sale el saque. Asi la tabla dice lo
+// que el jugador hace y no se llena de ceros. La ultima fila es el total.
 function tablaPorPartido(j){
-  const armador = j.armador;
-  // el libero recibe y bloquea pero no ataca: sus columnas de ataque serian
-  // ceros en todas las filas
-  if(!armador && esLibero(j)){
-    return `<div class="sub-titulo">Resumen por partido</div>` + tabla(
-      ["Partido", "Recepciones", "% Positiva", "Bloqueos"],
-      j.por_partido.map(p => ({celdas: [p.etiqueta, p.recepciones,
-                                        pctDe(p.positiva), p.bloqueos]})));
-  }
-  const cabeza = armador
-    ? ["Partido", "Armados", "Del equipo", "% que armo el", "Ataques", "Bloqueos"]
-    : ["Partido", "Recepciones", "% Positiva", "Ataques", "% Punto", "Eficacia", "Bloqueos"];
-  const filas = j.por_partido.map(p => ({celdas: armador
-    ? [p.etiqueta, p.armados, p.armados_equipo, pct(p.armados, p.armados_equipo),
-       p.ataques, p.bloqueos]
-    : [p.etiqueta, p.recepciones, pctDe(p.positiva), p.ataques, pctDe(p.punto),
-       pctDe(p.eficacia), p.bloqueos]}));
+  const partidos = j.por_partido || [];
+  if(!partidos.length) return "";
+  const hay = clave => partidos.some(p => num(p[clave]) > 0);
+  const sumaDe = clave => partidos.reduce((t, p) => t + num(p[clave]), 0);
+  const ataquesPunto = p => Math.round(num(p.punto) * num(p.ataques));
+  const ataquesEficacia = p => Math.round(num(p.eficacia) * num(p.ataques));
+  const positivas = p => Math.round(num(p.positiva) * num(p.recepciones));
+
+  const grupos = [
+    {titulo: "Recepción", si: !j.armador && hay("recepciones"),
+     cab: ["Rec.", "% Pos."],
+     celdas: p => [p.recepciones, pct(positivas(p), num(p.recepciones))],
+     total: () => [sumaDe("recepciones"),
+                   pct(partidos.reduce((t, p) => t + positivas(p), 0), sumaDe("recepciones"))]},
+    {titulo: "Defensa", si: hay("defensas"),
+     cab: ["Def.", "% Pos."],
+     celdas: p => [p.defensas, pct(num(p.defensa_positiva), num(p.defensas))],
+     total: () => [sumaDe("defensas"), pct(sumaDe("defensa_positiva"), sumaDe("defensas"))]},
+    {titulo: "Ataque", si: !esLibero(j) && hay("ataques"),
+     cab: ["Atq.", "% Punto", "Eficacia"],
+     celdas: p => [p.ataques, pctDe(p.punto), pctDe(p.eficacia)],
+     total: () => {
+       const n = sumaDe("ataques");
+       return [n, pct(partidos.reduce((t, p) => t + ataquesPunto(p), 0), n),
+               pct(partidos.reduce((t, p) => t + ataquesEficacia(p), 0), n)];
+     }},
+    {titulo: "Saque", si: hay("saques"),
+     cab: ["Saq.", "As", "Err.", "Pot."],
+     celdas: p => [p.saques, p.aces, p.errores_saque, p.potencia],
+     total: () => [sumaDe("saques"), sumaDe("aces"), sumaDe("errores_saque"), sumaDe("potencia")]},
+    {titulo: "Bloqueo", si: !esLibero(j) && (hay("bloqueos") || hay("toques_bloqueo")),
+     cab: ["Punto", "Toques"],
+     celdas: p => [p.bloqueos, p.toques_bloqueo],
+     total: () => [sumaDe("bloqueos"), sumaDe("toques_bloqueo")]},
+    {titulo: "Armado", si: j.armador || hay("armados"),
+     cab: ["Armados", "% del equipo", "% A+", "AX"],
+     celdas: p => [p.armados, pct(num(p.armados), num(p.armados_equipo)),
+                   pct(num(p.armado_mas), num(p.armado_calificados)), p.armado_ax],
+     total: () => [sumaDe("armados"), pct(sumaDe("armados"), sumaDe("armados_equipo")),
+                   pct(sumaDe("armado_mas"), sumaDe("armado_calificados")), sumaDe("armado_ax")]},
+    {titulo: "En cancha", si: hay("en_cancha"),
+     cab: ["Puntos", "% Ganados"],
+     celdas: p => [p.en_cancha, pct(num(p.en_cancha_ganados), num(p.en_cancha))],
+     total: () => [sumaDe("en_cancha"), pct(sumaDe("en_cancha_ganados"), sumaDe("en_cancha"))]},
+  ].filter(g => g.si);
+  if(!grupos.length) return "";
+
+  const cabeza = ["Partido"].concat(...grupos.map(g => g.cab));
+  const filas = partidos.map(p => ({celdas: [p.etiqueta].concat(...grupos.map(g => g.celdas(p)))}));
+  if(partidos.length > 1)
+    filas.push({total: true, celdas: ["TOTAL"].concat(...grupos.map(g => g.total()))});
+  const notas = [];
+  if(grupos.some(g => g.titulo === "Ataque")) notas.push("Eficacia = (puntos - errores) / ataques.");
+  if(grupos.some(g => g.titulo === "Saque")) notas.push("Pot. = saques de potencia.");
+  if(grupos.some(g => g.titulo === "Armado")) notas.push("% A+ sobre los armados calificados.");
+  if(grupos.some(g => g.titulo === "En cancha"))
+    notas.push("En cancha: puntos jugados con el en la formacion y % ganados por el equipo.");
   return `<div class="sub-titulo">Resumen por partido</div>` + tabla(cabeza, filas,
-    armador ? null : "Eficacia = (puntos - errores) / ataques.");
+    notas.join(" "), [{titulo: "", span: 1}].concat(grupos.map(g => ({titulo: g.titulo, span: g.cab.length}))));
 }
 
 // ----------------------------------------------------------------------
@@ -2542,7 +2649,13 @@ function indicadoresJugador(j){
     ["% Def. positiva", pctDe(i.defensa_positiva), "calidad 2+3", true],
     ["Ataques", i.ataques, "", !esLibero(j)],
     ["% Punto", pctDe(i.punto), "de sus ataques", !esLibero(j)],
-    ["Bloqueos punto", i.bloqueos_punto, "", !esLibero(j)]
+    ["Bloqueos punto", i.bloqueos_punto, "", !esLibero(j)],
+    // las nuevas solo aparecen si hay algo: un 0 en todos los partidos viejos
+    // no es un dato
+    ["Toques de bloqueo", i.toques_bloqueo, "frena el ataque, sigue el punto",
+     !esLibero(j) && num(i.toques_bloqueo) > 0],
+    ["Saques", i.saques, `${num(i.aces)} as · ${num(i.errores_saque)} error`, num(i.saques) > 0],
+    ["% As", pct(num(i.aces), num(i.saques)), "de sus saques", num(i.saques) > 0]
   ].filter(c => c[3]);
   return `<div class="indicadores">` + casillas.map(([titulo, valor, base]) =>
     `<div class="indicador"><div class="valor">${esc(valor)}</div>
@@ -2615,8 +2728,106 @@ function tablasAtaque(j){
     tabla(["", "Ataques", "Punto", "Defendido", "Fuera", "% Punto", "% Defendido", "% Fuera"], filas) +
     `<div class="sub-titulo">Ataque por zona de origen y direccion
       <span class="aclara">ataques · % que fueron punto</span></div>` +
-    tabla(["Zona"].concat(dirs.map(d => "Hacia " + d), ["Total"]), filasMatriz);
+    tabla(["Zona"].concat(dirs.map(d => "Hacia " + d), ["Total"]), filasMatriz) +
+    tablaAtaquePorCalidad(j) + tablaAtaquePorTipo(j);
 }
+
+// Lo que hizo con cada pelota que le armaron: no es lo mismo fallar una A-
+// que una A+.
+function tablaAtaquePorCalidad(j){
+  const filas = (j.ataque.por_calidad_armado || []).filter(f => num(f.ataques));
+  if(!filas.length) return "";
+  return `<div class="sub-titulo">Ataque segun la calidad del armado</div>` + tabla(
+    ["Armado", "Ataques", "Punto", "Defendido", "Fuera", "% Punto", "Eficacia"],
+    filas.map(f => ({celdas: [f.calidad, f.ataques, f.punto, f.defendido, f.fuera,
+      pct(num(f.punto), num(f.ataques)), pct(num(f.punto) - num(f.fuera), num(f.ataques))]})),
+    "Solo ataques que vienen de un armado. Eficacia = (puntos - errores) / ataques.");
+}
+
+// Tipo de resolucion por direccion final: un porcentaje muy alto en una
+// sola direccion es un patron que el rival puede leer.
+function tablaAtaquePorTipo(j){
+  const tipos = j.ataque.por_tipo || [];
+  if(!tipos.length) return "";
+  const dirs = j.ataque.direcciones;
+  const suma = lista => lista.reduce((a, b) => a + num(b), 0);
+  const celda = (n, p) => n ? `${n} · ${pct(p, n)}` : "0";
+  const fila = (etiqueta, valores, puntos, total) => ({total, celdas: [etiqueta]
+    .concat(valores.map((v, i) => celda(num(v), num(puntos[i]))),
+            [celda(suma(valores), suma(puntos)),
+             pct(Math.max(...valores.map(num)), suma(valores))])});
+  const filas = tipos.map(t => fila(t.tipo, t.valores, t.puntos));
+  if(tipos.length > 1){
+    const valores = dirs.map((_, i) => suma(tipos.map(t => t.valores[i])));
+    const puntos = dirs.map((_, i) => suma(tipos.map(t => t.puntos[i])));
+    filas.push(fila("TOTAL", valores, puntos, true));
+  }
+  return `<div class="sub-titulo">Tipo de ataque y direccion final
+      <span class="aclara">ataques · % que fueron punto</span></div>` + tabla(
+    ["Tipo"].concat(dirs.map(d => "Hacia " + d), ["Total", "% dir. mas usada"]), filas,
+    "Un % muy alto en una sola direccion es un patron previsible. El block-out se " +
+    "toma del resultado; \"Sin tipo\" son los ataques cargados sin marcar potente o colocado.");
+}
+
+function tablasLibres(j){
+  return `<div class="sub-titulo">Libres y toques <span class="aclara">no cuentan como ataque</span></div>` +
+    tabla(["", "Total", "Punto", "Block Out", "Sigue", "Malo", "% Punto"],
+      j.libres.map(l => ({celdas: [l.tipo, l.total, l.punto, l.usado, l.sigue, l.malo,
+        pct(num(l.punto) + num(l.usado), num(l.total))]})),
+      "% Punto incluye los que usaron el bloqueo (Block Out).");
+}
+
+function tablasSaque(j){
+  const s = j.saque, t = s.total;
+  const fila = (etiqueta, d, total) => ({total, celdas: [etiqueta, num(d.saques), num(d.as),
+    num(d.error), num(d.saques) - num(d.as) - num(d.error),
+    pct(num(d.as), num(d.saques)), pct(num(d.error), num(d.saques))]});
+  const filas = s.por_tipo.filter(d => num(d.saques)).map(d => fila(d.tipo, d))
+    .concat([fila("TOTAL", t, true)]);
+  const estrategias = (s.estrategias || []).map(e => {
+    const recibidos = num(e.rec3) + num(e.rec2) + num(e.rec1) + num(e.rec0_pase);
+    return {celdas: [`De ${e.par}`, e.saques, e.as, e.error, e.rec3, e.rec2, e.rec1,
+      e.rec0_pase, pct(num(e.rec3), recibidos), pct(num(e.ganados), num(e.saques))]};
+  });
+  return `<div class="sub-titulo">Saque <span class="aclara">normal y de potencia</span></div>` +
+    tabla(["", "Saques", "As", "Error", "En juego", "% As", "% Error"], filas) +
+    (estrategias.length ? `<div class="sub-titulo">Estrategia de saque
+       <span class="aclara">zona de origen → zona objetivo</span></div>` +
+     tabla(["Estrategia", "Saques", "As", "Error", "Rec 3", "Rec 2", "Rec 1", "Rec 0 / pase",
+            "% Rec 3 rival", "% Puntos ganados"], estrategias,
+       "% Rec 3 rival bajo = el saque complica. % Puntos ganados: el rally lo gano su equipo.") : "");
+}
+
+function tablasCalidadArmado(j){
+  const c = j.armado_calidad, t = c.total;
+  const calificados = ["A+", "A0", "A-", "AX"].reduce((s, k) => s + num(t[k]), 0);
+  const filaTotal = {total: true, celdas: ["TOTAL", t["A+"], t["A0"], t["A-"], t["AX"],
+    calificados, pct(num(t["A+"]), calificados), pct(num(t["A-"]), calificados),
+    pct(num(t["AX"]), calificados), t["Sin calificar"]]};
+  const filasZona = (c.por_zona || []).map(z => {
+    const n = num(z["A+"]) + num(z["A0"]) + num(z["A-"]);
+    return {celdas: ["Zona " + z.zona, z["A+"], z["A0"], z["A-"], "—", n,
+      pct(num(z["A+"]), n), pct(num(z["A-"]), n), "—", z["Sin calificar"]]};
+  });
+  return `<div class="sub-titulo">Calidad del armado <span class="aclara">por zona armada</span></div>` +
+    tabla(["Zona", "A+", "A0", "A-", "AX", "Calificados", "% A+", "% A-", "% AX", "Sin calificar"],
+      filasZona.concat([filaTotal]),
+      "A+: atacante en situacion favorable. A0: normal. A-: dificil, previsible o fuera de " +
+      "sistema. AX: error de armado (no tiene zona: la armada mala termina el punto).");
+}
+
+function tablasRotacion(j){
+  const c = j.rotacion.en_cancha;
+  if(!num(c.jugados)) return "";
+  return `<div class="sub-titulo">Con el en cancha</div>` + tabla(
+      ["Puntos jugados", "Ganados", "% Ganados", "Sacando", "% Break", "Recibiendo", "% Side-out"],
+      [{celdas: [c.jugados, c.ganados, pct(num(c.ganados), num(c.jugados)),
+        c.saque_jugados, pct(num(c.saque_ganados), num(c.saque_jugados)),
+        c.rec_jugados, pct(num(c.rec_ganados), num(c.rec_jugados))]}],
+      "Puntos del equipo con el en la formacion (sin contar cuando lo reemplaza el libero). " +
+      "Break: puntos ganados sacando. Side-out: puntos ganados recibiendo.");
+}
+
 
 function tablasArmado(j){
   // Aca se llega estando marcado como armador (por el _S o a mano) pero sin

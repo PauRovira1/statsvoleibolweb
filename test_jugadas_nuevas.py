@@ -239,6 +239,7 @@ class TestCargaTocando(unittest.TestCase):
         armador.tocar("potencia")
         self.assertNotIn("potencia", [o["id"] for o in armador.opciones()])
         armador.tocar("as")
+        armador.tocar("as_sin_receptor")
         self.assertEqual(armador.linea, "5_1_6_P_A")
         self.assertTrue(armador.cerrada)
 
@@ -380,6 +381,247 @@ class TestArmadoYTipoTocando(unittest.TestCase):
         self.assertIn("malla", ids)
         armador.tocar("defendido")
         self.assertEqual(armador.linea, "7_2/1_5_A+/9_5_CO_D")
+
+
+
+# Un partido corto con rotacion, tiempos y cambios:
+#   Local (A) arranca 3 88 15 13 16 21, armador 3, libero 9 por 15 y 21.
+#   1) saca el 3 de 1 a 5: as sobre el 4 del rival         -> 1-0
+#   T_B (tiempo del rival con 1-0)
+#   2) saca el 3 de 1 a 5, recibe el 4 con 2, ataca el rival -> 1-1
+#   C_28_16 (Local: sale el 16, entra el 28, con 1-1)
+#   3) saca el rival; Local recibe y hace punto              -> 2-1
+#   T_A (tiempo de Local con 2-1)
+#   4) saca el 88 de 1 a 1 y la erra                         -> 2-2
+LINEAS_PARTIDO = ("Local", "Rival", "3_S 88 15 13 16 21  9_L_15_21", "1 2_S 3 4 5 6", "A",
+                  "1_5_A_4", "T_B", "1_5_X/4_2/2_3/3_1_P", "C_28_16",
+                  "6_1_X/88_3/3_4/13_1_P", "T_A", "1_1_E")
+
+
+def sesion_del_partido():
+    sesion = sesion_web.SesionPartido()
+    for linea in LINEAS_PARTIDO:
+        resultado = sesion.enviar(linea)
+        assert resultado["ok"], (linea, resultado["mensaje"])
+    return sesion
+
+
+class TestTiemposYCambios(unittest.TestCase):
+
+    def test_el_tiempo_guarda_el_marcador_exacto(self):
+        tiempos = sesion_del_partido().estado["tiempos"]
+        self.assertEqual([(t["equipo"], t["marcador"]) for t in tiempos],
+                         [("B", {"A": 1, "B": 0}), ("A", {"A": 2, "B": 1})])
+
+    def test_el_cambio_guarda_el_marcador(self):
+        cambio = sesion_del_partido().estado["cambios"][0]
+        self.assertEqual((cambio["sale"], cambio["entra"], cambio["marcador"]),
+                         (16, 28, {"A": 1, "B": 1}))
+
+    def test_la_x_saca_el_tiempo(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in LINEAS_PARTIDO[:7]:
+            sesion.enviar(linea)
+        self.assertEqual(sesion.instantanea()["deshacer"], "tiempo")
+        sesion.enviar("x")
+        self.assertEqual(sesion.estado["tiempos"], [])
+        self.assertEqual(sesion.estado["marcador"], {"A": 1, "B": 0})   # el punto sigue
+
+    def test_no_se_pide_tiempo_con_la_pelota_en_juego(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ("Local", "Rival", "", "", "A", "5_1_6_X/3_3/2_4/4_1_D"):
+            sesion.enviar(linea)
+        self.assertFalse(sesion.enviar("T_A")["ok"])
+
+    def test_rallies_antes_y_despues(self):
+        estado = sesion_del_partido().estado
+        lista = av.intervenciones(estado["cambios"], estado["tiempos"], estado["nombres"])
+        self.assertEqual([i["texto"] for i in lista],
+                         ["Tiempo Rival", "Cambio Local: sale #16 / entra #28", "Tiempo Local"])
+        antes, despues = av.rallies_alrededor(estado["puntos"], lista[0])
+        self.assertEqual((antes, despues), ({"A": 1, "B": 0}, {"A": 1, "B": 2}))
+
+    def test_el_volcado_trae_la_cronologia(self):
+        estado = sesion_del_partido().estado
+        texto = av.formatear_estadisticas(estado["puntos"], estado["nombres"],
+                                          estado["armadores"], estado["rotaciones_por_set"],
+                                          estado["cambios"], estado["tiempos"])
+        self.assertIn("  Set 1 | 1-1 | Cambio Local: sale #16 / entra #28 | antes 1-1 | despues 1-1",
+                      texto)
+        # del lado del rival el marcador va al reves
+        self.assertIn("  Set 1 | 0-1 | Tiempo Rival | antes 0-1 | despues 2-1", texto)
+
+
+class TestRotaciones(unittest.TestCase):
+
+    def test_cada_punto_guarda_la_formacion(self):
+        puntos = sesion_del_partido().estado["puntos"]
+        self.assertEqual(puntos[0]["formacion"]["A"], [3, 88, 15, 13, 16, 21])
+        self.assertEqual(puntos[2]["formacion"]["A"], [3, 88, 15, 13, 28, 21])  # ya entro el 28
+
+    def test_rotacion_y_formacion(self):
+        datos = av.calcular_rotacion_y_formacion(sesion_del_partido().estado["puntos"])["A"]
+        self.assertEqual(datos[(1, "3 88 15 13 16 21")]["saque_jugados"], 2)
+        self.assertEqual(datos[(1, "3 88 15 13 28 21")]["rec_ganados"], 1)
+        self.assertEqual(datos[(6, "88 15 13 28 21 3")]["ganados"], 0)
+
+
+class TestEstrategiaDeSaque(unittest.TestCase):
+
+    def test_as_con_receptor(self):
+        bloque = av.parsear_bloque_saque("5_1_6_A_7")
+        self.assertEqual((bloque["resultado_saque"], bloque["receptor_as"]), ("A", 7))
+        self.assertIsNone(bloque["receptor"])   # no es una recepcion
+        self.assertIsNone(av.parsear_bloque_saque("5_1_6_E_7"))
+
+    def test_por_estrategia_y_por_receptor(self):
+        puntos = sesion_del_partido().estado["puntos"]
+        estrategia = av.calcular_saque_por_estrategia(puntos)["A"]
+        self.assertEqual(estrategia[(3, "1 a 5")]["saques"], 2)
+        self.assertEqual(estrategia[(3, "1 a 5")]["as"], 1)
+        self.assertEqual(estrategia[(3, "1 a 5")]["rec2"], 1)
+        self.assertEqual(estrategia[(88, "1 a 1")]["error"], 1)
+        receptores = av.calcular_saque_por_receptor(puntos)["A"]
+        self.assertEqual(receptores[4]["saques"], 2)   # el as y la recepcion
+        self.assertEqual(receptores[4]["ganados"], 1)
+
+    def test_el_as_pide_el_receptor_tocando(self):
+        armador = notacion.Armador("saque", "A", planteles={"B": [4, 5]})
+        for toque in ("z1", "z5", "as"):
+            armador.tocar(toque)
+        self.assertEqual(armador.estado, "AS_RECEPTOR")
+        self.assertIn("j4", [o["id"] for o in armador.opciones()])   # los del rival
+        armador.tocar("j4")
+        self.assertEqual(armador.linea, "1_5_A_4")
+        self.assertTrue(armador.cerrada)
+
+
+class TestSaqueRotacionesYTiemposEnElExcel(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        estado = sesion_del_partido().estado
+        texto = av.formatear_estadisticas(estado["puntos"], estado["nombres"],
+                                          estado["armadores"], estado["rotaciones_por_set"],
+                                          estado["cambios"], estado["tiempos"])
+        import valores_excel
+        libro, _ = gi.build_workbook("Local", "Rival", gi.parse_volcado(texto))
+        valores_excel.convertir_a_valores(libro)
+        cls.libro = libro
+
+    def filas(self, hoja, columnas):
+        ws = self.libro[hoja]
+        return [[ws.cell(row=f, column=c).value for c in range(1, columnas + 1)]
+                for f in range(1, ws.max_row + 1)]
+
+    def test_estrategia_de_saque(self):
+        filas = self.filas("Saque", 12)
+        self.assertIn(["De 1 a 5", 2, 1, 0, 0, 1, 0, 0, 0.5, 0, 0, 0.5], filas)
+        self.assertIn(["Receptor 4", 2, 1, 0, 1, 0, 0, 0.5, 0, 0.5, None, None], filas)
+
+    def test_rotaciones(self):
+        filas = self.filas("Rotaciones", 11)
+        self.assertIn(["Set 1", 3, 88, 15, 13, 16, 21, 3, "9 por 15 y 21", None, None], filas)
+        self.assertIn(["Armador en Z1", 3, 2, 2 / 3, 2, 1, 0.5, 1, 1, 1, None], filas)
+        self.assertIn(["Armador en Z1", "3 88 15 13 28 21", 1, 1, 1, 0, 0, "", 1, 1, 1], filas)
+
+    def test_tiempos_y_cambios(self):
+        filas = self.filas("Tiempos y cambios", 9)
+        self.assertIn(["Set 1", "2-1", "Tiempo Local", 2, 1, 0, 1, 2 / 3, 0], filas)
+
+
+
+class TestCalidadDelArmadoPorZona(unittest.TestCase):
+
+    def test_por_zona(self):
+        puntos = [punto("A", "5_1_6_X/3_3/2_4_A+/4_1_P"), punto("A", "5_1_6_X/3_3/2_4_A0/4_1_P"),
+                  punto("A", "5_1_6_X/3_3/2_2_A-/4_1_P"), punto("A", "5_1_6_X/3_3/2_6/4_1_P")]
+        datos = av.calcular_calidad_armado_por_zona(puntos)["B"][2]
+        self.assertEqual(datos["4"], {"+": 1, "0": 1, "-": 0, "sin": 0})
+        self.assertEqual(datos["2"], {"+": 0, "0": 0, "-": 1, "sin": 0})
+        self.assertEqual(datos["6-5"]["sin"], 1)
+
+    def test_llega_al_excel(self):
+        sesion = sesion_web.SesionPartido()
+        # ataques afuera: gana A y sigue sacando A, asi arma siempre el 2 de B
+        for linea in ("Local", "Rival", "", "", "A", "5_1_6_X/3_3/2_4_A+/4_1_O",
+                      "5_1_6_X/3_3/2_4_A-/4_1_O", "5_1_6_X/3_3/2_2_A+/4_1_O"):
+            sesion.enviar(linea)
+        import valores_excel
+        volcado = gi.parse_volcado(av.formatear_estadisticas(
+            sesion.estado["puntos"], {"A": "Local", "B": "Rival"}))
+        libro, _ = gi.build_workbook("Rival", "Local", volcado)
+        valores_excel.convertir_a_valores(libro)
+        hoja = libro["Armado"]
+        filas = [[hoja.cell(row=f, column=c).value for c in range(1, 11)]
+                 for f in range(1, hoja.max_row + 1)]
+        self.assertIn(["Zona 4", 1, 0, 1, 2, 0.5, 0, 0.5, 0, None], filas)
+        self.assertIn(["Jugador 2", "Zona 2", 1, 0, 0, 1, 1, 0, 0, 0], filas)
+
+
+class TestFichaDelJugador(unittest.TestCase):
+    """La pestana Jugadores lee los volcados guardados: se guarda uno de
+    verdad en una carpeta aparte y se arma la ficha como lo hace el servidor."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        from pathlib import Path
+        from unittest import mock
+        import estadisticas_jugadores as ej
+        cls.carpeta = Path(tempfile.mkdtemp())
+        sesion = sesion_web.SesionPartido()
+        for linea in ("Palestino", "Rival", "3_S 88 15 13 16 21  9_L_15_21", "1 2_S 3 4 5 6", "A",
+                      "1_5_P_A_4", "T_B", "1_5_X/4_2/2_3/3_1_P", "C_28_16",
+                      "6_1_X/9_3/3_4_A+/13_1_PO_P", "T_A", "1_1_E",
+                      "1_6_X/9_2/3_2_A-/15_5_CO_BD_4", "5_1/2_4/4_1_D", "21_2/3_4_A0/13_6_U_5",
+                      "1_5_X/4_3/2_4/4_1_D", "9_3/3_4_A+/13_F_8_P"):
+            assert sesion.enviar(linea)["ok"], linea
+        with mock.patch.object(av, "nombre_de_volcado_libre",
+                               return_value=cls.carpeta / "partido_20261005_120000.txt"):
+            sesion.guardar()
+        agregado = ej.agregar(carpeta=cls.carpeta)
+        cls.ficha = {d: ej.ficha("Palestino", d, agregado) for d in ("3", "13", "28", "9")}
+
+    def test_saque(self):
+        saque = self.ficha["3"]["saque"]
+        self.assertEqual(saque["total"], {"saques": 2, "as": 1, "error": 0, "en_juego": 1})
+        self.assertEqual([t["saques"] for t in saque["por_tipo"]], [1, 1])   # normal, potencia
+        self.assertEqual(saque["estrategias"][0]["par"], "1 a 5")
+        self.assertEqual(self.ficha["3"]["indicadores"]["aces"], 1)
+
+    def test_calidad_del_armado_por_zona(self):
+        calidad = self.ficha["3"]["armado_calidad"]
+        self.assertEqual(calidad["total"]["A+"], 2)
+        por_zona = {z["zona"]: z for z in calidad["por_zona"]}
+        self.assertEqual((por_zona["4"]["A+"], por_zona["4"]["A0"]), (2, 1))
+        self.assertEqual(por_zona["2"]["A-"], 1)
+
+    def test_ataque_por_calidad_y_tipo(self):
+        ataque = self.ficha["13"]["ataque"]
+        por_calidad = {f["calidad"]: f for f in ataque["por_calidad_armado"]}
+        self.assertEqual(por_calidad["A+"]["punto"], 1)
+        por_tipo = {t["tipo"]: t["valores"] for t in ataque["por_tipo"]}
+        self.assertEqual(por_tipo, {"Potente": [1, 0, 0], "Block out": [0, 0, 1]})  # 1, 5, 6
+
+    def test_libres(self):
+        self.assertEqual(self.ficha["13"]["libres"][0]["punto"], 1)
+
+    def test_rotacion_y_sexteto(self):
+        self.assertEqual(self.ficha["13"]["rotacion"]["titular"][0]["zona"], 4)
+        self.assertTrue(self.ficha["9"]["rotacion"]["titular"][0]["libero"])
+        cancha = self.ficha["28"]["rotacion"]["en_cancha"]
+        self.assertEqual((cancha["jugados"], cancha["ganados"]), (4, 3))
+
+    def test_cambios(self):
+        cambio = self.ficha["28"]["cambios"][0]
+        self.assertEqual((cambio["que"], cambio["otro"], cambio["marcador"]), ("Entra", "16", "1-1"))
+
+    def test_resumen_por_partido(self):
+        partido = self.ficha["3"]["por_partido"][0]
+        self.assertEqual((partido["saques"], partido["aces"], partido["potencia"]), (2, 1, 1))
+        self.assertEqual((partido["armado_mas"], partido["armado_calificados"]), (2, 4))
+        self.assertEqual(partido["en_cancha"], 6)
 
 
 if __name__ == "__main__":
