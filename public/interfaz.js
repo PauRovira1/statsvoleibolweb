@@ -2021,10 +2021,10 @@ let equipoElegido = null;
 let dorsalElegido = null;
 let filtroJugadores = "";       // lo escrito en el buscador
 let filtroEtiqueta = "";        // "" = todas las posiciones
-// De que campeonato son los numeros: "" = todos los partidos juntos. Es uno
-// solo y no una lista a proposito -- sumar dos ligas elegidas a mano da un
-// promedio que no es de ninguna de las dos y que despues nadie puede volver a
-// encontrar. O es todo, o es un campeonato.
+// De que campeonatos son los numeros: "" = todos los partidos juntos (#todos).
+// Pueden ser varios, separados por espacio ("#apertura #clausura"): se suman
+// los partidos que tengan cualquiera de ellos, cada uno una sola vez. #todos no
+// se combina con los demas -- seria sumar todo y ademas el campeonato elegido.
 //
 // Este filtra en el SERVIDOR (cambia que partidos se suman), a diferencia del
 // de posiciones, que solo esconde botones. Y vale para Jugadores Y para
@@ -2032,6 +2032,7 @@ let filtroEtiqueta = "";        // "" = todas las posiciones
 // sola, la otra mostraria el recuento de partidos de una liga con las
 // estadisticas de todas.
 let torneoElegido = "";
+const torneosElegidos = () => torneoElegido.split(" ").filter(Boolean);
 let soloVarios = false;         // mostrar solo a los que juegan en 2+ equipos
 // El resumen del equipo se elige como si fuera un jugador mas: mismo selector,
 // mismo lugar. Asi no hace falta otra pestaña ni otro nivel de navegacion.
@@ -2229,7 +2230,8 @@ async function traerPlanteles(caja){
 }
 
 const sinPartidos = () => `<p class="nota">${torneoElegido
-  ? "No hay partidos de " + esc(torneoElegido) + ". Las etiquetas se ponen en Partidos."
+  ? "No hay partidos de " + esc(torneosElegidos().join(" ni de ")) +
+    ". Las etiquetas se ponen en Partidos."
   : "Todavia no hay partidos guardados."}</p>`;
 
 // Los campeonatos salen de TODOS los partidos, no de los que quedan despues
@@ -2241,23 +2243,36 @@ const sinPartidos = () => `<p class="nota">${torneoElegido
 function pintarTorneos(id){
   const torneos = (planteles && planteles.campeonatos) || [];
   if(!torneos.length) return "";
-  const boton = (valor, texto) =>
-    `<button data-torneo="${esc(valor)}" class="${
-      valor === torneoElegido ? "activa" : ""}">${esc(texto)}</button>`;
+  const elegidos = torneosElegidos();
+  const boton = (valor, texto, activa) =>
+    `<button data-torneo="${esc(valor)}" class="${activa ? "activa" : ""}">${esc(texto)}</button>`;
   return `<div class="filtroEtiquetas torneos" id="${id}">` +
-    boton("", "#todos") + torneos.map(t => boton(t, t)).join("") +
+    boton("", "#todos", !elegidos.length) +
+    torneos.map(t => boton(t, t, elegidos.includes(t))).join("") +
+    (elegidos.length > 1 ? `<span class="aclara" style="align-self:center">
+      ${elegidos.length} campeonatos juntos</span>` : "") +
     `</div>`;
 }
 
 // Cambiar de campeonato cambia que partidos se suman, asi que hay que volver
 // a pedirlos: no alcanza con esconder botones, como hace el de posiciones.
-// Uno solo a la vez -- volver a tocar el que ya esta puesto no hace nada, que
-// es como se evita el "ninguno elegido" sin explicarlo.
+// Cada campeonato se prende y se apaga por separado. #todos limpia la
+// eleccion, y apagar el ultimo campeonato vuelve a #todos: nunca queda
+// "ninguno elegido".
 function engancharTorneos(id, repintar){
   $$(`#${id} button`).forEach(b =>
     b.addEventListener("click", () => {
-      if((b.dataset.torneo || "") === torneoElegido) return;
-      torneoElegido = b.dataset.torneo || "";
+      const torneo = b.dataset.torneo || "";
+      let elegidos = torneosElegidos();
+      if(!torneo){
+        if(!elegidos.length) return;        // #todos ya estaba puesto
+        elegidos = [];
+      } else if(elegidos.includes(torneo)){
+        elegidos = elegidos.filter(t => t !== torneo);
+      } else {
+        elegidos.push(torneo);
+      }
+      torneoElegido = elegidos.join(" ");
       planteles = null;   // cambio que partidos se suman: hay que pedirlos
       repintar();
     }));
@@ -2515,17 +2530,21 @@ function resumenEquipoHTML(e){
 // En que fase del rally se ganan y se pierden los puntos. El saldo es lo que
 // dice de un vistazo que fase da puntos y cual los regala: un K1 con saldo
 // negativo significa que el equipo pierde mas de lo que gana recibiendo.
+// Efectividad: de todos los puntos que se definieron en esa fase, que parte
+// fue nuestra (70 hechos de 100 jugados en K1 = 70%).
 function fasesHTML(e){
   const filas = e.fases.filter(f => f.hechos || f.recibidos).map(f => ({
-    celdas: [f.fase, f.hechos, pctDe(f.hechos_reparto), f.hechos_ganados, f.hechos_error,
+    celdas: [f.fase, f.hechos, pctDe(f.hechos_reparto), f.hechos_ganados,
+             pct(num(f.hechos), num(f.hechos) + num(f.recibidos)), f.hechos_error,
              f.recibidos, pctDe(f.recibidos_reparto),
              (f.saldo > 0 ? "+" : "") + f.saldo],
   }));
   return `<div class="sub-titulo">Puntos por fase del rally</div>` + tabla(
-    ["Fase", "Hechos", "% de los hechos", "Ganados", "Por error",
+    ["Fase", "Hechos", "% de los hechos", "Ganados", "Efectividad", "Por error",
      "Recibidos", "% de los recibidos", "Saldo"], filas,
     "K1 = punto sobre la propia recepcion. K2 = sobre la defensa del contraataque. " +
-    "K3 = de ahi en adelante. Saldo = hechos menos recibidos en esa fase.");
+    "K3 = de ahi en adelante. Efectividad = hechos / (hechos + recibidos) en esa fase. " +
+    "Saldo = hechos menos recibidos en esa fase.");
 }
 
 function causasHTML(e){

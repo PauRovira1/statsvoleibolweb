@@ -12,8 +12,9 @@ se puede mirar un campeonato solo.
 Lo que cuidan estos tests:
 
   - que el filtro elija de verdad (y que sin filtro se sumen todos);
-  - que se elija UNO, no varios: sumar dos ligas a mano da un numero que no
-    es de ninguna de las dos;
+  - que se puedan elegir VARIOS y cada partido se cuente una sola vez,
+    aunque tenga mas de una de las etiquetas elegidas; y que #todos no se
+    combine con los demas, porque eso duplicaria;
   - que la lista de campeonatos salga de TODOS los partidos y no de los que
     quedan despues de filtrar, que es lo que dejaria al selector sin la
     opcion de volver;
@@ -100,18 +101,40 @@ class TestElFiltroElige(BaseCampeonatos):
         self.assertEqual(self.partidos("#apertura"), [self.archivos["apertura"]])
 
 
-class TestEsUnoSolo(BaseCampeonatos):
-    """Se elige un campeonato o todos, nunca dos a mano.
+class TestVariosCampeonatos(BaseCampeonatos):
+    """Se pueden elegir varios campeonatos juntos: se suman los partidos que
+    tengan cualquiera de ellos, cada uno una sola vez."""
 
-    Sumar dos ligas elegidas por el usuario da un numero que no es de ninguna
-    de las dos y que despues nadie puede volver a encontrar. La API lo hace
-    imposible: el parametro es uno y no una lista."""
+    def test_dos_campeonatos_juntos_suman_los_dos(self):
+        self.assertEqual(sorted(self.partidos("#apertura #nacional2026")),
+                         sorted(self.archivos.values()))
+        self.assertEqual(sorted(self.partidos("apertura, nacional2026")),
+                         sorted(self.archivos.values()))
 
-    def test_dos_campeonatos_juntos_no_son_un_campeonato(self):
-        self.assertEqual(self.partidos("#apertura #nacional2026"),
-                         [self.archivos["apertura"]])
+    def test_un_partido_con_dos_etiquetas_elegidas_cuenta_una_vez(self):
+        self.etiquetar({self.archivos["apertura"]: "#apertura #semifinal",
+                        self.archivos["nacional"]: "#nacional2026"})
+        self.assertEqual(self.partidos("#apertura #semifinal"), [self.archivos["apertura"]])
+        jugador = ej.agregar(campeonato="#apertura #semifinal")["equipos"]["Palestino"]["13"]
+        self.assertEqual(len(jugador["partidos"]), 1)
 
-    def test_todos_no_es_lo_mismo_que_la_suma_de_las_dos_ligas(self):
+    def test_todos_no_se_combina(self):
+        """#todos junto con otro no suma todo dos veces: se ignora y queda el
+        campeonato elegido."""
+        self.assertEqual(self.partidos("#todos #apertura"), [self.archivos["apertura"]])
+        self.assertEqual(sorted(self.partidos("#todos")), sorted(self.archivos.values()))
+
+    def test_dice_cuales_estan_puestos(self):
+        self.assertEqual(ej.agregar(campeonato="nacional2026 apertura")["campeonato"],
+                         "#nacional2026 #apertura")
+
+    def test_la_ficha_y_el_equipo_con_dos(self):
+        self.assertEqual(srv.responder_jugador(
+            "Palestino", "13", "#apertura #nacional2026")["jugador"]["partidos"], 2)
+        self.assertEqual(srv.responder_equipo(
+            "Palestino", "#apertura #nacional2026")["equipo"]["partidos"], 2)
+
+    def test_un_campeonato_solo_no_es_lo_mismo_que_todos(self):
         # si fueran lo mismo este filtro no serviria para nada
         una = ej.agregar(campeonato="#apertura")["equipos"]["Palestino"]
         todas = ej.agregar()["equipos"]["Palestino"]

@@ -196,14 +196,23 @@ def etiquetas_por_volcado() -> dict:
             for nombre, arreglo in (alm.leer_correcciones() or {}).items()}
 
 
-def como_campeonato(texto) -> str:
-    """Lo que eligio la pantalla, normalizado igual que las del partido.
+def como_campeonatos(texto) -> list[str]:
+    """Los campeonatos que eligio la pantalla, normalizados igual que los del
+    partido. Pueden ser varios, separados por espacios o comas.
+
+    "#todos" no es un campeonato sino la ausencia de filtro, y no se mezcla
+    con los demas: "#todos #apertura" seria sumar todo y ademas el apertura,
+    o sea contarlo dos veces. Si viene, se ignora.
 
     Se dice "campeonato" y no "etiqueta" en todo lo que filtra porque adentro
     de agregar() ya hay una "etiqueta": la de cada partido ("vs UVC
     (2026-09-14)"), que es otra cosa."""
-    etiquetas = archivo_partidos.etiquetas_de(texto)
-    return etiquetas[0] if etiquetas else ""
+    return [e for e in archivo_partidos.etiquetas_de(texto) if e != "#todos"]
+
+
+def como_campeonato(texto) -> str:
+    """Los campeonatos elegidos en un solo texto ("#apertura #clausura")."""
+    return " ".join(como_campeonatos(texto))
 
 
 def partidos_unicos(carpeta=None) -> tuple[list[dict], list[dict]]:
@@ -526,17 +535,18 @@ def agregar(carpeta=None, campeonato="") -> dict:
 
     """Junta todos los partidos. Devuelve {equipo: {dorsal: ficha cruda}}.
 
-    Con "campeonato" se suman solo los partidos de ese campeonato. Es de a uno
-    y no una lista a proposito: sumar dos ligas elegidas a mano da un numero
-    que no es de ninguna de las dos y que nadie puede volver a encontrar. O
-    es todo, o es un campeonato."""
+    Con "campeonato" se suman solo los partidos de esos campeonatos: pueden
+    ser varios ("#apertura #clausura"). Un partido entra si tiene CUALQUIERA
+    de ellos y entra una sola vez, aunque tenga dos de los elegidos: se filtra
+    la lista de partidos, no se suma un campeonato despues del otro."""
     elegidos, descartados = partidos_unicos(carpeta)
     # las de TODOS los partidos, no las de los que quedan despues de filtrar:
     # si no, elegir una liga borraria del selector a las demas
     disponibles = sorted({e for p in elegidos for e in p["etiquetas"]})
-    campeonato = como_campeonato(campeonato)
-    if campeonato:
-        elegidos = [p for p in elegidos if campeonato in p["etiquetas"]]
+    pedidos = como_campeonatos(campeonato)
+    campeonato = " ".join(pedidos)
+    if pedidos:
+        elegidos = [p for p in elegidos if any(c in p["etiquetas"] for c in pedidos)]
     equipos: dict = {}
     partidos_por_equipo: dict = {}
     marcados_como_armador: dict = {}
