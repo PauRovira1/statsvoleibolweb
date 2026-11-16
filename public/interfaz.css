@@ -563,6 +563,27 @@ textarea{width:100%;height:130px;background:var(--panel2);color:var(--texto);
 .jugador.libero{border-style:dashed;border-color:var(--ok)}
 .jugador.libero.viva{border-color:var(--ok);background:var(--ok-fondo)}
 
+/* El puesto de cada uno (A P C O L), en la esquina de enfrente al numero de
+   zona. Los circulos estan dibujados donde cada uno juega, no donde rota, y
+   la letra es lo que deja ver de un vistazo que el orden esta bien. */
+.celda .puesto{position:absolute;top:3px;right:5px;font-size:10px;font-weight:700;
+               color:var(--suave);letter-spacing:.02em}
+
+/* Al que se le va a anotar el toque de la zona: el armador cuando se elige a
+   donde arma, el atacante cuando se elige a donde ataca. Tiene que verse
+   aunque el circulo este apagado, que es como esta mientras arma. */
+.jugador.sugerido,
+.jugador.sugerido[disabled]{opacity:1;color:var(--fuerte);border-color:var(--acento);
+                            box-shadow:0 0 0 3px var(--acento)}
+.jugador.armador.sugerido{box-shadow:0 0 0 2px var(--aviso),0 0 0 5px var(--acento)}
+
+/* Como ataco + que paso, en un toque: una grilla por forma de ataque. */
+.filaOpciones{width:100%}
+.nombreFila{font-size:11px;color:var(--suave);text-transform:uppercase;
+            letter-spacing:.06em;margin:0 0 5px}
+.filaOpciones .grilla{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.filaOpciones .grilla button{padding:8px 4px;font-size:13px;line-height:1.15}
+
 /* ---------- corregir a mano el resumen de un partido ---------- */
 .correccion{margin-top:10px;background:var(--panel2);border:1px solid var(--borde);
             border-radius:10px;padding:12px 14px}

@@ -367,19 +367,16 @@ class TestArmadoYTipoTocando(unittest.TestCase):
         self.assertNotIn("armado_cero", ids)
         self.assertNotIn("armado_menos", ids)
         self.assertIn("sin_armado", ids)
-        for toque in (("otro", 9), ("ataque",), ("z5",)):
+        for toque in (("otro", 9), ("z5",)):
             armador.tocar(*toque)
-        # despues de la direccion se pregunta como ataco, y recien despues
-        # que paso
+        # despues de la direccion se pregunta como ataco y que paso, las dos
+        # cosas en un toque: una forma sola, con su resultado
         self.assertEqual(armador.estado, "ATACA_FORMA")
-        self.assertEqual([o["id"] for o in armador.opciones()],
-                         ["potente", "colocado", "sin_forma"])
-        armador.tocar("colocado")
-        self.assertEqual(armador.estado, "ATACA_RESULTADO")
         ids = [o["id"] for o in armador.opciones()]
-        self.assertNotIn("potente", ids)
-        self.assertIn("malla", ids)
-        armador.tocar("defendido")
+        self.assertEqual({i.split("+")[0] for i in ids}, {"potente", "colocado", "sin_forma"})
+        self.assertIn("colocado+malla", ids)
+        armador.tocar("colocado+defendido")
+        self.assertTrue(armador.cerrada)
         self.assertEqual(armador.linea, "7_2/1_5_A+/9_5_CO_D")
 
 

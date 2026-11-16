@@ -765,6 +765,9 @@ const ZONAS_MITAD = {
   B: [4, 3, 2, 7, 8, 9, 5, 6, 1]
 };
 
+// La letra que acompaña a cada circulo. Los puestos los pone el motor.
+const LETRA_DEL_PUESTO = {armador: "A", punta: "P", central: "C", opuesto: "O", libero: "L"};
+
 const MODO_GUARDADO = "voley.modo";
 let modo = "tocando";
 try{ modo = localStorage.getItem(MODO_GUARDADO) || "tocando"; }catch(_){ /* sin storage */ }
@@ -775,6 +778,9 @@ let claveVisual = "";        // con que estado del motor se armaron los borrador
 let tecleando = null;        // {destino, digitos, ranura} mientras se usa el teclado
 let cambioVisual = null;     // {sale, entra, armador} mientras se arma un cambio
 let rotacionBorrador = null; // la rotacion que se esta cargando
+// {dorsal, equipo}: el rival que se toco para decir "Defendido". Es el que
+// la toca en la linea que viene, asi que esa linea arranca con el ya puesto.
+let arrastrePendiente = null;
 let estadoActual = null;
 
 async function traerNotacion(){
@@ -831,16 +837,42 @@ function sincronizarConElMotor(e){
   rotacionBorrador = null;
 }
 
+// Donde juega cada uno segun su puesto, que no es la zona de rotacion en la
+// que esta anotado: el punta delantero ataca por 4 aunque le toque la 2. Lo
+// calcula el motor; null si el equipo no tiene rotacion (o no tiene armador).
+function juegoDe(e, letra){
+  return (e.rotaciones[letra] && e.rotaciones[letra].juego) || null;
+}
+
 function asegurarArmador(e){
   if(armador) return;
   const p = e.pendiente;
+  // quien arma y a quien se le arma en cada zona: lo dice el motor, y es lo
+  // que deja tocar la zona sin tocar antes al jugador
+  const armadores = {}, atacantes = {};
+  ["A", "B"].forEach(l => {
+    const juego = juegoDe(e, l);
+    if(!juego) return;
+    armadores[l] = e.rotaciones[l].armador;
+    atacantes[l] = juego.atacantes;
+  });
   armador = new Armador({
     espera: p.espera,
     equipoSaca: e.equipo_saca,
     equipoConLaPelota: p.equipo_con_la_pelota,
     planteles: plantelesDe(e),
-    sacadorConocido: e.jugador_saca != null
+    sacadorConocido: e.jugador_saca != null,
+    armadores, atacantes
   });
+  // Vale una sola vez y solo si el motor quedo donde se esperaba: si rechazo
+  // la linea, o la pelota no quedo del lado del que defendio, no se pone nada.
+  const arrastre = arrastrePendiente;
+  arrastrePendiente = null;
+  if(arrastre && p.espera === "continuacion" &&
+     p.equipo_con_la_pelota === arrastre.equipo &&
+     armador.opciones().some(o => o.id === "j" + arrastre.dorsal)){
+    armador.tocar("j" + arrastre.dorsal);
+  }
 }
 
 function vivosPorEquipo(){
@@ -875,10 +907,19 @@ function canchaHTML(e, vivos, opciones){
 function mitadHTML(e, letra, vivos, opciones){
   opciones = opciones || {};
   const rotacion = e.rotaciones[letra];
+  // Cada uno se dibuja donde JUEGA (el punta delantero en 4, el central en
+  // 3...), no en la zona de rotacion: asi la zona a la que se arma y el que
+  // ataca son la misma celda. Sin armador declarado el motor no puede saber
+  // los puestos y se cae a la rotacion tal cual.
+  const juego = juegoDe(e, letra);
   // en el cambio se toca sobre la rotacion nominal, porque tambien se puede
   // sacar a un jugador que ahora mismo esta cubierto por el libero
-  const jugadores = (rotacion && (opciones.nominal ? rotacion.jugadores
-                                                  : rotacion.formacion)) || [];
+  const jugadores = (opciones.nominal
+    ? (juego ? juego.nominal : rotacion && rotacion.jugadores)
+    : (juego ? juego.zonas : rotacion && rotacion.formacion)) || [];
+  const puestos = (juego && !opciones.nominal) ? juego.puestos : [];
+  const sugerido = (opciones.sugerido && opciones.sugerido.equipo === letra)
+    ? opciones.sugerido.dorsal : null;
   const elArmador = rotacion ? rotacion.armador : null;
   const liberos = new Set(((rotacion && rotacion.liberos) || []).map(l => l.jugador));
   const vivo = vivos[letra] || {jugadores: new Set(), zonas: new Set()};
@@ -895,15 +936,19 @@ function mitadHTML(e, letra, vivos, opciones){
     const marca = opciones.accion
       ? `data-accion="${esc(opciones.accion)}" data-valor="${esc(dorsal)}"`
       : `data-opcion="j${esc(dorsal)}"`;
+    // el que saca ya no esta siempre en la celda 1: se lo marca por dorsal
     const circulo = dorsal == null ? "" : `
       <button class="jugador ${jugadorVivo ? "viva" : ""}
         ${dorsal === elArmador ? "armador" : ""}
         ${liberos.has(dorsal) ? "libero" : ""}
-        ${(zona === 1 && e.equipo_saca === letra && e.jugador_saca === dorsal) ? "saca" : ""}"
+        ${dorsal === sugerido ? "sugerido" : ""}
+        ${(e.equipo_saca === letra && e.jugador_saca === dorsal) ? "saca" : ""}"
         ${jugadorVivo ? marca : "disabled"}>${esc(dorsal)}</button>`;
+    const puesto = (dorsal != null && zona <= 6 && puestos[zona - 1])
+      ? `<span class="puesto">${LETRA_DEL_PUESTO[puestos[zona - 1]] || ""}</span>` : "";
     return `<div class="celda ${zonaViva ? "zonaViva" : ""}"
                  ${zonaViva ? `data-opcion="z${zona}"` : ""}>
-              <span class="numeroZona">${zona}</span>${circulo}</div>`;
+              <span class="numeroZona">${zona}</span>${puesto}${circulo}</div>`;
   }).join("");
 
   return `<div class="etiquetaMitad ${encendida ? "encendida" : ""}">
@@ -967,23 +1012,46 @@ function pintarJugada(e){
   const equipoActivo = armador.equipoDe(
     (paso && (paso.pide === "jugador" || paso.pide === "zona")) ? paso.lado : "pelota");
 
+  // el jugador que el paso da por hecho (el armador, o el que ataca en la
+  // zona a la que se armo): se lo marca para que se vea a quien se le va a
+  // anotar el toque de la zona
+  const asumido = armador.asumido();
+  const sugerido = asumido == null ? null
+    : {equipo: armador.equipoDe(paso.lado), dorsal: asumido};
+  const titulo = paso ? armador.titulo() : "";
+
   $("#cancha").hidden = false;
-  $("#cancha").innerHTML = canchaHTML(e, vivosPorEquipo(), {equipoActivo});
+  $("#cancha").innerHTML = canchaHTML(e, vivosPorEquipo(), {equipoActivo, sugerido});
 
   $("#quePide").textContent = paso
-    ? `${paso.titulo}${paso.pide === "jugador" ? ` · ${e.nombres[equipoActivo]}` : ""}`
+    ? `${titulo}${paso.pide === "jugador" ? ` · ${e.nombres[equipoActivo]}` : ""}`
     : "";
   $("#opciones").innerHTML = (tecleando && tecleando.destino === "jugada")
     ? tecladoHTML(!sinCirculos)
-    : armador.opciones()
-        .filter(o => o.tipo === "boton" || o.tipo === "numero")
-        .map(o => `<button data-opcion="${esc(o.id)}"
-                    class="${o.tipo === "numero" ? "secundaria" : esc(o.tono || "")}"
-                    >${esc(o.etiqueta)}</button>`).join("");
+    : botonesHTML(armador.opciones()
+        .filter(o => o.tipo === "boton" || o.tipo === "numero"));
 
   $("#enCurso").hidden = armador.pasos.length === 0;
   $("#lineaArmada").innerHTML = lineaHTML();
-  $("#falta").textContent = paso ? `falta ${paso.titulo.toLowerCase()}` : "";
+  $("#falta").textContent = paso ? `falta ${titulo.toLowerCase()}` : "";
+}
+
+// Los botones de un paso. Los que traen "fila" (como ataco + que paso) van en
+// una grilla por fila, con el nombre de la fila arriba: son muchos, y asi el
+// ojo va primero a "potente" o "colocado" y despues al resultado.
+function botonesHTML(opciones){
+  const boton = o => `<button data-opcion="${esc(o.id)}"
+    class="${o.tipo === "numero" ? "secundaria" : esc(o.tono || "")}"
+    >${esc(o.etiqueta)}</button>`;
+  const filas = new Map();
+  opciones.filter(o => o.fila).forEach(o => {
+    if(!filas.has(o.fila)) filas.set(o.fila, []);
+    filas.get(o.fila).push(o);
+  });
+  const grillas = [...filas].map(([nombre, lista]) =>
+    `<div class="filaOpciones"><div class="nombreFila">${esc(nombre)}</div>
+       <div class="grilla">${lista.map(boton).join("")}</div></div>`).join("");
+  return grillas + opciones.filter(o => !o.fila).map(boton).join("");
 }
 
 function tocarOpcion(id){
@@ -1001,10 +1069,17 @@ function tocarOpcion(id){
 
 async function mandarJugada(){
   const linea = armador.linea;
+  // si la linea cerro tocando al rival que defendio, ese rival arranca la
+  // que viene (ver asegurarArmador)
+  const dorsal = armador.arrastre;
+  arrastrePendiente = dorsal == null ? null
+    : {dorsal, equipo: armador.equipoDe("rival")};
   // el estado nuevo llega en la respuesta y rehace el armador solo; si el
   // motor la rechaza tambien, arrancando de cero con su mensaje a la vista
   armador = null;
   await enviar(linea);
+  // por si la respuesta no llego a repintar: que no quede para otra jugada
+  arrastrePendiente = null;
 }
 
 function usarTecla(tecla){

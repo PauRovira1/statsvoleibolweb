@@ -169,13 +169,19 @@ class SesionPartido:
             # "jugadores" es la rotacion nominal de AHORA (zonas 1 a 6), que es
             # la que manda el saque y la zona del armador; "formacion" son los
             # que estan realmente en la cancha, con el libero puesto donde
-            # corresponde; "inicial" es con la que arranco el set.
+            # corresponde; "inicial" es con la que arranco el set; "juego" es
+            # donde juega cada uno segun su puesto (el punta delantero en 4,
+            # el central en 3...), que es como se dibuja la cancha y de donde
+            # sale a quien se le arma en cada zona.
             "rotaciones": {
                 letra: {
                     "jugadores": av.rotacion_en_cancha(
                         estado["rotaciones"], puntos, numero_set, letra
                     ),
                     "formacion": av.formacion_en_cancha(
+                        estado["rotaciones"], puntos, numero_set, letra, equipo_saca
+                    ),
+                    "juego": av.puestos_en_cancha(
                         estado["rotaciones"], puntos, numero_set, letra, equipo_saca
                     ),
                     "liberos": r.get("liberos") or [],

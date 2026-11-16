@@ -2731,6 +2731,138 @@ class TestLiberos(unittest.TestCase):
         self.assertEqual(rotacion["liberos"], [{"jugador": 9, "cubre": [15, 10]}])
 
 
+class TestPuestosEnCancha(unittest.TestCase):
+    """La rotacion dice donde se para cada uno al saque; apenas la pelota esta
+    en juego cada uno va a su puesto. De ahi sale como se dibuja la cancha en
+    la carga tocando y a quien se le arma en cada zona."""
+
+    # zonas 1..6. Desde el armador: punta, central, opuesto, punta, central
+    ARMADOR, PUNTA_1, CENTRAL_1, OPUESTO, PUNTA_2, CENTRAL_2 = 3, 88, 15, 13, 16, 10
+    ROTACION = "3_S 88 15 13 16 10"
+    CON_LIBERO = ROTACION + "  9_L_15_10"
+
+    def _rotaciones(self, entrada=None):
+        entrada = entrada or self.ROTACION
+        jugadores, armador = parsear_rotacion(entrada)
+        return {"A": {"jugadores": jugadores, "armador": armador,
+                      "liberos": av.parsear_liberos(entrada, jugadores)}}
+
+    def _juego(self, rotaciones, giros=0, equipo_saca="B"):
+        # cada punto que gana el que recibia hace rotar al que recupera el saque
+        puntos = [{"set": 1, "equipo_saca": "B", "equipo_gana": "A", "jugadas": []}
+                  for _ in range(giros)]
+        return av.puestos_en_cancha(rotaciones, puntos, 1, "A", equipo_saca)
+
+    def test_con_el_armador_atras_el_opuesto_juega_en_2(self):
+        # delanteros (zonas 2-3-4 de rotacion): 88, 15 y 13
+        juego = self._juego(self._rotaciones())
+        self.assertEqual(juego["zonas"], [3, 13, 15, 88, 10, 16])
+        self.assertEqual(juego["puestos"],
+                         ["armador", "opuesto", "central", "punta", "central", "punta"])
+
+    def test_con_el_armador_adelante_el_opuesto_juega_en_1(self):
+        # tres giros: el armador queda en la zona 4 de rotacion, y juega en 2
+        juego = self._juego(self._rotaciones(), giros=3)
+        self.assertEqual(juego["zonas"], [13, 3, 10, 16, 15, 88])
+        self.assertEqual(juego["puestos"],
+                         ["opuesto", "armador", "central", "punta", "central", "punta"])
+
+    def test_a_quien_se_le_arma_en_cada_zona(self):
+        # a 4 el punta delantero, a 3 el central, a 2 el opuesto, a 6 el punta
+        # zaguero. Al armador (zona 1) y a la zona 5 no se les arma.
+        juego = self._juego(self._rotaciones())
+        self.assertEqual(juego["atacantes"], [None, 13, 15, 88, None, 16])
+
+    def test_con_el_armador_adelante_al_opuesto_se_le_arma_atras(self):
+        juego = self._juego(self._rotaciones(), giros=3)
+        self.assertEqual(juego["atacantes"], [13, None, 10, 16, None, 88])
+
+    def test_en_las_seis_rotaciones_cada_puesto_cae_en_su_zona(self):
+        rotaciones = self._rotaciones()
+        for giros in range(6):
+            with self.subTest(giros=giros):
+                juego = self._juego(rotaciones, giros)
+                puestos = juego["puestos"]
+                self.assertEqual((puestos[3], puestos[5]), ("punta", "punta"))
+                self.assertEqual((puestos[2], puestos[4]), ("central", "central"))
+                self.assertEqual(sorted(puestos[:2]), ["armador", "opuesto"])
+                # nadie se pierde ni se repite al reordenar
+                self.assertEqual(sorted(juego["zonas"]),
+                                 sorted(av.rotacion_en_cancha(rotaciones, [], 1, "A")))
+                # el armador juega adelante solo si rota adelante
+                adelante = av.zona_del_armador(
+                    rotaciones, [{"set": 1, "equipo_saca": "B", "equipo_gana": "A",
+                                  "jugadas": []}] * giros, 1, "A") in (2, 3, 4)
+                self.assertEqual(juego["zonas"].index(self.ARMADOR) + 1, 2 if adelante else 1)
+                # y nunca es el atacante de su zona, ni lo es el de la 5
+                self.assertNotIn(self.ARMADOR, juego["atacantes"])
+                self.assertIsNone(juego["atacantes"][4])
+
+    def test_los_dos_puntas_se_turnan_en_la_zona_4(self):
+        rotaciones = self._rotaciones()
+        en_4 = [self._juego(rotaciones, giros)["zonas"][3] for giros in range(6)]
+        self.assertEqual(en_4, [88, 16, 16, 16, 88, 88])
+
+    def test_el_libero_juega_en_5_por_el_central_zaguero(self):
+        juego = self._juego(self._rotaciones(self.CON_LIBERO))
+        self.assertEqual(juego["zonas"], [3, 13, 15, 88, 9, 16])
+        self.assertEqual(juego["puestos"][4], "libero")
+        # el que sale en un cambio se elige sin el libero puesto
+        self.assertEqual(juego["nominal"], [3, 13, 15, 88, 10, 16])
+
+    def test_al_libero_no_se_le_arma_aunque_cubra_a_otro_puesto(self):
+        # cubre al punta: cuando esta en 6 ahi no hay atacante
+        rotaciones = self._rotaciones(self.ROTACION + "  9_L_16")
+        juego = self._juego(rotaciones)
+        self.assertEqual(juego["zonas"][5], 9)
+        self.assertEqual(juego["puestos"][5], "libero")
+        self.assertIsNone(juego["atacantes"][5])
+
+    def test_el_que_entra_en_un_cambio_hereda_el_puesto(self):
+        rotaciones = self._rotaciones()
+        with patch("sys.stdout", new_callable=io.StringIO):
+            aplicar_cambio(rotaciones, "C_7_88", {"A": "Local", "B": "Rival"})
+        juego = self._juego(rotaciones)
+        self.assertEqual(juego["zonas"][3], 7)
+        self.assertEqual(juego["puestos"][3], "punta")
+        self.assertEqual(juego["atacantes"][3], 7)
+
+    def test_un_cambio_de_armador_corre_los_puestos(self):
+        # entra el 7 como armador por el opuesto: todo se cuenta desde el
+        with patch("sys.stdout", new_callable=io.StringIO):
+            rotaciones = self._rotaciones()
+            aplicar_cambio(rotaciones, "C_7_S_13", {"A": "Local", "B": "Rival"})
+        juego = self._juego(rotaciones)
+        self.assertEqual(juego["puestos"][juego["zonas"].index(7)], "armador")
+        self.assertEqual(juego["puestos"][juego["zonas"].index(3)], "opuesto")
+
+    def test_sin_rotacion_no_hay_puestos(self):
+        self.assertIsNone(av.puestos_en_cancha({}, [], 1, "A"))
+        self.assertIsNone(av.puestos_en_cancha(self._rotaciones(), [], 1, "B"))
+
+    def test_sin_el_armador_en_la_cancha_no_hay_de_donde_deducir(self):
+        rotaciones = {"A": {"jugadores": [3, 88, 15, 13, 16, 10], "armador": 99}}
+        self.assertIsNone(av.puestos_en_cancha(rotaciones, [], 1, "A"))
+
+    def test_la_sesion_web_publica_los_puestos_del_que_tiene_rotacion(self):
+        sesion = sesion_web.SesionPartido()
+        for linea in ["Local", "Rival", self.CON_LIBERO, "", "B"]:
+            sesion.enviar(linea)
+        rotaciones = sesion.instantanea()["rotaciones"]
+        self.assertEqual(rotaciones["A"]["juego"]["atacantes"], [None, 13, 15, 88, None, 16])
+        self.assertEqual(rotaciones["A"]["juego"]["puestos"][4], "libero")
+        # el rival no cargo rotacion: no aparece, y la carga es toque por toque
+        self.assertNotIn("B", rotaciones)
+
+    def test_la_rotacion_nominal_no_se_toca(self):
+        # los puestos son para dibujar y sugerir: el turno de saque sigue
+        # saliendo de la rotacion
+        rotaciones = self._rotaciones()
+        self._juego(rotaciones, giros=2)
+        self.assertEqual(av.rotacion_en_cancha(rotaciones, [], 1, "A"),
+                         [3, 88, 15, 13, 16, 10])
+
+
 class TestPuntoPendiente(unittest.TestCase):
     """Una jugada que deja el punto abierto obliga a cargar otra linea, y hasta
     que llegue el punto queda a medias. El que tipea se acuerda de que estaba

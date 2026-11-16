@@ -366,6 +366,41 @@ con un acento <code>^</code> marcando qué falta:</p>
   tiene la pelota. Un punto largo son cuatro o cinco jugadas seguidas: es normal.
   El punto se cierra solo cuando cargás un final (punto, afuera, malla, bloqueo).</p>
 </div>
+
+<h3>La cancha se dibuja como se juega</h3>
+<p>Con la rotación cargada, los jugadores no aparecen en la zona en la que les
+toca rotar sino <strong>en la que juegan</strong>, y cada uno lleva la letra de su
+puesto: <strong>A</strong> armador, <strong>P</strong> punta, <strong>C</strong>
+central, <strong>O</strong> opuesto, <strong>L</strong> líbero. Adelante, el punta
+está en 4, el central en 3 y el armador o el opuesto en 2; atrás, el punta en 6,
+el central o el líbero en 5 y el armador o el opuesto en 1. Al rotar, cada uno
+sigue cayendo en su lugar.</p>
+<p class="nota">Los puestos salen de quién marcaste como armador: contando las
+zonas desde él vienen punta, central, opuesto, punta y central. Un cambio hereda
+el puesto del que sale.</p>
+
+<div class="caja">
+  <div class="titulo">Toques que valen por dos</div>
+  <p>Como la app sabe dónde juega cada uno, completa sola lo que es de libro. Un
+  punto típico (saque, recepción, armado a 4, ataque y punto) son
+  <strong>7 toques</strong>:</p>
+  <ul>
+    <li><strong>Después del saque, tocá al que recibe.</strong> Eso ya dice que
+        el saque siguió; no hace falta el botón <strong>Sigue</strong>.</li>
+    <li><strong>Tocá la zona a la que se armó.</strong> La app da por hecho que
+        armó el armador. Si armó otro, tocá <strong>armó otro jugador</strong> y
+        elegilo.</li>
+    <li><strong>Tocá la zona a la que atacó.</strong> La app da por hecho que
+        atacó el que juega en la zona del armado (a 4, el punta delantero) y lo
+        deja resaltado con un aro. Si atacó otro, tocalo a él antes de la zona.</li>
+    <li><strong>Cómo atacó y qué pasó es un solo toque</strong>, en una grilla
+        con una fila para potente y otra para colocado.</li>
+  </ul>
+  <p class="nota">Arriba de la cancha siempre dice a quién está dando por hecho
+  (<em>«Ataca el 10: hacia qué zona (o tocá a otro)»</em>). A la zona 5 y a la
+  zona del armador no se les asume atacante: ahí hay que tocarlo. Sin rotación
+  cargada no se asume nada y se carga toque por toque.</p>
+</div>
 </section>
 
 <!-- ================= 7 ================= -->
@@ -390,7 +425,10 @@ pedir otra jugada.</p>
         <td><strong>As</strong> → a quién (el receptor rival) o
             <strong>No se vio</strong></td><td><strong>Punto</strong> para el que saca</td></tr>
     <tr class="cierra"><td><strong>Error</strong></td><td><strong>Punto</strong> para el que recibe</td></tr>
-    <tr><td><strong>Sigue</strong></td><td>La pelota pasa al equipo que recibe</td></tr>
+    <tr><td><strong>Tocás al que recibe</strong> (o el botón
+            <strong>Sigue</strong> y después al jugador)</td>
+        <td>La pelota pasa al equipo que recibe y la app ya pregunta con qué
+            calidad</td></tr>
     <tr><td><strong>Potencia</strong> (antes de As / Error / Sigue)</td>
         <td>Marca el saque como de potencia y te vuelve a pedir cómo terminó.
             En el Excel los saques se separan en normales y de potencia</td></tr>
@@ -401,7 +439,9 @@ pedir otra jugada.</p>
 <table class="evitar">
   <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
   <tbody>
-    <tr><td>Quién la toca</td><td>El jugador que recibe o defiende</td><td>—</td></tr>
+    <tr><td>Quién la toca</td>
+        <td>El jugador que recibe o defiende. Si en el paso anterior ya tocaste
+            al que recibe o al que defendió, este paso viene hecho</td><td>—</td></tr>
     <tr><td rowspan="3">Con qué calidad</td>
         <td><strong>3 / 2 / 1 / 0</strong> — 3 es pase perfecto, 0 es pase que no
             deja jugar</td>
@@ -426,8 +466,10 @@ si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
   <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
   <tbody>
     <tr><td>Quién arma</td>
-        <td>El armador ya viene marcado en la cancha, pero se puede tocar a
-            cualquiera</td><td>—</td></tr>
+        <td>Nada: se da por hecho que arma el armador y la app pide la zona
+            directamente. Si armó otro, <strong>armó otro jugador</strong> y lo
+            tocás. Sólo lo pregunta si el armador hizo el primer toque o si el
+            equipo no tiene rotación</td><td>—</td></tr>
     <tr><td rowspan="4">Hacia qué zona arma</td>
         <td>Zona 1 a 6</td><td>Sigue: hay que cargar el ataque</td></tr>
     <tr><td><strong>Se pasó al otro lado</strong></td><td>Sigue, del otro lado</td></tr>
@@ -452,29 +494,38 @@ si se cayó ahí, es el <strong>0 · no se pudo jugar</strong>.</p>
 <table class="evitar">
   <thead><tr><th style="width:24%">Te pide</th><th style="width:40%">Tocás</th><th>Y después</th></tr></thead>
   <tbody>
-    <tr><td>Quién ataca</td><td>El jugador que remata</td><td>—</td></tr>
-    <tr><td rowspan="3">Qué hace con la pelota<br>
-            <span class="nota">el toque ahora se carga como ataque
-            colocado / finta</span></td>
-        <td><strong>Ataque</strong> → zona 1, 6 o 5 del rival</td>
-        <td>Sigue: falta el resultado</td></tr>
+    <tr><td>Quién ataca</td>
+        <td>Nada si atacó el que la app resalta con un aro (el que juega en la
+            zona a la que se armó). Si fue otro, lo tocás. Se pregunta siempre
+            cuando se armó a la zona 5 o a la del armador</td><td>—</td></tr>
+    <tr><td rowspan="3">Hacia qué zona ataca<br>
+            <span class="nota">tocar la zona ya es atacar. El toque se carga
+            como ataque colocado / finta</span></td>
+        <td>Zona 1, 6 o 5 del rival</td>
+        <td>Sigue: falta cómo atacó y qué pasó</td></tr>
     <tr><td><strong>Libre</strong> → cualquier zona (1 a 9)</td>
-        <td>Falta cómo terminó: <strong>Sigue</strong> (del otro lado),
-            <strong>Punto</strong>, o <strong>Block Out</strong> + bloqueador
-            (punto del que hizo el libre). No cuenta como ataque</td></tr>
+        <td>Falta cómo terminó: <strong>Sigue</strong> (del otro lado; también
+            vale tocar al rival que la levanta), <strong>Punto</strong>, o
+            <strong>Block Out</strong> + bloqueador (punto del que hizo el
+            libre). No cuenta como ataque</td></tr>
     <tr><td><strong>Libre</strong> →
             <strong>salió mal</strong></td>
         <td><strong>Punto del rival</strong>. No cuenta como ataque fallado:
             el que hizo el libre no estaba rematando</td></tr>
-    <tr><td>Cómo atacó</td>
-        <td><strong>Ataque potente</strong> · <strong>Colocado / finta</strong> ·
-            <strong>No se vio</strong></td>
-        <td>Recién después pregunta qué pasó. El block-out no va acá: es el
-            resultado <strong>Block Out</strong></td></tr>
+    <tr><td>Cómo atacó y qué pasó</td>
+        <td>Un solo toque en la grilla: la fila dice cómo atacó
+            (<strong>Ataque potente</strong> o <strong>Colocado / finta</strong>)
+            y el botón, qué pasó. Con <strong>No se vio</strong> se pregunta
+            sólo qué pasó</td>
+        <td>El block-out no es una forma de atacar: es el resultado
+            <strong>Block Out</strong></td></tr>
     <tr class="cierra"><td rowspan="8">Qué pasó con el ataque</td>
         <td><strong>Punto</strong></td><td><strong>Punto</strong> del que atacó</td></tr>
     <tr><td><strong>Defendido</strong></td>
-        <td>Sigue, del lado del que defendió</td></tr>
+        <td>Sigue, del lado del que defendió. Después de <strong>No se
+            vio</strong>, de una segunda o de un ataque de primera también
+            podés tocar directamente al rival que la defendió: vale por
+            Defendido y la jugada siguiente arranca con él ya tocado</td></tr>
     <tr class="cierra"><td><strong>Afuera</strong></td>
         <td><strong>Punto</strong> del que defendía</td></tr>
     <tr class="cierra"><td><strong>Malla</strong> (a la red)</td>
@@ -511,7 +562,7 @@ corresponden. No hay que buscarlos en ningún menú.</p>
     <tr><td><strong>Pasada de segunda</strong><br>
             <span class="nota">el que recibió la manda él mismo al otro lado, en
             el segundo toque</span></td>
-        <td>En <em>«Quién arma»</em>: <strong>la manda de segunda</strong></td>
+        <td>En el paso del armado: <strong>la manda de segunda</strong></td>
         <td>Reemplaza armado y ataque <strong>juntos</strong>. Después te pide el
             jugador, la zona (1 a 9) y cómo terminó: punto, defendido o afuera.</td></tr>
     <tr><td><strong>Ataque de primera</strong><br>
@@ -523,7 +574,8 @@ corresponden. No hay que buscarlos en ningún menú.</p>
             defendieron.</td></tr>
     <tr><td><strong>Libre</strong><br>
             <span class="nota">no la atacó: la devolvió</span></td>
-        <td>En <em>«Qué hace con la pelota»</em>: <strong>Libre</strong></td>
+        <td>En <em>«Hacia qué zona ataca»</em>, en vez de la zona:
+            <strong>Libre</strong></td>
         <td>Elegís la zona y cómo terminó: <strong>Sigue</strong> (del otro
             lado), <strong>Punto</strong> o <strong>Block Out</strong>. Si
             el libre se erró (se fue, quedó en la red, no pasó), en
@@ -839,16 +891,22 @@ esto alcanza.</p>
     <table>
       <tbody>
         <tr><td><strong>Saque</strong></td>
-            <td>desde 1/6/5 → hacia 1 a 9 → <em>(Potencia) · As · Error · Sigue</em></td></tr>
+            <td>desde 1/6/5 → hacia 1 a 9 → <em>(Potencia) · As · Error</em> ·
+                o tocás al que recibe</td></tr>
         <tr><td><strong>Recepción</strong></td>
-            <td>quién → calidad 3/2/1/0<br>
+            <td>calidad 3/2/1/0<br>
                 <span class="nota">o «0 · no se pudo jugar» / «se fue al otro lado»</span></td></tr>
         <tr><td><strong>Armado</strong></td>
-            <td>quién → zona 1 a 6 → (A+ · A0 · A-)<br>
-                <span class="nota">o «la manda de segunda» / «se pasó» / «AX · error de armado»</span></td></tr>
+            <td>zona 1 a 6 → (A+ · A0 · A-)<br>
+                <span class="nota">arma el armador; si no, «armó otro jugador»<br>
+                o «la manda de segunda» / «se pasó» / «AX · error de armado»</span></td></tr>
         <tr><td><strong>Ataque</strong></td>
-            <td>quién → Ataque (1/6/5) → Potente · Colocado → qué pasó<br>
-                <span class="nota">o Libre · Toque → zona → cómo terminó</span></td></tr>
+            <td>zona 1/6/5 → grilla: cómo atacó + qué pasó<br>
+                <span class="nota">ataca el del aro; si no, tocás a otro antes<br>
+                o Libre → zona → cómo terminó</span></td></tr>
+        <tr><td><strong>Punto de libro</strong></td>
+            <td>7 toques: desde · hacia · receptor · calidad · zona de armado ·
+                zona de ataque · resultado</td></tr>
       </tbody>
     </table>
 
