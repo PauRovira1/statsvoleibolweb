@@ -3,6 +3,8 @@
     python -m video nuevo [videos...]   da de alta y arma la copia liviana (proxy)
     python -m video lista               los videos dados de alta
     python -m video servir              abre las pantallas (revision y galeria)
+    python -m video modelos             baja y verifica los modelos de pelota
+    python -m video probar-pelota <v>   etapa 2: ¿los detectores ven la pelota?
 
 "nuevo" sin nada da de alta los videos sueltos en Videos/ y retoma los que
 quedaron sin proxy (por ejemplo, porque se corto con Ctrl+C).
@@ -120,6 +122,40 @@ def _servir(args) -> int:
     return servidor_video.servir(args.puerto, not args.sin_navegador, args.carpeta)
 
 
+def _modelos(args) -> int:
+    from . import modelos
+    fallas = 0
+    for modelo in modelos.CATALOGO.values():
+        try:
+            ya = modelos.esta_bien(modelo)
+            ruta = modelos.bajar(modelo)
+            print(f"{modelo.nombre:8} {'ya estaba' if ya else 'bajado'}: {ruta.name}  "
+                  f"({modelo.descripcion})")
+        except (OSError, modelos.ErrorDeModelo) as error:
+            print(f"{modelo.nombre:8} no se pudo bajar: {error}")
+            fallas += 1
+    return 1 if fallas else 0
+
+
+def _probar_pelota(args) -> int:
+    from . import modelos, prueba_pelota
+    try:
+        desde = prueba_pelota.leer_reloj(args.desde) if args.desde else None
+        detectores = args.detectores.split(",") if args.detectores else None
+        informe = prueba_pelota.probar(args.nombre, args.carpeta, desde, args.minutos,
+                                       detectores)
+    except (proyecto.ErrorDeProyecto, modelos.ErrorDeModelo, ValueError) as error:
+        print(error)
+        return 1
+    except ImportError as error:
+        print(f"Falta una libreria ({error.name}). Instala lo de la etapa 2 con: "
+              f"python -m pip install -r requirements-video.txt")
+        return 2
+    print(f"\nListo: {informe}")
+    print(informe.read_text(encoding="utf-8"))
+    return 0
+
+
 def main(argv=None) -> int:
     # En Windows, con la salida redirigida, un nombre de archivo raro no
     # puede tumbar el programa por no poder imprimirse.
@@ -144,6 +180,17 @@ def main(argv=None) -> int:
     servir.add_argument("--puerto", type=int, default=8001)
     servir.add_argument("--sin-navegador", action="store_true")
     servir.set_defaults(hacer=_servir)
+
+    ordenes.add_parser("modelos", help="bajar y verificar los modelos de pelota") \
+        .set_defaults(hacer=_modelos)
+
+    probar = ordenes.add_parser("probar-pelota",
+                                help="etapa 2: medir si los detectores ven la pelota")
+    probar.add_argument("nombre", help="el video, como sale en 'lista'")
+    probar.add_argument("--desde", help="por defecto, el tramo con mas armadas (ej. 1:08:46)")
+    probar.add_argument("--minutos", type=float, default=5.0)
+    probar.add_argument("--detectores", help="separados por coma: movimiento,v4c,fastv1")
+    probar.set_defaults(hacer=_probar_pelota)
 
     args = parser.parse_args(argv)
     return args.hacer(args)

@@ -180,9 +180,12 @@ class TestAislamiento(unittest.TestCase):
         self.assertEqual(salida.stdout.strip().splitlines()[-1], "[]")
 
     def test_video_no_importa_la_app_de_carga(self):
-        codigo = ("import sys, video.servidor_video, video.decisiones, video.__main__; "
+        # ni las librerias pesadas: dar de alta, revisar y la galeria andan
+        # sin numpy, cv2 ni onnxruntime (se cargan al detectar)
+        codigo = ("import sys, video.servidor_video, video.decisiones, video.__main__, "
+                  "video.prueba_pelota, video.trayectorias, video.modelos, video.pelota; "
                   "print(sorted(m for m in ('servidor_voley', 'analisis_voley', "
-                  "'sesion_web', 'notacion') if m in sys.modules))")
+                  "'sesion_web', 'notacion', 'cv2', 'numpy', 'onnxruntime') if m in sys.modules))")
         salida = subprocess.run([sys.executable, "-c", codigo], cwd=RAIZ,
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(salida.returncode, 0, salida.stderr)

@@ -4,3 +4,7 @@
 #
 # Etapa 1: ffmpeg, para la copia liviana que reproducen las pantallas.
 imageio-ffmpeg>=0.5
+# Etapa 2: leer cuadros y detectar la pelota (en CPU).
+numpy>=1.26
+opencv-python>=4.8
+onnxruntime>=1.18

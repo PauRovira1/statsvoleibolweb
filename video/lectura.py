@@ -1,9 +1,10 @@
-"""Del archivo de video a lo que necesitan las pantallas: metadatos y proxy.
+"""Del archivo de video a lo que necesitan las pantallas y los detectores:
+metadatos, proxy y cuadros con su tiempo.
 
-Usa el ffmpeg que trae imageio-ffmpeg (python -m pip install -r
-requirements-video.txt). No usa cv2: el cv2 de pip en Windows no escribe
-H.264, que es lo unico que reproducen todos los navegadores, y para leer los
-metadatos alcanza con ffmpeg. cv2 entra recien con la deteccion (etapa 2).
+Metadatos y proxy usan el ffmpeg que trae imageio-ffmpeg (python -m pip
+install -r requirements-video.txt), no cv2: el cv2 de pip en Windows no
+escribe H.264, que es lo unico que reproducen todos los navegadores. Los
+cuadros para detectar la pelota (cuadros) si los lee cv2.
 
 El proxy es la copia que reproducen las pantallas:
   - H.264 a 720p, porque el original puede venir en HEVC (no todos los
@@ -161,3 +162,38 @@ def _borrar(ruta: Path) -> None:
         Path(ruta).unlink(missing_ok=True)
     except PermissionError:
         pass    # si Windows lo tiene tomado, se pisa la proxima vez
+
+
+def cuadros(ruta: Path, desde: float = 0.0, hasta: float | None = None):
+    """(t, cuadro) del original entre desde y hasta, en orden. El tiempo de
+    cada cuadro es el que trae el video (CAP_PROP_POS_MSEC despues de leerlo),
+    nunca "numero de cuadro / fps": en un celular que graba a ritmo variable,
+    contar cuadros se corre segundos a lo largo de un partido.
+
+    Para empezar a la mitad se salta un segundo antes y se descarta lo que
+    sobra mirando el tiempo de cada cuadro: el salto de cv2 cae en el cuadro
+    clave anterior y no conviene confiar en que aterrice justo.
+
+    El cuadro sale como lo da cv2 (BGR, ya girado si el video trae rotacion).
+    cv2 se importa aca adentro: dar de alta y armar el proxy no lo necesitan.
+    """
+    import cv2
+
+    captura = cv2.VideoCapture(str(ruta))
+    if not captura.isOpened():
+        raise ErrorDeLectura(f"cv2 no pudo abrir {Path(ruta).name}.")
+    try:
+        if desde > 0:
+            captura.set(cv2.CAP_PROP_POS_MSEC, max(0.0, desde - 1.0) * 1000)
+        while True:
+            ok, cuadro = captura.read()
+            if not ok:
+                return
+            t = captura.get(cv2.CAP_PROP_POS_MSEC) / 1000
+            if t < desde - 1e-6:
+                continue
+            if hasta is not None and t > hasta + 1e-6:
+                return
+            yield t, cuadro
+    finally:
+        captura.release()

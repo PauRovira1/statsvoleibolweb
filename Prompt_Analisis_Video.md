@@ -154,6 +154,8 @@ video/                      el paquete; nada de afuera lo importa
   calibracion.py            de puntos marcados a camara                     (puro)
   geometria.py              proyectar, rayos, planos, ajuste balistico      (puro)
   pelota.py                 detector de pelota: interfaz + implementaciones (cv2/onnx)
+  modelos.py                catalogo de modelos: origen fijo, huella, bajar y verificar
+  prueba_pelota.py          la medicion de la etapa 2 (python -m video probar-pelota)
   trayectorias.py           de candidatos sueltos a arcos                   (puro)
   eventos.py                toques, rallies, posesiones, armadas            (puro)
   fusion.py                 propuestas + decisiones mias = armadas          (puro)
@@ -324,6 +326,12 @@ puntaje)`:
 Cuál se usa, a qué resolución y con qué umbral **lo decide la etapa 2 midiendo
 sobre mis videos**, no este documento.
 
+*Decidido en la etapa 2 (2026-11-17):* **VballNet V4c**, a 512×288 como lo
+entrenó su autor, guardando los candidatos desde 0,1 de puntaje (los arcos se
+encargan de los dudosos). FastV1 queda como opción rápida (3,4 veces más
+rápido, un poco menos parejo). El de movimiento no alcanza como detector
+principal: se distrae con los jugadores. Juntar V4c y FastV1 no mejoró nada.
+
 Para no quemar una hora de más: los tramos sin movimiento en la cancha (tiempos
 muertos, entretiempos) se saltean con una prueba barata antes de pasar el
 modelo. Guardá los candidatos con puntaje bajo también: el filtro de después
@@ -451,6 +459,28 @@ cerca / lejos) y velocidad en cuadros por segundo en esta máquina.
 *Listo cuando:* está la tabla y una recomendación. **Pará acá y mostrame el
 resultado**: si ningún detector pasa de ~70 % en el vuelo de las armadas, el
 paso siguiente es afinar un modelo con mis videos, no seguir construyendo.
+*Estado (2026-11-17):* hecha, con `python -m video probar-pelota`, sobre
+`partido1` (640×360, 29 cuadros/s, muy comprimido) en dos tramos de 5 minutos
+con la cámara en puntas distintas del gimnasio:
+
+| Detector | Set 3 (11 armadas) | Set 1 (8 armadas) | Velocidad en esta PC |
+|---|---|---|---|
+| V4c | 91 % en un arco · 91 % sobre la pelota → **83 %** | 90 % · 95 % → **86 %** | ~60 cuadros/s |
+| FastV1 | 95 % · 94 % → **89 %** | 90 % · 87 % → **78 %** | ~205 cuadros/s |
+| Movimiento | 39 % · 97 % → 38 % | 21 % · 98 % → 21 % | ~270 cuadros/s |
+
+"Sobre la pelota" = de los puntos en un arco, cuántos caen sobre píxeles
+amarillos (la pelota de ese partido); al azar en el mismo cuadro da 0–6 %. Lo
+que falta hasta 100 % son sobre todo los cuadros del toque (la pelota entre
+las manos o entre jugadores). Lo aprendido del video:
+- La cámara está baja, detrás de la línea de fondo, y en este partido siempre
+  detrás de mi equipo (cambiaron la cámara de punta entre sets). No hubo
+  armadas de mi equipo del lado lejano: "lejos" no se pudo medir.
+- Las marcas a mano caen 0,1–0,25 s después del toque del armador.
+- El proxy y el original coinciden cuadro a cuadro (desfase 0).
+- Un pedazo corto de cualquier movimiento suave pasa como arco (ver
+  `trayectorias.py`): sin la gravedad calibrada de la etapa 3, lo que dice un
+  arco se confirma a ojo o por color.
 
 **Etapa 3 — Calibración.** `calibracion.py`, `geometria.py` y la pantalla para
 marcar puntos, con el dibujo de la cancha encima. De qué lado está mi equipo en
