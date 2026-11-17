@@ -36,6 +36,35 @@ del mismo camino, sin un caso aparte:
 
     con dorsal:  "5" + "_1" + "_6"  ->  5_1_6
     sin dorsal:       "_1" + "_6"   ->  1_6
+
+Los toques que se ahorran
+-------------------------
+Un toque puede valer por dos pasos. La linea que sale es la misma de siempre:
+lo unico que cambia es que el pedazo de texto del paso que se salteo viaja
+pegado al del toque, en una sola ficha de la pila (y por eso deshacer lo saca
+entero, de un toque). Hay tres formas, y las tres estan escritas en la tabla:
+
+    "directo"  En un paso de botones tambien se puede tocar a un jugador, y
+               eso vale por uno de los botones. Despues del saque, tocar al
+               que recibe es "Sigue" + ese jugador ("_X/7"). Cuando el boton
+               cierra la linea ("Defendido"), el jugador no se escribe: queda
+               anotado en "arrastre" para que la pantalla arranque la linea
+               siguiente con el ya tocado.
+
+    "asume"    En un paso que pide un jugador hay uno que se da por hecho, y
+               entonces se ofrece de una lo del paso que sigue. Tocar la zona
+               de armado es "armo el armador hacia ahi" ("/3_4"); tocar la
+               zona del ataque es "ataco el que juega en la zona a la que se
+               armo" ("/88_1"). QUIEN es el armador y a quien se le arma en
+               cada zona no se decide aca: lo manda el motor
+               (analisis_voley.puestos_en_cancha) y llega por el constructor.
+
+    "junta"    Dos pasos de botones seguidos se muestran como una sola
+               grilla: como ataco y que paso ("_PO_P") es un toque.
+
+Ninguna de las tres saca nada: el camino largo sigue estando (el boton
+"Sigue", tocar al que arma, tocar al que ataca), porque es el unico que hay
+cuando el equipo no tiene rotacion o cuando la jugada no fue la de libro.
 """
 
 # Zonas de la cancha. El 1 es el fondo derecha (el que saca) y la numeracion
@@ -94,6 +123,9 @@ PASOS = {
             {"id": "error", "etiqueta": "Error", "texto": "_E", "cierra": True, "tono": "mal"},
             {"id": "sigue", "etiqueta": "Sigue", "texto": "_X", "siguiente": "RECIBE_JUGADOR"},
         ],
+        # tocar al que recibe ya dice que el saque siguio
+        "directo": {"por": "sigue", "lado": "pelota",
+                    "titulo": "Toca al que recibe (o como termino el saque)"},
     },
 
     # El receptor rival al que le hicieron el as: es el receptor objetivo del
@@ -153,6 +185,13 @@ PASOS = {
         "titulo": "Quien arma",
         "pide": "jugador", "lado": "pelota",
         "prefijo": "/", "siguiente": "ARMA_ZONA",
+        # Casi siempre arma el armador, asi que se ofrecen de una las zonas.
+        # Los circulos se esconden atras de un boton en vez de quedar vivos:
+        # la zona a la que se arma y el jugador que esta parado en ella son la
+        # misma celda, y con los dos encendidos no se sabria que se toco.
+        "asume": {"quien": "armador",
+                  "titulo": "Arma el {jugador}: hacia que zona",
+                  "otro": {"id": "arma_otro", "etiqueta": "armo otro jugador"}},
         "opciones": [
             # la pasada de segunda ES el segundo toque: reemplaza armado y
             # ataque juntos, no va despues del armado
@@ -176,7 +215,12 @@ PASOS = {
     "ATACA_JUGADOR": {
         "titulo": "Quien ataca",
         "pide": "jugador", "lado": "pelota",
-        "prefijo": "/", "siguiente": "ATACA_TIPO",
+        "prefijo": "/", "siguiente": "ATACA_ZONA",
+        # A quien se le armo sale de la zona del armado (a 4, el punta
+        # delantero). Aca los circulos si quedan vivos: estan en la mitad
+        # propia y la zona del ataque en la de enfrente, no se pisan.
+        "asume": {"quien": "atacante",
+                  "titulo": "Ataca el {jugador}: hacia que zona (o toca a otro)"},
         "opciones": [
             # el "_X" va pegado a la zona de armado, antes del "/" del
             # atacante: por eso se ofrece aca y no despues
@@ -193,21 +237,18 @@ PASOS = {
              "siguiente": "ATACA_JUGADOR", "grupo": "calidad_armado", "tono": "mal"},
         ],
     },
-    # El "Toque" ya no se ofrece: lo que antes se cargaba como toque ahora es
-    # un ataque colocado / finta (ver ATACA_FORMA). El motor sigue leyendo el
-    # "_T_" de los partidos ya guardados.
-    "ATACA_TIPO": {
-        "titulo": "Que hace con la pelota",
-        "pide": "boton",
-        "opciones": [
-            {"id": "ataque", "etiqueta": "Ataque", "texto": "", "siguiente": "ATACA_ZONA"},
-            {"id": "libre", "etiqueta": "Libre", "texto": "", "siguiente": "LIBRE_ZONA"},
-        ],
-    },
+    # Tocar la zona ES atacar: antes habia un paso entero para elegir entre
+    # "Ataque" y "Libre", y el libre es la excepcion. Queda como un boton al
+    # lado. El "Toque" ya no se ofrece: lo que antes se cargaba como toque
+    # ahora es un ataque colocado / finta (ver ATACA_FORMA). El motor sigue
+    # leyendo el "_T_" de los partidos ya guardados.
     "ATACA_ZONA": {
         "titulo": "Hacia que zona ataca",
         "pide": "zona", "lado": "rival", "zonas": list(ZONAS_FONDO),
         "prefijo": "_", "siguiente": "ATACA_FORMA",
+        "opciones": [
+            {"id": "libre", "etiqueta": "Libre", "texto": "", "siguiente": "LIBRE_ZONA"},
+        ],
     },
     # El libre tambien se puede errar. Va como una opcion mas del
     # paso de la zona y no como un paso aparte porque es lo que pasa en la
@@ -233,19 +274,25 @@ PASOS = {
             {"id": "bloqueo_usado", "etiqueta": "Block Out", "texto": "",
              "siguiente": "BLOQUEO_USADO"},
         ],
+        "directo": {"por": "sigue", "lado": "rival",
+                    "titulo": "Como termino (o toca al rival que la levanta)"},
     },
     # Primero como fue el ataque y despues que paso. El texto va en ese mismo
     # orden: 4_1_PO_P. "No se vio" no escribe nada: es para cuando no se pudo
     # ver, y es lo que deja armar tocando los partidos cargados antes de que
     # existiera esta pregunta. El block-out no es una forma: es un resultado.
+    #
+    # Las dos formas van juntas con el resultado: en pantalla es una grilla
+    # con una fila por forma, y un toque escribe las dos cosas ("_PO_P").
+    # "No se vio" no se junta: lleva a los resultados solos.
     "ATACA_FORMA": {
-        "titulo": "Como ataco",
+        "titulo": "Como ataco y que paso",
         "pide": "boton",
         "opciones": [
             {"id": "potente", "etiqueta": "Ataque potente", "texto": "_PO",
-             "siguiente": "ATACA_RESULTADO"},
+             "siguiente": "ATACA_RESULTADO", "junta": True},
             {"id": "colocado", "etiqueta": "Colocado / finta", "texto": "_CO",
-             "siguiente": "ATACA_RESULTADO"},
+             "siguiente": "ATACA_RESULTADO", "junta": True},
             {"id": "sin_forma", "etiqueta": "No se vio", "texto": "",
              "siguiente": "ATACA_RESULTADO"},
         ],
@@ -267,6 +314,12 @@ PASOS = {
             {"id": "bloqueo_rejugable", "etiqueta": "Bloqueo rejugable", "texto": "",
              "siguiente": "BLOQUEO_REJUGABLE"},
         ],
+        # Tocar a un rival es "Defendido", y ese rival es el que la toca en la
+        # linea que viene. En la grilla de ATACA_FORMA no se ofrece: ahi el
+        # toque tendria que decir tambien como fue el ataque, y un circulo no
+        # puede decir las dos cosas sin perder una.
+        "directo": {"por": "defendido", "lado": "rival",
+                    "titulo": "Que paso (o toca al rival que la defendio)"},
     },
     "BLOQUEO_PUNTO": {
         "titulo": "Quien bloqueo",
@@ -310,6 +363,8 @@ PASOS = {
             {"id": "defendido", "etiqueta": "Defendido", "texto": "_D", "cierra": True},
             {"id": "afuera", "etiqueta": "Afuera", "texto": "_O", "cierra": True, "tono": "mal"},
         ],
+        "directo": {"por": "defendido", "lado": "rival",
+                    "titulo": "Que paso (o toca al rival que la defendio)"},
     },
     "PRIMERA_JUGADOR": {
         "titulo": "Quien ataca de primera",
@@ -322,13 +377,13 @@ PASOS = {
         "prefijo": "_A_", "siguiente": "PRIMERA_FORMA",
     },
     "PRIMERA_FORMA": {
-        "titulo": "Como ataco",
+        "titulo": "Como ataco y que paso",
         "pide": "boton",
         "opciones": [
             {"id": "potente", "etiqueta": "Ataque potente", "texto": "_PO",
-             "siguiente": "PRIMERA_RESULTADO"},
+             "siguiente": "PRIMERA_RESULTADO", "junta": True},
             {"id": "colocado", "etiqueta": "Colocado / finta", "texto": "_CO",
-             "siguiente": "PRIMERA_RESULTADO"},
+             "siguiente": "PRIMERA_RESULTADO", "junta": True},
             {"id": "sin_forma", "etiqueta": "No se vio", "texto": "",
              "siguiente": "PRIMERA_RESULTADO"},
         ],
@@ -340,6 +395,8 @@ PASOS = {
             {"id": "punto", "etiqueta": "Punto", "texto": "_P", "cierra": True, "tono": "bien"},
             {"id": "defendido", "etiqueta": "Defendido", "texto": "_D", "cierra": True},
         ],
+        "directo": {"por": "defendido", "lado": "rival",
+                    "titulo": "Que paso (o toca al rival que la defendio)"},
     },
 }
 
@@ -374,11 +431,17 @@ class Armador:
 
     Cada toque apila {estado, texto} y deshacer saca el ultimo: por eso
     deshacer es exacto sin importar cuanto texto agrego cada toque, ni si
-    agrego cero."""
+    agrego cero.
+
+    "armadores" ({equipo: dorsal}) y "atacantes" ({equipo: [a quien se le arma
+    en la zona 1, en la 2, ... en la 6]}) son lo que el motor dice de cada
+    equipo. Sin ellos no se asume nada y la carga es la de siempre, toque por
+    toque: es lo que pasa con un equipo sin rotacion."""
 
     def __init__(self, espera: str, equipo_saca: str,
                  equipo_con_la_pelota: str | None = None,
-                 planteles: dict | None = None, sacador_conocido: bool = True):
+                 planteles: dict | None = None, sacador_conocido: bool = True,
+                 armadores: dict | None = None, atacantes: dict | None = None):
         self.espera = espera
         self.equipo_saca = equipo_saca
         # Adentro de un bloque de saque la pelota es del que RECIBE: el que
@@ -390,6 +453,8 @@ class Armador:
             else (equipo_con_la_pelota or otro_equipo(equipo_saca)))
         self.planteles = planteles or {}
         self.sacador_conocido = sacador_conocido
+        self.armadores = armadores or {}
+        self.atacantes = atacantes or {}
         self.pasos: list[dict] = []
         self.estado = primer_paso(espera, sacador_conocido)
 
@@ -402,6 +467,12 @@ class Armador:
     def cerrada(self) -> bool:
         return bool(self.pasos) and self.pasos[-1]["cierra"]
 
+    @property
+    def arrastre(self):
+        """El dorsal que ya quedo dicho para la linea que viene: el rival que
+        se toco para decir "Defendido". None si la linea no cerro asi."""
+        return self.pasos[-1].get("arrastra") if self.cerrada else None
+
     def equipo_de(self, lado: str) -> str:
         """A que equipo apunta un "lado" en esta linea."""
         if lado == "saca":
@@ -413,10 +484,64 @@ class Armador:
     def plantel_de(self, lado: str) -> list:
         return list(self.planteles.get(self.equipo_de(lado)) or [])
 
+    def _ultimo(self, campo: str):
+        """El ultimo jugador (o la ultima zona) que se nombro en la linea."""
+        for paso in reversed(self.pasos):
+            if paso.get(campo) is not None:
+                return paso[campo]
+        return None
+
+    # ------------------------------------------------------------------
+    def asumido(self):
+        """El jugador que se da por hecho en este paso, o None.
+
+        No se asume a nadie que no este en la cancha, ni al que acaba de tocar
+        la pelota: nadie la toca dos veces seguidas, asi que si el armador
+        recibio, arma otro, y hay que decir quien."""
+        if self.cerrada:
+            return None
+        paso = PASOS[self.estado]
+        asume = paso.get("asume")
+        if not asume:
+            return None
+        otro = asume.get("otro")
+        if otro and any(p["estado"] == self.estado and p["id"] == otro["id"]
+                        for p in self.pasos):
+            return None
+        equipo = self.equipo_de(paso["lado"])
+        if asume["quien"] == "armador":
+            candidato = self.armadores.get(equipo)
+        else:
+            por_zona = self.atacantes.get(equipo) or []
+            zona = self._ultimo("zona")
+            candidato = por_zona[zona - 1] if zona and zona <= len(por_zona) else None
+        if candidato is None or candidato not in (self.planteles.get(equipo) or []):
+            return None
+        # el "otro" tecleado puede venir como texto: se compara escrito
+        if str(candidato) == str(self._ultimo("jugador")):
+            return None
+        return candidato
+
+    def titulo(self) -> str:
+        """Lo que se pregunta ahora. Cambia cuando hay un atajo a mano, para
+        que se vea que el toque vale por dos."""
+        paso = PASOS[self.estado]
+        asumido = self.asumido()
+        if asumido is not None:
+            return paso["asume"]["titulo"].replace("{jugador}", str(asumido))
+        directo = paso.get("directo")
+        if directo and self._directos(paso):
+            return directo["titulo"]
+        return paso["titulo"]
+
     # ------------------------------------------------------------------
     def opciones(self) -> list[dict]:
         """Lo unico que se puede tocar ahora. La pantalla apaga todo el resto:
-        esa es la razon por la que no hace falta saber la notacion."""
+        esa es la razon por la que no hace falta saber la notacion.
+
+        Los atajos van primero: asi el que busca como armar una linea (los
+        tests) prueba antes el camino corto, que es el que se usa en la
+        cancha."""
         if self.cerrada:
             return []
         paso = PASOS[self.estado]
@@ -426,7 +551,19 @@ class Armador:
                          if o["id"] in usados and o.get("grupo")}
         salida = []
 
-        if paso["pide"] == "jugador":
+        asumido = self.asumido()
+        if asumido is not None:
+            salida.extend(self._del_paso_que_sigue(paso, asumido))
+        if paso.get("directo"):
+            salida.extend(self._directos(paso))
+
+        otro = (paso.get("asume") or {}).get("otro")
+        if asumido is not None and otro:
+            # los circulos quedan atras de este boton (ver ARMA_JUGADOR)
+            salida.append({"id": otro["id"], "tipo": "boton", "etiqueta": otro["etiqueta"],
+                           "texto": "", "siguiente": self.estado, "cierra": False,
+                           "tono": None})
+        elif paso["pide"] == "jugador":
             for dorsal in self.plantel_de(paso["lado"]):
                 salida.append(self._ficha(paso, f"j{dorsal}", "jugador", str(dorsal), dorsal))
             # Siempre, tenga o no rotacion el equipo: en los volcados de
@@ -449,11 +586,10 @@ class Armador:
                 continue
             if extra.get("grupo") and extra["grupo"] in grupos_usados:
                 continue
-            salida.append({
-                "id": extra["id"], "tipo": "boton", "etiqueta": extra["etiqueta"],
-                "texto": extra["texto"], "siguiente": extra.get("siguiente"),
-                "cierra": bool(extra.get("cierra")), "tono": extra.get("tono"),
-            })
+            if extra.get("junta"):
+                salida.extend(self._juntas(extra))
+                continue
+            salida.append(self._boton(extra))
         return salida
 
     def _ficha(self, paso: dict, identificador: str, tipo: str,
@@ -463,7 +599,71 @@ class Armador:
             "texto": f"{paso.get('prefijo', '')}{valor}{paso.get('sufijo', '')}",
             "siguiente": paso.get("siguiente"), "cierra": bool(paso.get("cierra")),
             "lado": paso.get("lado"),
+            # a quien (o que zona) nombra el toque: de aca sale despues a
+            # quien se asume
+            tipo: valor,
         }
+
+    def _boton(self, extra: dict, delante: str = "") -> dict:
+        return {"id": extra["id"], "tipo": "boton", "etiqueta": extra["etiqueta"],
+                "texto": delante + extra["texto"], "siguiente": extra.get("siguiente"),
+                "cierra": bool(extra.get("cierra")), "tono": extra.get("tono")}
+
+    def _del_paso_que_sigue(self, paso: dict, jugador) -> list[dict]:
+        """Lo que ofrece el paso siguiente, con el jugador asumido por delante:
+        un toque escribe los dos pedazos ("/3" + "_4")."""
+        destino = PASOS[paso["siguiente"]]
+        delante = f"{paso.get('prefijo', '')}{jugador}{paso.get('sufijo', '')}"
+        salida = []
+        for zona in destino.get("zonas", ()):
+            ficha = self._ficha(destino, f"z{zona}", "zona", str(zona), zona)
+            ficha["texto"] = delante + ficha["texto"]
+            ficha["jugador"] = jugador
+            salida.append(ficha)
+        for extra in destino.get("opciones", ()):
+            if extra.get("solo") and extra["solo"] != self.espera:
+                continue
+            boton = self._boton(extra, delante)
+            boton["jugador"] = jugador
+            salida.append(boton)
+        return salida
+
+    def _directos(self, paso: dict) -> list[dict]:
+        """Los circulos que valen por un boton de este paso."""
+        directo = paso["directo"]
+        base = next((o for o in paso.get("opciones", ()) if o["id"] == directo["por"]), None)
+        if base is None or (base.get("solo") and base["solo"] != self.espera):
+            return []
+        destino = None if base.get("cierra") else PASOS[base["siguiente"]]
+        salida = []
+        for dorsal in self.plantel_de(directo["lado"]):
+            ficha = {"id": f"j{dorsal}", "tipo": "jugador", "etiqueta": str(dorsal),
+                     "valor": dorsal, "lado": directo["lado"], "jugador": dorsal}
+            if destino is None:
+                # el boton cerraba la linea: el jugador no se escribe, se
+                # lleva a la que viene
+                ficha.update(texto=base["texto"], siguiente=None, cierra=True,
+                             arrastra=dorsal)
+            else:
+                ficha.update(
+                    texto=(f"{base['texto']}{destino.get('prefijo', '')}"
+                           f"{dorsal}{destino.get('sufijo', '')}"),
+                    siguiente=destino.get("siguiente"), cierra=bool(destino.get("cierra")))
+            salida.append(ficha)
+        return salida
+
+    def _juntas(self, extra: dict) -> list[dict]:
+        """Este boton y cada uno de los del paso al que lleva, en un toque.
+        "fila" es para que la pantalla los agrupe."""
+        salida = []
+        for final in PASOS[extra["siguiente"]].get("opciones", ()):
+            if final.get("solo") and final["solo"] != self.espera:
+                continue
+            boton = self._boton(final, extra["texto"])
+            boton["id"] = f"{extra['id']}+{final['id']}"
+            boton["fila"] = extra["etiqueta"]
+            salida.append(boton)
+        return salida
 
     # ------------------------------------------------------------------
     def tocar(self, identificador: str, numero=None) -> dict:
@@ -474,12 +674,16 @@ class Armador:
             if numero is None:
                 raise ValueError("falta el dorsal")
             texto = f"{opcion['prefijo']}{numero}{opcion['sufijo']}"
+            jugador = numero
         else:
             texto = opcion["texto"]
+            jugador = opcion.get("jugador")
 
         self.pasos.append({"estado": self.estado, "id": identificador,
                            "texto": texto, "cierra": opcion["cierra"],
-                           "numero": numero})
+                           "numero": numero, "jugador": jugador,
+                           "zona": opcion.get("zona"),
+                           "arrastra": opcion.get("arrastra")})
         if not opcion["cierra"] and opcion.get("siguiente"):
             self.estado = opcion["siguiente"]
         return opcion
@@ -494,7 +698,8 @@ class Armador:
 
     def copiar(self) -> "Armador":
         otro = Armador(self.espera, self.equipo_saca, self.equipo_con_la_pelota,
-                       self.planteles, self.sacador_conocido)
+                       self.planteles, self.sacador_conocido,
+                       self.armadores, self.atacantes)
         otro.pasos = [dict(paso) for paso in self.pasos]
         otro.estado = self.estado
         return otro

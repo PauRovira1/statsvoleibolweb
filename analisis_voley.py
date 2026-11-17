@@ -1305,6 +1305,72 @@ def zona_del_armador(rotaciones: dict, puntos: list[dict], numero_set: int, equi
     return en_cancha.index(armador) + 1 if armador in en_cancha else None
 
 
+# Un 5-1 se para siempre en el mismo orden: siguiendo las zonas 1 a 6 desde el
+# armador vienen punta, central, opuesto, punta y central. Por eso alcanza con
+# saber quien es el armador (la marca _S) para saber el puesto de los otros
+# cinco, y un cambio hereda el puesto del que sale sin que haya que decirlo.
+PUESTOS_DESDE_EL_ARMADOR = ("armador", "punta", "central", "opuesto", "punta", "central")
+
+# La zona de rotacion solo dice donde hay que estar parado al momento del
+# saque. Apenas la pelota esta en juego cada uno se va a su puesto: de los
+# tres delanteros el punta ataca por 4, el central por 3 y el armador o el
+# opuesto queda en 2; de los tres zagueros el punta va a 6, el central (o el
+# libero que juega por el) a 5 y el armador o el opuesto a 1.
+ZONAS_DE_ADELANTE = (2, 3, 4)
+ZONA_DE_JUEGO = {
+    True: {"punta": 4, "central": 3, "armador": 2, "opuesto": 2},     # delanteros
+    False: {"punta": 6, "central": 5, "armador": 1, "opuesto": 1},    # zagueros
+}
+PUESTOS_QUE_ATACAN = ("punta", "central", "opuesto")
+
+
+def puestos_en_cancha(
+    rotaciones: dict, puntos: list[dict], numero_set: int, equipo: str,
+    equipo_saca: str | None = None,
+) -> dict | None:
+    """Donde JUEGA cada uno ahora mismo, que no es donde le toca rotar.
+
+    Devuelve cuatro listas en orden de zonas 1 a 6:
+
+        zonas      quien esta parado en cada zona de juego (con el libero)
+        nominal    lo mismo sin el libero, para elegir al que sale en un cambio
+        puestos    que puesto es el de cada zona ("punta", "libero", ...)
+        atacantes  a quien se le arma cuando la pelota va a esa zona, o None
+
+    "atacantes" es lo que deja cargar el armado sin tocar despues al que
+    ataca: a 4 es el punta delantero, a 3 el central delantero, a 2 o a 1 el
+    opuesto (segun este adelante o atras) y a 6 el punta zaguero. Queda en
+    None donde no hay un atacante cantado: la zona 5, la zona en la que esta
+    parado el armador, y cualquiera que ocupe un libero.
+
+    Es para dibujar la cancha y para sugerir; las estadisticas no se enteran,
+    igual que con formacion_en_cancha. Devuelve None si no hay rotacion o si
+    el armador no esta entre los 6, que es cuando no hay de donde deducir los
+    puestos."""
+    nominal = rotacion_en_cancha(rotaciones, puntos, numero_set, equipo)
+    rotacion = (rotaciones or {}).get(equipo)
+    if not nominal or not rotacion or rotacion["armador"] not in nominal:
+        return None
+    formacion = formacion_en_cancha(rotaciones, puntos, numero_set, equipo, equipo_saca)
+    liberos = {libero["jugador"] for libero in rotacion.get("liberos") or []}
+    desde = nominal.index(rotacion["armador"])
+
+    zonas, sin_libero, puestos = [None] * 6, [None] * 6, [None] * 6
+    for indice in range(CANTIDAD_ROTACION):
+        puesto = PUESTOS_DESDE_EL_ARMADOR[(indice - desde) % CANTIDAD_ROTACION]
+        zona = ZONA_DE_JUEGO[(indice + 1) in ZONAS_DE_ADELANTE][puesto]
+        zonas[zona - 1] = formacion[indice]
+        sin_libero[zona - 1] = nominal[indice]
+        puestos[zona - 1] = "libero" if formacion[indice] in liberos else puesto
+
+    atacantes = [
+        zonas[zona - 1] if zona != 5 and puestos[zona - 1] in PUESTOS_QUE_ATACAN else None
+        for zona in range(1, CANTIDAD_ROTACION + 1)
+    ]
+    return {"zonas": zonas, "nominal": sin_libero, "puestos": puestos,
+            "atacantes": atacantes}
+
+
 def preguntar_equipo(mensaje: str, nombres: dict | None = None) -> str:
     """Pide una letra de equipo (A/B). Tambien acepta el nombre elegido para ese equipo."""
     nombres = nombres or {}
