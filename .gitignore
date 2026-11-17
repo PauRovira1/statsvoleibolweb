@@ -13,3 +13,9 @@ correcciones/
 plantel/
 privados/
 lambda_voley.zip
+
+# Analisis de video: un partido pesa gigas (GitHub corta en 100 MB) y los
+# modelos se bajan aparte. Ojo: en Videos/<nombre>/revision.json quedan las
+# armadas marcadas a mano; si importan, hay que guardarlas en otro lado.
+Videos/
+video/modelos/*.onnx

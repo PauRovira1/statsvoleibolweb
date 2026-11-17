@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Revisión de armadas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%234aa3ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="video.css">
+</head>
+<body>
+<header class="barra">
+  <a href="/">← Videos</a>
+  <h1 id="titulo">Revisión</h1>
+  <span id="guardado" class="guardado" role="status"></span>
+  <nav><a id="aGaleria" href="galeria.html">Galería</a></nav>
+</header>
+
+<main class="revision">
+  <section class="reproductor">
+    <div class="marco">
+      <video id="video" preload="auto" playsinline></video>
+      <div id="sinProxy" class="sinProxy" hidden>
+        Este video todavía no tiene la copia liviana para verlo.<br>
+        Corré <code>python -m video nuevo</code> y recargá.
+      </div>
+    </div>
+    <div class="estadoVideo">
+      <span id="reloj" class="reloj">0:00.00</span>
+      <span id="duracion" class="nota"></span>
+      <span id="donde" class="nota"></span>
+      <span id="velocidad" class="nota">1×</span>
+    </div>
+    <div id="linea" class="linea" title="Tocá para saltar. Tocá una raya para elegir esa armada."></div>
+    <div class="controles">
+      <button data-accion="atras" title="5 segundos atrás (Shift+←)">−5 s</button>
+      <button data-accion="cuadroAtras" title="Un cuadro atrás (←)">◀ cuadro</button>
+      <button data-accion="reproducir" title="Reproducir o pausar (Espacio)">▶ / ❚❚</button>
+      <button data-accion="cuadroAdelante" title="Un cuadro adelante (→)">cuadro ▶</button>
+      <button data-accion="adelante" title="5 segundos adelante (Shift+→)">+5 s</button>
+      <button data-accion="masLento" title="Más lento (−)">−</button>
+      <button data-accion="masRapido" title="Más rápido (+)">+</button>
+      <span class="separador"></span>
+      <button data-accion="marcar" class="primario" title="Armada en este cuadro (M)">Marcar (M)</button>
+      <button data-accion="set" title="Empieza un set acá (S)">Set acá (S)</button>
+      <button data-accion="deshacer" title="Deshacer lo último (Z)">Deshacer (Z)</button>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <section id="activa" class="tarjeta">
+      <div id="nadaElegido">
+        <p><b>Ninguna armada elegida.</b></p>
+        <p class="nota">Reproducí y apretá <kbd>M</kbd> en el cuadro en que arma. Para
+          volver a una, tocala en la lista o en la línea de tiempo.</p>
+      </div>
+      <div id="detalle" hidden>
+        <div class="cabecera">
+          <span id="aEstado" class="pastilla"></span>
+          <b id="aTiempo"></b>
+          <span id="aDonde" class="nota"></span>
+        </div>
+        <p id="aAviso" class="nota" hidden></p>
+        <div class="fila">
+          <span class="rotulo">Zona</span>
+          <div class="zonas" id="aZonas">
+            <button data-zona="4">4</button><button data-zona="3">3</button><button data-zona="2">2</button>
+            <button data-zona="5">5</button><button data-zona="6">6</button><button data-zona="1">1</button>
+          </div>
+        </div>
+        <div class="fila">
+          <span class="rotulo">Ataque</span>
+          <span id="aAtaque"></span>
+          <span class="botones"><button data-accion="ataque" title="El remate es en este cuadro (A)">Acá (A)</button></span>
+        </div>
+        <div class="fila">
+          <span class="rotulo">Recorte</span>
+          <span id="aRecorte"></span>
+          <span class="botones">
+            <button data-accion="inicio" title="El clip empieza en este cuadro ([ o I)">[ Inicio</button>
+            <button data-accion="fin" title="El clip termina en este cuadro (] o F)">Fin ]</button>
+          </span>
+        </div>
+        <div class="acciones">
+          <button data-accion="aceptar" class="primario" id="bAceptar">Aceptar (Enter)</button>
+          <button data-accion="descartar" class="peligro" id="bDescartar">Descartar (Supr)</button>
+          <button data-accion="soltar" title="Esc">Soltar (Esc)</button>
+        </div>
+      </div>
+      <label class="campo">Armador
+        <input id="armador" inputmode="numeric" autocomplete="off" placeholder="nº, queda fijo">
+      </label>
+      <label class="campo">Etiquetas
+        <input id="etiquetas" autocomplete="off" placeholder="separadas por coma">
+      </label>
+      <div id="etiquetasUsadas" class="chips bajoCampo"></div>
+      <label class="campo">Nota <input id="nota" autocomplete="off"></label>
+    </section>
+
+    <section id="formSet" class="tarjeta formSet" hidden>
+      <h2>Empieza un set en <span id="fsDesde"></span></h2>
+      <div class="opciones" id="fsNumero"></div>
+      <p class="nota" style="margin-top:8px">Mi equipo está…</p>
+      <div class="opciones" id="fsLado">
+        <button data-lado="cerca">cerca de la cámara (C)</button>
+        <button data-lado="lejos">lejos de la cámara (L)</button>
+      </div>
+      <div class="acciones">
+        <button data-accion="guardarSet" class="primario">Guardar (Enter)</button>
+        <button data-accion="cancelarSet">Cancelar (Esc)</button>
+      </div>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Sets</h2>
+      <ul id="sets" class="listaSets"></ul>
+    </section>
+
+    <section class="tarjeta">
+      <h2>Armadas <span id="cuenta"></span></h2>
+      <ol id="lista" class="listaArmadas"></ol>
+    </section>
+
+    <details class="tarjeta atajos">
+      <summary>Atajos de teclado</summary>
+      <table>
+        <tr><td><kbd>Espacio</kbd></td><td>reproducir / pausar</td></tr>
+        <tr><td><kbd>M</kbd></td><td>armada en este cuadro (con una elegida y el video quieto, la mueve acá)</td></tr>
+        <tr><td><kbd>1</kbd>–<kbd>6</kbd></td><td>zona a la que fue (otra vez la misma la borra)</td></tr>
+        <tr><td><kbd>A</kbd></td><td>el remate es en este cuadro</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>un cuadro (con <kbd>Shift</kbd>, 5 segundos)</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>armada anterior / siguiente</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd> o <kbd>I</kbd> <kbd>F</kbd></td><td>el clip empieza / termina acá</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>aceptar y seguir</td></tr>
+        <tr><td><kbd>Supr</kbd></td><td>descartar (una marca tuya se borra)</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>soltar la elegida</td></tr>
+        <tr><td><kbd>Z</kbd></td><td>deshacer</td></tr>
+        <tr><td><kbd>S</kbd></td><td>empieza un set acá</td></tr>
+        <tr><td><kbd>N</kbd> <kbd>E</kbd></td><td>escribir el armador / las etiquetas</td></tr>
+        <tr><td><kbd>−</kbd> <kbd>+</kbd></td><td>más lento / más rápido</td></tr>
+      </table>
+    </details>
+  </aside>
+</main>
+<script src="comun.js"></script>
+<script src="revision.js"></script>
+</body>
+</html>

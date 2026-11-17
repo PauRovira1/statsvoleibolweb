@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Galería de armadas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%234aa3ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="video.css">
+</head>
+<body>
+<header class="barra">
+  <a href="/">← Videos</a>
+  <h1>Galería de armadas</h1>
+</header>
+
+<main class="galeria">
+  <section>
+    <div class="marco">
+      <video id="video" preload="metadata" playsinline></video>
+    </div>
+    <p id="leyenda" class="leyenda nota">Elegí una armada de la lista o reproducí todas.</p>
+    <div class="controles">
+      <button data-accion="anterior" title="Anterior (↑)">◀ anterior</button>
+      <button data-accion="reproducir" title="Reproducir o pausar (Espacio)">▶ / ❚❚</button>
+      <button data-accion="siguiente" title="Siguiente (↓)">siguiente ▶</button>
+      <button data-accion="masLento" title="Más lento (−)">−</button>
+      <button data-accion="masRapido" title="Más rápido (+)">+</button>
+      <span id="velocidad" class="nota" style="align-self:center">1×</span>
+      <span class="separador"></span>
+      <button data-accion="todas" class="primario" id="bTodas">Reproducir todas</button>
+    </div>
+    <ol id="resultados" class="resultados"></ol>
+  </section>
+
+  <aside class="filtros tarjeta">
+    <div class="grupo"><h2>Partido</h2><div class="chips" id="fVideo"></div></div>
+    <div class="grupo"><h2>Set</h2><div class="chips" id="fSet"></div></div>
+    <div class="grupo"><h2>Zona de destino</h2>
+      <div class="zonas" id="fZona">
+        <button data-filtro="zona" data-valor="4">4</button><button data-filtro="zona" data-valor="3">3</button><button data-filtro="zona" data-valor="2">2</button>
+        <button data-filtro="zona" data-valor="5">5</button><button data-filtro="zona" data-valor="6">6</button><button data-filtro="zona" data-valor="1">1</button>
+      </div>
+      <div class="chips" style="margin-top:6px">
+        <button data-filtro="zona" data-valor="">sin zona</button>
+      </div>
+    </div>
+    <div class="grupo"><h2>Tempo</h2><div class="chips" id="fTempo"></div></div>
+    <div class="grupo"><h2>Armador</h2><div class="chips" id="fArmador"></div></div>
+    <div class="grupo"><h2>Lado</h2><div class="chips" id="fLado"></div></div>
+    <div class="grupo"><h2>Etiquetas</h2><div class="chips" id="fEtiqueta"></div></div>
+    <div class="grupo"><h2>Texto en la nota</h2>
+      <input id="fTexto" type="search" autocomplete="off" placeholder="buscar…" style="width:100%">
+    </div>
+    <div class="acciones">
+      <button data-accion="limpiar">Sacar los filtros</button>
+    </div>
+  </aside>
+</main>
+<script src="comun.js"></script>
+<script src="galeria.js"></script>
+</body>
+</html>

@@ -1,0 +1,214 @@
+/* Pantallas del analisis de video: inicio, revision y galeria.
+
+   Los colores son los de public/interfaz.css (la app de carga), copiados: este
+   servidor no sirve public/ y las dos herramientas tienen que parecer la
+   misma. Si cambia la paleta alla, se cambia aca. A diferencia de la app no
+   hay boton de tema: se sigue al navegador. */
+:root{
+  --fondo:#11151c; --panel:#181e28; --panel2:#1f2733; --borde:#2b3543;
+  --texto:#e8edf4; --suave:#93a1b5; --acento:#4aa3ff; --ok:#3ecf8e;
+  --error:#ff6b6b; --aviso:#ffc857;
+  --fuerte:#fff; --sobre-acento:#08121f; --sobre-aviso:#1a1200;
+  --anillo:#4aa3ff33; --acento-suave:#4aa3ff22; --realce:#ffffff12; --realce-suave:#ffffff08;
+  --ok-borde:#2f6b52; --ok-fondo:#14251e; --ok-texto:#bff0da;
+  --error-borde:#7a3030; --error-fondo:#2a1618; --error-texto:#ffc9c9;
+  --aviso-fondo:#2a2415; --aviso-borde:#6b5a2a;
+  --cancha:#141a23; --cancha-numero:#48566a;
+  --mono:ui-monospace,"Cascadia Mono","Consolas",monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root{
+    --fondo:#f2f5f9; --panel:#ffffff; --panel2:#eaeef4; --borde:#d2dae5;
+    --texto:#16202e; --suave:#5b6a7e; --acento:#1668cc; --ok:#10805a;
+    --error:#c62f2f; --aviso:#8a6300;
+    --fuerte:#0b1220; --sobre-acento:#ffffff; --sobre-aviso:#fffaf0;
+    --anillo:#1668cc33; --acento-suave:#1668cc1f; --realce:#00000010; --realce-suave:#00000008;
+    --ok-borde:#8ac7ae; --ok-fondo:#e8f6f0; --ok-texto:#0b6446;
+    --error-borde:#e4a7a7; --error-fondo:#fdedec; --error-texto:#97201f;
+    --aviso-fondo:#fdf3dc; --aviso-borde:#dcc07d;
+    --cancha:#e7ebf2; --cancha-numero:#6e7b8c;
+    color-scheme:light;
+  }
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--fondo);color:var(--texto)}
+body{font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+a{color:var(--acento)}
+h1{font-size:17px;margin:0}
+h2{font-size:14px;margin:0 0 8px;color:var(--suave);font-weight:600;
+   text-transform:uppercase;letter-spacing:.04em}
+code,kbd{font-family:var(--mono);font-size:.9em}
+kbd{background:var(--panel2);border:1px solid var(--borde);border-bottom-width:2px;
+    border-radius:4px;padding:0 4px;white-space:nowrap}
+[hidden]{display:none !important}
+.nota{color:var(--suave);font-size:13px;margin:4px 0}
+
+button{font:inherit;font-size:14px;color:var(--texto);background:var(--panel2);
+       border:1px solid var(--borde);border-radius:8px;padding:7px 11px;cursor:pointer;
+       touch-action:manipulation}
+button:hover:not(:disabled){border-color:var(--suave)}
+button:disabled{opacity:.45;cursor:default}
+button.primario{background:var(--acento);border-color:var(--acento);color:var(--sobre-acento);
+                font-weight:600}
+button.peligro{border-color:var(--error-borde);color:var(--error)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acento);
+                                                             outline-offset:1px}
+input,select{font:inherit;color:var(--texto);background:var(--panel2);
+             border:1px solid var(--borde);border-radius:8px;padding:6px 9px;min-width:0}
+input:disabled{opacity:.5}
+
+/* ---------- barra de arriba ---------- */
+.barra{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;
+       flex-wrap:wrap;padding:10px 16px;background:var(--panel);
+       border-bottom:1px solid var(--borde)}
+.barra h1{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.barra nav{display:flex;gap:12px}
+.guardado{font-size:13px;color:var(--suave)}
+.guardado.ok{color:var(--ok)}
+.guardado.error{color:var(--error)}
+
+main{padding:16px;max-width:1500px;margin:0 auto}
+
+/* ---------- tarjetas, pastillas, chips ---------- */
+.tarjeta{background:var(--panel);border:1px solid var(--borde);border-radius:12px;
+         padding:12px;min-width:0}
+.pastilla{display:inline-block;border-radius:999px;padding:1px 9px;font-size:12px;
+          font-weight:600;border:1px solid var(--borde);color:var(--suave)}
+.pastilla.aceptada{background:var(--ok-fondo);border-color:var(--ok-borde);color:var(--ok-texto)}
+.pastilla.pendiente{background:var(--aviso-fondo);border-color:var(--aviso-borde);color:var(--aviso)}
+.pastilla.descartada{text-decoration:line-through}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{padding:3px 10px;border-radius:999px;font-size:13px}
+.chips button.activa{background:var(--acento-suave);border-color:var(--acento);color:var(--fuerte)}
+.campo{display:grid;grid-template-columns:90px minmax(0,1fr);align-items:center;gap:8px;
+       margin-top:8px;font-size:14px;color:var(--suave)}
+/* las etiquetas ya usadas, debajo de su campo y alineadas con el */
+.chips.bajoCampo{margin:6px 0 0 98px}
+.chips.bajoCampo:empty{display:none}
+
+/* la cancha de zonas: red arriba, 4 3 2 adelante y 5 6 1 atras, como en la carga */
+.zonas{display:grid;grid-template-columns:repeat(3,44px);gap:4px;
+       border-top:3px solid var(--suave);padding-top:4px}
+.zonas button{height:38px;padding:0;font-weight:700;background:var(--cancha);
+              font-variant-numeric:tabular-nums}
+.zonas button.elegida{background:var(--acento);border-color:var(--acento);
+                      color:var(--sobre-acento)}
+
+.mensaje{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;
+         max-width:min(560px,calc(100vw - 32px));background:var(--panel2);
+         border:1px solid var(--borde);border-radius:10px;padding:9px 14px;
+         box-shadow:0 8px 24px -10px #000}
+.mensaje.error{background:var(--error-fondo);border-color:var(--error-borde);
+               color:var(--error-texto)}
+
+/* ---------- inicio ---------- */
+.tabla{width:100%;border-collapse:collapse;background:var(--panel);
+       border:1px solid var(--borde);border-radius:12px;overflow:hidden}
+.tabla th,.tabla td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--borde)}
+.tabla th{color:var(--suave);font-weight:600;font-size:13px}
+.tabla td.enlaces{white-space:nowrap;text-align:right}
+.tabla td.enlaces a{margin-left:12px}
+.ayuda{margin-top:18px}
+.ayuda li{margin:4px 0}
+.caja-tabla{overflow-x:auto}
+
+/* ---------- reproductor ---------- */
+.marco{position:relative;background:#000;border-radius:10px;overflow:hidden;
+       display:flex;justify-content:center}
+.marco video{display:block;width:100%;max-height:68vh;background:#000;cursor:pointer}
+.sinProxy{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+          padding:20px;text-align:center;color:#fff}
+.estadoVideo{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline;margin:8px 0}
+.reloj{font:600 18px var(--mono);font-variant-numeric:tabular-nums}
+.controles{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.controles .separador{flex:0 0 8px}
+
+/* La linea de tiempo del partido: arriba los sets, abajo una raya por armada. */
+.linea{position:relative;height:40px;background:var(--panel2);border:1px solid var(--borde);
+       border-radius:8px;overflow:hidden;cursor:pointer;touch-action:manipulation}
+.linea .tramo{position:absolute;top:0;height:13px;font-size:10px;line-height:13px;
+              padding-left:3px;color:var(--suave);overflow:hidden;white-space:nowrap;
+              border-left:2px solid var(--suave)}
+.linea .tramo.cerca{background:var(--acento-suave)}
+.linea .tramo.lejos{background:var(--aviso-fondo)}
+.linea .marca{position:absolute;top:15px;bottom:3px;width:2px;margin-left:-1px;
+              background:var(--ok);pointer-events:none}
+.linea .marca.pendiente{background:var(--aviso)}
+.linea .marca.descartada{background:var(--suave);opacity:.5}
+.linea .marca.activa{width:4px;margin-left:-2px;background:var(--acento)}
+.linea .recorte{position:absolute;top:13px;bottom:0;background:var(--anillo);
+                pointer-events:none}
+.linea .cursor{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;
+               background:var(--texto);pointer-events:none}
+
+/* ---------- revision ---------- */
+.revision{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;align-items:start}
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0}
+.cabecera{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.cabecera b{font:600 16px var(--mono)}
+.fila{display:grid;grid-template-columns:70px minmax(0,1fr) auto;gap:6px 8px;
+      align-items:center;margin-top:10px}
+.fila .rotulo{color:var(--suave);font-size:13px}
+.fila .botones{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
+.fila .botones button{padding:4px 8px;font-size:13px}
+.acciones{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.corregido{color:var(--acento)}
+
+/* relative: asi offsetTop de cada fila es dentro de la lista, que es lo que
+   usa revision.js para mostrar la elegida sin mover la pagina */
+.listaArmadas{position:relative;list-style:none;margin:0;padding:0;max-height:46vh;overflow:auto}
+.listaArmadas li{display:grid;grid-template-columns:76px 30px 30px 52px 38px minmax(0,1fr);
+                 gap:6px;align-items:center;padding:5px 6px;border-radius:6px;cursor:pointer;
+                 font-size:13px;font-variant-numeric:tabular-nums}
+.listaArmadas li:hover{background:var(--realce-suave)}
+.listaArmadas li.activa{background:var(--acento-suave);outline:1px solid var(--acento)}
+.listaArmadas li.pendiente .t{color:var(--aviso)}
+.listaArmadas li.descartada{opacity:.5;text-decoration:line-through}
+.listaArmadas .t{font-family:var(--mono)}
+.listaArmadas .etq{color:var(--suave);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.listaSets{list-style:none;margin:0;padding:0}
+.listaSets li{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:3px 0;font-size:14px}
+.listaSets li span{flex:1 1 auto}
+.listaSets button{padding:2px 8px;font-size:12px}
+.formSet .opciones{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.formSet .opciones button.elegida{background:var(--acento);border-color:var(--acento);
+                                  color:var(--sobre-acento)}
+
+.atajos table{border-collapse:collapse;font-size:13px;margin-top:8px}
+.atajos td{padding:2px 8px 2px 0;vertical-align:top}
+.atajos summary{cursor:pointer;color:var(--suave);font-weight:600}
+
+/* ---------- galeria ---------- */
+.galeria{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+.filtros{display:flex;flex-direction:column;gap:12px}
+.filtros .grupo h2{margin-bottom:6px}
+.leyenda{margin:8px 0;font-size:14px;min-height:21px;overflow-wrap:anywhere}
+.resultados{list-style:none;margin:12px 0 0;padding:0}
+.resultados li{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:4px 10px;
+               align-items:center;padding:7px 8px;border-radius:8px;cursor:pointer;
+               border:1px solid transparent}
+.resultados li:hover{background:var(--realce-suave)}
+.resultados li.actual{background:var(--acento-suave);border-color:var(--acento)}
+.resultados .t{font-family:var(--mono);font-size:13px}
+.resultados .datos{font-size:14px;overflow-wrap:anywhere}
+.resultados .datos .nota{display:block;margin:0}
+.resultados a{font-size:13px}
+
+/* ---------- angosto: todo en una columna ---------- */
+@media (max-width:980px){
+  .revision,.galeria{grid-template-columns:minmax(0,1fr)}
+  .listaArmadas{max-height:none}
+}
+@media (max-width:520px){
+  main{padding:12px}
+  .barra{padding:8px 12px}
+  .campo{grid-template-columns:minmax(0,1fr)}
+  .chips.bajoCampo{margin-left:0}
+  .fila{grid-template-columns:60px minmax(0,1fr)}
+  .fila .botones{grid-column:1 / -1;justify-content:flex-start}
+  .listaArmadas li{grid-template-columns:70px 28px 28px 48px minmax(0,1fr)}
+  .listaArmadas li .arm{display:none}
+}

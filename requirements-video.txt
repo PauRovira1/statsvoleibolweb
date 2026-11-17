@@ -1,0 +1,6 @@
+# Solo para el analisis de video (python -m video), que corre en la PC y no
+# en el sitio: no se instala en Vercel ni en Lambda.
+#   python -m pip install -r requirements-video.txt
+#
+# Etapa 1: ffmpeg, para la copia liviana que reproducen las pantallas.
+imageio-ffmpeg>=0.5

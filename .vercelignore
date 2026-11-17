@@ -4,3 +4,9 @@ test_*.py
 inputs_*.txt
 Prompt_*.md
 probar_blob.py
+
+# El analisis de video corre en la PC, no en el sitio. vercel.json incluye
+# "**" en la funcion: sin esto el paquete subiria el codigo y los videos.
+video/
+Videos/
+requirements-video.txt

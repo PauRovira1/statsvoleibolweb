@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Videos de armadas</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ccircle cx='8' cy='8' r='7' fill='%234aa3ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="video.css">
+</head>
+<body>
+<header class="barra">
+  <h1>Videos de armadas</h1>
+  <nav><a href="galeria.html">Galería de todos los videos</a></nav>
+</header>
+<main>
+  <p id="cargando" class="nota">Cargando…</p>
+  <div class="caja-tabla">
+    <table id="videos" class="tabla" hidden>
+      <thead><tr><th>Video</th><th>Duración</th><th>Armadas</th><th>Sets</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <section id="vacio" class="tarjeta ayuda" hidden>
+    <h2>Todavía no hay videos</h2>
+    <ol>
+      <li>Copiá el video del partido a la carpeta <code>Videos</code> del proyecto.</li>
+      <li>En una terminal, en la carpeta del proyecto: <code>python -m video nuevo</code></li>
+      <li>Cuando termine de armar la copia liviana, recargá esta página.</li>
+    </ol>
+  </section>
+
+  <section class="tarjeta ayuda">
+    <h2>Cómo se marca</h2>
+    <ol>
+      <li>Abrí <b>Revisar</b>. En el primer saque de cada set apretá <kbd>S</kbd> y decí
+        de qué lado de la cámara está tu equipo.</li>
+      <li>Reproducí. En cada armada de tu equipo apretá <kbd>M</kbd>: el video se frena en
+        ese cuadro. Si quedó tarde, volvé con <kbd>←</kbd> y apretá <kbd>M</kbd> otra vez.</li>
+      <li>Decí la zona a la que fue (<kbd>1</kbd>–<kbd>6</kbd>) y, si querés el tempo, avanzá
+        hasta el remate y apretá <kbd>A</kbd>. <kbd>Espacio</kbd> sigue el video.</li>
+      <li>El armador se escribe una vez y queda para las siguientes.</li>
+      <li>Todo se guarda solo. En la <b>Galería</b> se filtran y se ven seguidas.</li>
+    </ol>
+  </section>
+</main>
+<script src="comun.js"></script>
+<script src="inicio.js"></script>
+</body>
+</html>
